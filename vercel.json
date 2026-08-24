@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "api/render-pdf.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  },
+  "rewrites": [
+    { "source": "/", "destination": "/cpq-configurator.html" }
+  ]
+}

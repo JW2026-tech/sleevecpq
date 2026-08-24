@@ -1,0 +1,11 @@
+{
+  "name": "sleeve-cpq",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sleeve Technology CPQ configurator — static app plus a Vercel serverless function that renders a quote to PDF for the \"Send PDF by email\" feature.",
+  "dependencies": {
+    "@sparticuz/chromium": "^123.0.1",
+    "@supabase/supabase-js": "^2.45.0",
+    "puppeteer-core": "^22.15.0"
+  }
+}
