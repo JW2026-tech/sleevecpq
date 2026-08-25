@@ -676,6 +676,22 @@
   .sharefor{font-size:13px;color:#555;margin-bottom:18px}
   .sharefoot{margin-top:24px;padding-top:8px;border-top:2px solid #EF7B0B;
     font-size:11px;color:#777;text-align:center}
+  /* investment-proposal-only: main list on the left, a sticky running
+     total on the right so it stays in view through a long option list.
+     Below the stacking breakpoint this just becomes a normal block, same
+     as everything else on the customer link. */
+  .sharesplit{display:flex;gap:32px;align-items:flex-start}
+  .sharemain{flex:1;min-width:0}
+  .sharetotal-aside{flex:0 0 220px}
+  .sharetotal{position:sticky;top:64px;border:1px solid #ddd;border-radius:12px;
+    padding:18px;background:#fafafa;text-align:center}
+  .sharetotal-lbl{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#777}
+  .sharetotal-amt{font-size:22px;font-weight:600;color:#28338A;margin-top:6px}
+  @media (max-width:900px){
+    .sharesplit{flex-direction:column}
+    .sharetotal-aside{flex:none;width:100%}
+    .sharetotal{position:static}
+  }
   /* the "Take this option" button, moved out of .ptitle for the customer
      link (see priceRowHtml) — paired with the price on its own row below
      the name, so the two rows read as "what" then "how much, and the
@@ -8683,6 +8699,16 @@ function scaleRows(rows, f){
   if(!f) return rows;
   return rows.map(r=>isServiceRow(r) ? r : Object.assign({}, r, {price:(+r.price||0)*(1-f)}));
 }
+/* same total proposalHtml() itself computes (subtotal minus discount) —
+   pulled out so the customer link's sticky total card can show it without
+   re-rendering the whole proposal just to read one number back out */
+function investmentGrandTotal(){
+  const inScopeRows=buildPriceRows(priceDetail==="top");
+  const subtotal=priceRowsTotal(inScopeRows);
+  const svcTotal=serviceRowsTotal(inScopeRows);
+  const disc=discountAmount(subtotal-svcTotal);
+  return subtotal-disc;
+}
 function proposalHtml(){
   /* the two lists are now split at source — buildItemRows() emits either
      the in-scope items or the optional ones — so no post-filtering here.
@@ -10281,7 +10307,17 @@ function renderShareMode(){
     <div class="sharenavlist" id="shareNavList">${sections.map((s,i)=>
       `<button type="button" class="${i===shareSectionIdx?"on":""}" data-shareidx="${i}">${esc(s.nav)}</button>`).join("")}</div>
   </nav>`;
-  const page=cur.bare ? cur.html : shareLetterheadHtml(cur.html);
+  /* the investment proposal gets a sticky "total investment" card on the
+     right, so the running total stays in view while scrolling a long
+     option list — every other page stays the plain single-column layout */
+  const body=cur.id==="proposal"
+    ? `<div class="sharesplit"><div class="sharemain">${cur.html}</div>
+        <aside class="sharetotal-aside"><div class="sharetotal">
+          <div class="sharetotal-lbl">Total investment</div>
+          <div class="sharetotal-amt">${fmt(investmentGrandTotal())}</div>
+        </div></aside></div>`
+    : cur.html;
+  const page=cur.bare ? body : shareLetterheadHtml(body);
   const pager=`<div class="sharepager">
     <button type="button" class="btn sm" id="sharePrev" ${shareSectionIdx===0?"disabled":""}>&larr; Previous</button>
     <span>${shareSectionIdx+1} / ${sections.length}</span>
