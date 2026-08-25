@@ -4726,7 +4726,7 @@ function priceRowHtml(r, actPrefix){
   return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""} ${(nd.depth===0&&rowPicture(o))?"haspic":""}" style="padding-left:${nd.depth*18}px">
     <div class="pmain">
       <div class="ptitle"><span class="bullet"></span>${
-        (nd.depth===0 && rowPicture(o))?`<img class="plinepic" src="${rowPicture(o)}" alt="">`:""}${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${o.unitPrice?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
+        (nd.depth===0 && rowPicture(o))?`<img class="plinepic" src="${rowPicture(o)}" alt="">`:""}${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${(o.unitPrice && o.qty>1)?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
         :((!o.isPropLine && optQty(o)>1 && +o.price) ? ` <span class="snote">(${fmt(+o.price)} each)</span>`:"")}${o.fmtFor?` <span class="snote">— ${esc(o.fmtFor)}</span>`:""}${
         shareMode?"":takeBtn}${propsMapLabel(r.propsAgg)?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${r.rolled?'<span class="tag rollup">incl. sub-items</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
       <div class="pval">${priceTxt}</div>
