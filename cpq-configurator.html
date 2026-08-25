@@ -727,6 +727,14 @@
        flat indent instead of a growing one frees up space for the parts
        that actually need it (the button, the wrapped name) */
     body.share-mode .pline, body.share-mode .scopeline{padding-left:10px!important}
+    /* tighten the vertical rhythm of a run of optional items — the trail
+       heading, each row, the space before the (now separate) button row —
+       so a long optional-items list doesn't take twice the scroll it needs */
+    body.share-mode .pline{padding:2px 0}
+    body.share-mode .pbreadcrumb.group{margin:4px 0 2px;padding-top:3px}
+    body.share-mode .optstrip{padding:4px 12px}
+    body.share-mode .optblock{margin-top:6px}
+    body.share-mode .takerow{margin-top:3px}
     /* a format part's price sits in its own wrapped line once the name
        claims the full row above — text-align:right only aligns the text
        inside that box, not the box itself, so it was reading flush left */
