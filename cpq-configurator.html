@@ -1088,7 +1088,11 @@
      a wide page — this is the one place two separate <table>s (product
      properties, sleeve properties) need to visually line up as if they
      were one */
-  .spectable.specprint{table-layout:fixed;max-width:760px}
+  /* min-width:0 overrides the general "wide tables scroll sideways rather
+     than squash" mobile rule (.spectable min-width:640px) — that rule was
+     built for auto-layout tables that need room for their content; this
+     one has fixed, proportional columns and should just shrink to fit */
+  .spectable.specprint{table-layout:fixed;width:100%;max-width:760px;min-width:0}
   .spectable th,.spectable td{padding:7px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle;text-align:left}
   .spectable th{font-size:12.5px;color:var(--txt-faint);font-weight:600}
   .spectable .pickcell{position:relative;display:block}
