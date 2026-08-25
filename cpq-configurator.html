@@ -639,9 +639,12 @@
   .sharenav button:hover{opacity:1;background:rgba(255,255,255,.12)}
   .sharenav button.on{opacity:1;background:rgba(255,255,255,.2);font-weight:500}
   .sharepager{display:flex;align-items:center;justify-content:center;gap:16px;
-    max-width:880px;margin:0 auto;padding:16px 28px 40px;font-size:13px;color:#555}
-  /* full front page, screen equivalent of coverPageHtml()'s print-only look */
-  .sharecover{max-width:880px;margin:0 auto;padding:60px 28px;background:#fff;color:#222;
+    padding:16px 40px 44px;font-size:13px;color:#555}
+  /* full front page, screen equivalent of coverPageHtml()'s print-only look.
+     Full page width, same as .docsheet in the normal sales-facing tool — the
+     comparison grid (.cmpgrid) especially needs the room, its columns were
+     built for a page this wide, not a narrow letter-style column. */
+  .sharecover{padding:60px 40px;background:#fff;color:#222;
     display:flex;flex-direction:column;align-items:flex-start;min-height:70vh}
   .sharecover .stlogo.big .stmark{width:120px;height:auto}
   .sharecover .stlogo.big .stword{font-size:22px}
@@ -657,7 +660,7 @@
   /* the customer's link reads like the printed quotation — house colours
      fixed regardless of the viewer's own light/dark preference, same as a
      document on paper would be */
-  .sharewrap{max-width:880px;margin:0 auto;padding:32px 28px 40px;background:#fff;color:#222}
+  .sharewrap{padding:32px 40px 44px;background:#fff;color:#222}
   .sharehead{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
     padding-bottom:10px;margin-bottom:18px;border-bottom:2px solid #28338A}
   .sharebrand{display:flex;align-items:center;gap:8px}
