@@ -5726,7 +5726,20 @@ function renderConfigure(){
   document.querySelectorAll("#nav .fold-toggle[data-fold]").forEach(t=>t.onclick=(e)=>{
     e.stopPropagation();
     const id=t.dataset.fold;
-    if(expandedNav.has(id)) expandedNav.delete(id); else expandedNav.add(id);
+    if(expandedNav.has(id)){
+      expandedNav.delete(id);
+      /* if the cursor is currently sitting inside the branch we just
+         collapsed, renderConfigure()'s "keep the cursor reachable" logic
+         would immediately re-open it — move the cursor up to the branch's
+         own row first so the collapse actually sticks */
+      const idx=visD.findIndex(x=>x.m.id===id);
+      if(idx>=0){
+        const depth=visD[idx].depth;
+        let end=idx+1;
+        while(end<visD.length && visD[end].depth>depth) end++;
+        if(cursor>idx && cursor<end) cursor=idx;
+      }
+    } else expandedNav.add(id);
     renderConfigure();
   });
 
