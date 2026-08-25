@@ -780,6 +780,61 @@
   .sharealtcard .btn{width:100%;border-radius:8px;margin-top:auto}
   .sharealtgroup{margin-top:18px}
   .sharealtgrouplbl{font-size:11.5px;color:#999;margin-bottom:10px}
+
+  /* ---- ONE MARKER SYSTEM FOR EVERY LIST ROW ----
+     The internal tool draws depth into the marker itself — a filled square
+     at the top level, a hollow one below it, then a thin dash, then a thick
+     dash. Four shapes in one list is a code the reader has to learn, and on
+     the customer's page there is nothing to learn it from.
+     So here: one shape (a small round dot) at every level, and the only
+     thing that ever varies is colour, which carries real meaning —
+       navy   = included in this quotation
+       orange = optional, the customer's own choice
+     Depth is left to the indentation and the guide rail that already draw
+     it. Every rule below is scoped to body.share-mode, so the sales-facing
+     documents and the print layout keep the shapes they were designed with. */
+  body.share-mode .pline .bullet, body.share-mode .scopeline .bullet{
+    flex:0 0 6px;width:6px;height:6px;min-height:6px;border-radius:50%;
+    background:#28338A!important;border:0!important;align-self:center;margin-top:0}
+  body.share-mode .scopeline .bullet{align-self:flex-start;margin-top:6px}
+  /* the top line of a step reads as its heading, so its dot is a touch
+     larger — same shape and colour, just more presence */
+  body.share-mode .pline.lvl0 .bullet, body.share-mode .scopeline.lvl0 .bullet{
+    flex-basis:8px;width:8px;height:8px;min-height:8px}
+  body.share-mode .scopeline.lvl0 .bullet{margin-top:5px}
+  /* deeper rows sit back a little, without changing shape */
+  body.share-mode .pline.lvl2 .bullet, body.share-mode .pline.lvl3 .bullet,
+  body.share-mode .scopeline.lvl2 .bullet, body.share-mode .scopeline.lvl3 .bullet{opacity:.5}
+  /* a property line ("6× standard feet") is a note about the row above it,
+     not an item of its own — same dot, hollow, so it is recognisably the
+     same system one step quieter */
+  body.share-mode .pline.propline .bullet{
+    width:6px;height:6px;background:#fff!important;border:1.5px solid #9aa1bd!important;opacity:1}
+  /* optional: the one place colour changes, on both the dot and the row */
+  body.share-mode .scopeline.is-optional .bullet,
+  body.share-mode .pline.is-taken .bullet{background:#EF7B0B!important}
+  body.share-mode .scopeline.is-optional{background:#fff8f1;border-left:3px solid #EF7B0B;
+    border-radius:8px;padding:7px 10px;margin:2px 0}
+  body.share-mode .scopeline.is-alt{background:#f7f8fc;border-left:3px solid #28338A;
+    border-radius:8px;padding:7px 10px;margin:2px 0}
+  /* the guide rail: one hairline for every nested row, in the same soft
+     grey, instead of the solid/dotted mix the internal tool uses */
+  body.share-mode .pline.lvl1::before, body.share-mode .pline.lvl2::before,
+  body.share-mode .pline.lvl3::before{border-left:1px solid #e8eaf2;border-left-style:solid}
+  /* badges and pills: one shape, one size, one pair of colours */
+  body.share-mode .optpill, body.share-mode .altpill, body.share-mode .cmppill,
+  body.share-mode .tag.rollup{font-size:9.5px;font-weight:700;letter-spacing:.5px;
+    text-transform:uppercase;padding:2px 8px;border-radius:20px;border:0}
+  body.share-mode .optpill, body.share-mode .tag.rollup{background:#fdefe0;color:#c15c00}
+  body.share-mode .altpill, body.share-mode .cmppill{background:#e9ebf6;color:#28338A}
+  body.share-mode .proplbl{font-size:10.5px;background:#f1f2f8;color:#5b6280;
+    border-radius:20px;padding:2px 8px}
+  /* the strip above a run of optional items, and the step headings, in the
+     same key as the new section headings on the proposal page */
+  body.share-mode .optstrip{background:#fff8f1;color:#c15c00;font-size:10.5px;font-weight:700;
+    letter-spacing:.5px;text-transform:uppercase;border-radius:8px;border:0}
+  body.share-mode .grouphead .ghtitle{color:#28338A;letter-spacing:.6px}
+  body.share-mode .pline, body.share-mode .scopeline{border-bottom-color:#f0f1f6}
   /* the buttons on the customer's page are on a white document, not in the
      app's own themed chrome — give them their own fixed light look rather
      than letting them inherit whatever theme the viewer happens to run */
@@ -858,18 +913,8 @@
        claims the full row above — text-align:right only aligns the text
        inside that box, not the box itself, so it was reading flush left */
     body.share-mode .fmtpart .fpprice{margin-left:auto}
-    /* Depth used a different bullet shape per level (filled dot, hollow
-       ring, thin dash, thick dash) as a deliberate way to show nesting in
-       the internal tool's documents — on the customer link, with no other
-       depth cues to compare against, that just reads as visual noise.
-       One plain dot at every level, consistently — restating the same
-       values the base, unleveled .bullet rule already uses. */
-    body.share-mode .scopeline.lvl0 .bullet, body.share-mode .scopeline.lvl1 .bullet,
-    body.share-mode .scopeline.lvl2 .bullet, body.share-mode .scopeline.lvl3 .bullet{
-      background:var(--txt-dim);border:0;border-radius:2px;height:7px;margin-top:5px}
-    body.share-mode .pline.lvl0 .bullet, body.share-mode .pline.lvl1 .bullet,
-    body.share-mode .pline.lvl2 .bullet, body.share-mode .pline.lvl3 .bullet{
-      background:var(--txt-dim);border:0;border-radius:2px;height:7px}
+    /* (the one-shape marker system lives in the unconditional share-mode
+       block above now — it applies at every width, not just here) */
     /* Machine specs / Delivery terms inherited the internal tool's "wide
        tables scroll sideways rather than squash" rule (.spectable
        min-width:640px, further up this stylesheet) — that's a deliberate
