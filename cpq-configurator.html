@@ -710,6 +710,12 @@
        put it, reading as disconnected from its own row. Letting the row
        wrap puts the button on its own line right under the full name
        instead. */
+    /* the internal tool's own mobile rule (.pline .ptitle{flex:1 1 100%},
+       further up) forces the name onto its own full-width row, pushing
+       the price below the button instead of right after the name where it
+       reads naturally — share it with the price again, and let the
+       button (still wrapping inside .ptitle below) be what drops down */
+    body.share-mode .pline .ptitle{flex:1 1 auto}
     body.share-mode .ptitle{flex-wrap:wrap}
     /* depth indentation (padding-left:depth*18px, set inline per row) eats
        real width on a phone, and the breadcrumb trail already printed
