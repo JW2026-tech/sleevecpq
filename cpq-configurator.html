@@ -1083,6 +1083,12 @@
   .spectable-title{font-size:16px;font-weight:600;margin:26px 0 8px}
   .spectable-title:first-of-type{margin-top:14px}
   .spectable{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:13px}
+  /* printed/read-only spec tables: fixed layout so the shared colgroup
+     widths actually bind, and capped so the table doesn't stretch across
+     a wide page — this is the one place two separate <table>s (product
+     properties, sleeve properties) need to visually line up as if they
+     were one */
+  .spectable.specprint{table-layout:fixed;max-width:760px}
   .spectable th,.spectable td{padding:7px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle;text-align:left}
   .spectable th{font-size:12.5px;color:var(--txt-faint);font-weight:600}
   .spectable .pickcell{position:relative;display:block}
@@ -8762,6 +8768,14 @@ function renderTerms(el){
 function specTableHtml(group, title, readonly){
   const fields=CONFIG.specFields[group];
   const cols=CONFIG.specColumns;
+  /* fixed, shared column widths for the printed/read-only table so the
+     product and sleeve tables — two separate <table>s — line up under each
+     other instead of each auto-sizing to its own content */
+  const labelPct = readonly ? Math.max(14, Math.min(22, 100/(cols.length+1))) : 0;
+  const colgroupHtml = readonly
+    ? `<colgroup><col style="width:${labelPct}%">${
+        cols.map(()=>`<col style="width:${((100-labelPct)/Math.max(1,cols.length)).toFixed(2)}%">`).join("")
+      }</colgroup>` : "";
   const head=`<tr><th></th>${cols.map(c=>`<th>
       ${readonly ? `<span class="colnametxt">${esc(c.name)}</span>`
                  : `<input type="text" class="colname" data-col="${esc(c.id)}" value="${esc(c.name)}">
@@ -8788,7 +8802,7 @@ function specTableHtml(group, title, readonly){
     }).join("");
     return `<tr><td class="flabel">${esc(f.label)}</td>${cells}</tr>`;
   }).join("") : `<tr><td colspan="${cols.length+1}"><span class="meta">No fields defined yet — add some in Admin &rsaquo; Product &amp; sleeve spec fields.</span></td></tr>`;
-  return `<h3 class="spectable-title">${esc(title)}</h3><div class="tablewrap"><table class="spectable">${head}${body}</table></div>`;
+  return `<h3 class="spectable-title">${esc(title)}</h3><div class="tablewrap"><table class="spectable ${readonly?"specprint":""}">${colgroupHtml}${head}${body}</table></div>`;
 }
 function productsSpecHtml(){
   ensureSpecs();
