@@ -4509,7 +4509,7 @@ function altAncestorOf(id){
    link only ever sees the proposal, so that one gets its own render path */
 function refreshView(){
   if(document.body.classList.contains("share-mode")){ renderShareMode(); return; }
-  refreshView();
+  renderDocs();
 }
 function takeOptional(id){
   const s=String(id||"");
