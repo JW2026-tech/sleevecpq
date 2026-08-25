@@ -676,6 +676,10 @@
   .sharefor{font-size:13px;color:#555;margin-bottom:18px}
   .sharefoot{margin-top:24px;padding-top:8px;border-top:2px solid #EF7B0B;
     font-size:11px;color:#777;text-align:center}
+  /* the "Take this option" button, moved out of .ptitle for the customer
+     link (see priceRowHtml) so the name and price can share a line while
+     the button gets its own row underneath */
+  .takerow{margin-top:6px}
   /* Phone-width fallback for the customer link. Full page width (like the
      sales-facing Documents tab) works fine down to tablet width, so this
      one only holds the general layout tweaks (padding, header wrap). */
@@ -4701,19 +4705,26 @@ function priceRowHtml(r, actPrefix){
       ${toggles}
     </div>`;
   }
+  const takeBtn=(actPrefix==="opt"&&takeableId(o))
+    ? (r.taken
+       ? `<button class="pbtn takeopt taken no-print" data-untake="${esc(takeableId(o))}" title="Put it back among the optional items">In the machine — undo</button>`
+       : `<button class="pbtn takeopt no-print" data-take="${esc(takeableId(o))}" title="Move this into the machine">Take this option</button>`)
+    : "";
+  /* on the customer link the button sits on its own line below the name
+     AND the price (see .takerow), instead of inline in .ptitle where the
+     name+price row would wrap around it — inline is still what the
+     sales-facing screens and print documents use */
+  const shareMode=document.body.classList.contains("share-mode");
   return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""} ${(nd.depth===0&&rowPicture(o))?"haspic":""}" style="padding-left:${nd.depth*18}px">
     <div class="pmain">
       <div class="ptitle"><span class="bullet"></span>${
         (nd.depth===0 && rowPicture(o))?`<img class="plinepic" src="${rowPicture(o)}" alt="">`:""}${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${o.unitPrice?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
         :((!o.isPropLine && optQty(o)>1 && +o.price) ? ` <span class="snote">(${fmt(+o.price)} each)</span>`:"")}${o.fmtFor?` <span class="snote">— ${esc(o.fmtFor)}</span>`:""}${
-        (actPrefix==="opt"&&takeableId(o))
-          ? (r.taken
-             ? `<button class="pbtn takeopt taken no-print" data-untake="${esc(takeableId(o))}" title="Put it back among the optional items">In the machine — undo</button>`
-             : `<button class="pbtn takeopt no-print" data-take="${esc(takeableId(o))}" title="Move this into the machine">Take this option</button>`)
-          : ""}${propsMapLabel(r.propsAgg)?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${r.rolled?'<span class="tag rollup">incl. sub-items</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
+        shareMode?"":takeBtn}${propsMapLabel(r.propsAgg)?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${r.rolled?'<span class="tag rollup">incl. sub-items</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
       <div class="pval">${priceTxt}</div>
       ${altTxt}
     </div>
+    ${shareMode&&takeBtn?`<div class="takerow">${takeBtn}</div>`:""}
     ${breakdown}
     ${toggles}
   </div>`;
