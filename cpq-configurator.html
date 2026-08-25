@@ -10680,12 +10680,17 @@ function shareLetterheadHtml(inner, pageTitle){
    link those numbers are wrong the moment the set of pages differs from the
    PDF's — and the page header already prints the section's name in full, so
    the heading is a duplicate either way.
-   Only the section's own opening <h2> goes. Headings deeper in the body are
-   left exactly as they are: the Terms & Conditions text is authored in Admin
-   and its clause numbering ("1. Definitions") is part of the legal text, not
-   a chapter number to tidy away. */
+   Only the section's own title goes — the FIRST <h2>, which every one of
+   these builders emits as its heading. It is matched unanchored because a
+   couple of them (scopeHtml, proposalHtml) put the sales-only warning
+   banners in front of it, so it is not always the leading tag. Everything
+   after it is left exactly as it is: the Terms & Conditions text is
+   authored in Admin and its clause numbering ("1. Definitions") is part of
+   the legal text, not a chapter number to tidy away. Applied only to
+   sections that generate a title of their own — never to the cover or to
+   the free-text note, which have none to remove. */
 function shareStripHeading(html){
-  return String(html||"").replace(/^\s*<h2\b[^>]*>[\s\S]*?<\/h2>\s*/i, "");
+  return String(html||"").replace(/<h2\b[^>]*>[\s\S]*?<\/h2>\s*/i, "");
 }
 /* every section "Create complete PDF" prints, minus the cover, the contact
    pages and the introduction — the introduction is boilerplate explaining
@@ -10699,7 +10704,7 @@ function shareDocSections(){
   const memo=(CONFIG.docs&&CONFIG.docs.memo||"").trim();
   return [
     {id:"cover", nav:"Cover", html: shareCoverHtml(), bare:true},
-    memo && {id:"memo", nav:"Note", html: memo},
+    memo && {id:"memo", nav:"Note", html: memo, ownTitle:false},
     {id:"scope", nav:"Scope of supply", html: scopeHtml()},
     {id:"specs", nav:"Product & sleeve specs", html: printSpecsHtml()},
     {id:"machinespecs", nav:"Machine specs", html: machineSpecSectionHtml()},
@@ -10707,7 +10712,8 @@ function shareDocSections(){
     {id:"delivery", nav:"Commercial terms", html: deliverySectionHtml()},
     {id:"terms", nav:"Terms & conditions", html: printTermsHtml()}
   ].filter(Boolean)
-   .map(s=>s.bare ? s : Object.assign({}, s, {html: shareStripHeading(s.html)}))
+   .map(s=>(s.bare || s.ownTitle===false) ? s
+        : Object.assign({}, s, {html: shareStripHeading(s.html)}))
    /* a section whose only content WAS its heading (an empty Terms text, say)
       has nothing left to show once the heading is stripped, so it drops out
       of the nav rather than becoming a blank page */
