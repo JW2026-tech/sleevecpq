@@ -677,9 +677,11 @@
   .sharefoot{margin-top:24px;padding-top:8px;border-top:2px solid #EF7B0B;
     font-size:11px;color:#777;text-align:center}
   /* the "Take this option" button, moved out of .ptitle for the customer
-     link (see priceRowHtml) so the name and price can share a line while
-     the button gets its own row underneath */
-  .takerow{margin-top:6px}
+     link (see priceRowHtml) — paired with the price on its own row below
+     the name, so the two rows read as "what" then "how much, and the
+     action for it" instead of splitting price and button across two rows */
+  .takerow{margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .takerow .pval{margin:0}
   /* Phone-width fallback for the customer link. Full page width (like the
      sales-facing Documents tab) works fine down to tablet width, so this
      one only holds the general layout tweaks (padding, header wrap). */
@@ -4718,21 +4720,24 @@ function priceRowHtml(r, actPrefix){
        ? `<button class="pbtn takeopt taken no-print" data-untake="${esc(takeableId(o))}" title="Put it back among the optional items">In the machine — undo</button>`
        : `<button class="pbtn takeopt no-print" data-take="${esc(takeableId(o))}" title="Move this into the machine">Take this option</button>`)
     : "";
-  /* on the customer link the button sits on its own line below the name
-     AND the price (see .takerow), instead of inline in .ptitle where the
-     name+price row would wrap around it — inline is still what the
-     sales-facing screens and print documents use */
+  /* on the customer link, when there's a take/untake button, the price
+     moves down to share a row with it instead of sitting up on the name
+     line — one combined "price + action" row reads better and costs one
+     row instead of two. An item with no button keeps the price next to
+     its name exactly as before (and every other screen is unaffected —
+     .pval only ever moves out of .pmain here, in this one branch). */
   const shareMode=document.body.classList.contains("share-mode");
+  const movePriceDown = shareMode && takeBtn;
+  const pvalBlock=`<div class="pval">${priceTxt}</div>${altTxt}`;
   return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""} ${(nd.depth===0&&rowPicture(o))?"haspic":""}" style="padding-left:${nd.depth*18}px">
     <div class="pmain">
       <div class="ptitle"><span class="bullet"></span>${
         (nd.depth===0 && rowPicture(o))?`<img class="plinepic" src="${rowPicture(o)}" alt="">`:""}${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${(o.unitPrice && o.qty>1)?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
         :((!o.isPropLine && optQty(o)>1 && +o.price) ? ` <span class="snote">(${fmt(+o.price)} each)</span>`:"")}${o.fmtFor?` <span class="snote">— ${esc(o.fmtFor)}</span>`:""}${
         shareMode?"":takeBtn}${propsMapLabel(r.propsAgg)?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${r.rolled?'<span class="tag rollup">incl. sub-items</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
-      <div class="pval">${priceTxt}</div>
-      ${altTxt}
+      ${movePriceDown?"":pvalBlock}
     </div>
-    ${shareMode&&takeBtn?`<div class="takerow">${takeBtn}</div>`:""}
+    ${movePriceDown?`<div class="takerow">${pvalBlock}${takeBtn}</div>`:""}
     ${breakdown}
     ${toggles}
   </div>`;
