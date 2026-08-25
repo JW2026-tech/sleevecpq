@@ -669,6 +669,11 @@
   /* the customer's link reads like the printed quotation — house colours
      fixed regardless of the viewer's own light/dark preference, same as a
      document on paper would be */
+  /* the share page supplies its own page padding per block (.sharenav,
+     .sharewrap, .sharecover), and the nav and footer bars have to run
+     edge to edge — so the sales tool's own .docsheet padding, which
+     #shareBody inherits from the Documents tab, is dropped here */
+  body.share-mode #shareBody{padding:0;max-width:none;margin:0}
   .sharewrap{padding:36px 40px 44px;background:#fff;color:#222}
   /* page header: a small eyebrow (who it's for), a big page title, and the
      quotation number/date as two little labelled chips on the right —
