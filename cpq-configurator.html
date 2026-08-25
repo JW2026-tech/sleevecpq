@@ -1682,11 +1682,12 @@
   </div>
 </div>
 
-<!-- ===== shared with a customer ===== -->
+<!-- ===== shared with a customer =====
+     No .docs-bar header here — the letterhead built into shareBody's own
+     content (see shareLetterheadHtml) already carries the customer name
+     and quote number, so a second bar would just be a redundant, sticky
+     duplicate scrolling along above it. -->
 <div class="docs hidden" id="viewShare">
-  <div class="docs-bar">
-    <span class="sub" id="shareMeta"></span>
-  </div>
   <div class="docsheet" id="shareBody"></div>
 </div>
 
@@ -10258,7 +10259,6 @@ async function bootShareMode(token){
   if(error || !data || !data.ok){ showShareError(data&&data.reason); return; }
   applyCatalogue({catalogue: data.catalogue});
   applyQuote(data.quote);
-  document.getElementById("shareMeta").textContent=`${data.customer||""} — ${data.number||""}`;
   renderShareMode();
 }
 function shareSaveSoon(){
