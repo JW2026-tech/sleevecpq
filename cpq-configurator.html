@@ -703,6 +703,30 @@
        drops to its own line below instead. */
     .pline.tilerow .ptitle{flex:1 1 100%}
     .ptilespecs{grid-template-columns:1fr}
+    /* an optional item's own .ptitle is a flex row too (bullet, name, the
+       "Take this option" button, a pill), all baseline-aligned in one
+       line — when the name is long enough to wrap to several lines the
+       button doesn't flow with it, it just sits wherever the flex layout
+       put it, reading as disconnected from its own row. Letting the row
+       wrap puts the button on its own line right under the full name
+       instead. */
+    body.share-mode .ptitle{flex-wrap:wrap}
+    /* a format part's price sits in its own wrapped line once the name
+       claims the full row above — text-align:right only aligns the text
+       inside that box, not the box itself, so it was reading flush left */
+    body.share-mode .fmtpart .fpprice{margin-left:auto}
+    /* Depth used a different bullet shape per level (filled dot, hollow
+       ring, thin dash, thick dash) as a deliberate way to show nesting in
+       the internal tool's documents — on the customer link, with no other
+       depth cues to compare against, that just reads as visual noise.
+       One plain dot at every level, consistently — restating the same
+       values the base, unleveled .bullet rule already uses. */
+    body.share-mode .scopeline.lvl0 .bullet, body.share-mode .scopeline.lvl1 .bullet,
+    body.share-mode .scopeline.lvl2 .bullet, body.share-mode .scopeline.lvl3 .bullet{
+      background:var(--txt-dim);border:0;border-radius:2px;height:7px;margin-top:5px}
+    body.share-mode .pline.lvl0 .bullet, body.share-mode .pline.lvl1 .bullet,
+    body.share-mode .pline.lvl2 .bullet, body.share-mode .pline.lvl3 .bullet{
+      background:var(--txt-dim);border:0;border-radius:2px;height:7px}
     /* Machine specs / Delivery terms inherited the internal tool's "wide
        tables scroll sideways rather than squash" rule (.spectable
        min-width:640px, further up this stylesheet) — that's a deliberate
