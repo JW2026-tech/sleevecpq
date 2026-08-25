@@ -676,22 +676,17 @@
   .sharefor{font-size:13px;color:#555;margin-bottom:18px}
   .sharefoot{margin-top:24px;padding-top:8px;border-top:2px solid #EF7B0B;
     font-size:11px;color:#777;text-align:center}
-  /* investment-proposal-only: main list on the left, a sticky running
-     total on the right so it stays in view through a long option list.
-     Below the stacking breakpoint this just becomes a normal block, same
-     as everything else on the customer link. */
-  .sharesplit{display:flex;gap:32px;align-items:flex-start}
-  .sharemain{flex:1;min-width:0}
-  .sharetotal-aside{flex:0 0 220px}
-  .sharetotal{position:sticky;top:64px;border:1px solid #ddd;border-radius:12px;
-    padding:18px;background:#fafafa;text-align:center}
-  .sharetotal-lbl{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#777}
-  .sharetotal-amt{font-size:22px;font-weight:600;color:#28338A;margin-top:6px}
-  @media (max-width:900px){
-    .sharesplit{flex-direction:column}
-    .sharetotal-aside{flex:none;width:100%}
-    .sharetotal{position:static}
-  }
+  /* investment-proposal-only: a fixed bar pinned to the bottom of the
+     viewport with the running total — same on every screen size, no
+     column/breakpoint to get wrong, and it never demands a scroll to find */
+  .sharetotalbar{position:fixed;left:0;right:0;bottom:0;z-index:20;
+    background:#28338A;color:#fff;padding:12px 28px;display:flex;
+    align-items:baseline;justify-content:space-between;gap:16px;
+    box-shadow:0 -2px 10px rgba(0,0,0,.15)}
+  .sharetotalbar-lbl{font-size:12px;text-transform:uppercase;letter-spacing:.5px;opacity:.85}
+  .sharetotalbar-amt{font-size:19px;font-weight:600}
+  /* room at the bottom so the fixed bar never covers the pager/last line */
+  body.has-totalbar .sharepager{padding-bottom:64px}
   /* the "Take this option" button, moved out of .ptitle for the customer
      link (see priceRowHtml) — paired with the price on its own row below
      the name, so the two rows read as "what" then "how much, and the
@@ -10307,24 +10302,24 @@ function renderShareMode(){
     <div class="sharenavlist" id="shareNavList">${sections.map((s,i)=>
       `<button type="button" class="${i===shareSectionIdx?"on":""}" data-shareidx="${i}">${esc(s.nav)}</button>`).join("")}</div>
   </nav>`;
-  /* the investment proposal gets a sticky "total investment" card on the
-     right, so the running total stays in view while scrolling a long
-     option list — every other page stays the plain single-column layout */
-  const body=cur.id==="proposal"
-    ? `<div class="sharesplit"><div class="sharemain">${cur.html}</div>
-        <aside class="sharetotal-aside"><div class="sharetotal">
-          <div class="sharetotal-lbl">Total investment</div>
-          <div class="sharetotal-amt">${fmt(investmentGrandTotal())}</div>
-        </div></aside></div>`
-    : cur.html;
-  const page=cur.bare ? body : shareLetterheadHtml(body);
+  const page=cur.bare ? cur.html : shareLetterheadHtml(cur.html);
   const pager=`<div class="sharepager">
     <button type="button" class="btn sm" id="sharePrev" ${shareSectionIdx===0?"disabled":""}>&larr; Previous</button>
     <span>${shareSectionIdx+1} / ${sections.length}</span>
     <button type="button" class="btn sm" id="shareNext" ${shareSectionIdx===sections.length-1?"disabled":""}>Next &rarr;</button>
   </div>`;
+  /* the investment proposal gets a fixed bar at the very bottom of the
+     viewport showing the running total — always in view without needing
+     its own column (which only worked on a wide screen anyway) or a
+     scroll to the bottom of a long option list */
+  const onProposal=cur.id==="proposal";
+  document.body.classList.toggle("has-totalbar", onProposal);
+  const totalBar=onProposal ? `<div class="sharetotalbar">
+      <span class="sharetotalbar-lbl">Total investment</span>
+      <span class="sharetotalbar-amt">${fmt(investmentGrandTotal())}</span>
+    </div>` : "";
 
-  el.innerHTML=nav+page+pager;
+  el.innerHTML=nav+page+pager+totalBar;
   wirePriceToggles(el);
 
   const goTo=(i)=>{ shareSectionIdx=i; renderShareMode(); };
