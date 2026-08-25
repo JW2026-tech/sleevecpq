@@ -632,12 +632,16 @@
   body.share-mode > #viewConfigure, body.share-mode > #viewFormats,
   body.share-mode > #viewService, body.share-mode > #viewAdmin,
   body.share-mode > #viewDocs, body.share-mode > #viewQuotes{display:none!important}
-  .sharenav{position:sticky;top:0;z-index:10;background:#28338A;font-size:13px}
-  .sharenav button{color:#fff;opacity:.8;background:none;border:0;border-radius:6px;
-    padding:5px 10px;font-size:13px;cursor:pointer}
-  .sharenav button:hover{opacity:1;background:rgba(255,255,255,.12)}
-  .sharenav button.on{opacity:1;background:rgba(255,255,255,.2);font-weight:500}
-  .sharenavlist{display:flex;flex-wrap:wrap;gap:4px 6px;padding:10px 28px}
+  .sharenav{position:sticky;top:0;z-index:10;background:#1c2563;font-size:13px}
+  .sharenavbrand{display:flex;align-items:center;gap:10px;padding:14px 28px 0;color:#fff}
+  .sharenavbrand .stmark{width:26px;height:auto}
+  .sharenavbrand .stword{color:#fff}
+  .sharenavbrand .sttag{font-size:9.5px;letter-spacing:.5px;color:rgba(255,255,255,.65);margin-left:2px}
+  .sharenav button{color:#fff;opacity:.75;background:none;border:0;border-bottom:2px solid transparent;
+    padding:7px 4px;font-size:13px;cursor:pointer}
+  .sharenav button:hover{opacity:1}
+  .sharenav button.on{opacity:1;font-weight:600;border-bottom-color:#EF7B0B}
+  .sharenavlist{display:flex;flex-wrap:wrap;gap:6px 22px;padding:10px 28px}
   /* the tap-to-open compact bar only ever shows on the narrow breakpoint
      below — hidden here so a wide screen just gets the plain button row */
   .sharenavcur{display:none;width:100%;align-items:center;justify-content:space-between;
@@ -665,41 +669,138 @@
   /* the customer's link reads like the printed quotation — house colours
      fixed regardless of the viewer's own light/dark preference, same as a
      document on paper would be */
-  .sharewrap{padding:32px 40px 44px;background:#fff;color:#222}
-  .sharehead{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
-    padding-bottom:10px;margin-bottom:18px;border-bottom:2px solid #28338A}
-  .sharebrand{display:flex;align-items:center;gap:8px}
-  .sharebrand .stmark{width:34px;height:auto}
-  .shareentity{font-size:14px;font-weight:600;color:#28338A;letter-spacing:.2px}
-  .sharemeta{font-size:12px;color:#555;text-align:right;line-height:1.6}
-  .sharemeta b{color:#222}
-  .sharefor{font-size:13px;color:#555;margin-bottom:18px}
-  .sharefoot{margin-top:24px;padding-top:8px;border-top:2px solid #EF7B0B;
-    font-size:11px;color:#777;text-align:center}
-  /* investment-proposal-only: a fixed bar pinned to the bottom of the
-     viewport with the running total — same on every screen size, no
-     column/breakpoint to get wrong, and it never demands a scroll to find */
-  .sharetotalbar{position:fixed;left:0;right:0;bottom:0;z-index:20;
-    background:#28338A;color:#fff;padding:12px 28px;display:flex;
-    align-items:baseline;justify-content:space-between;gap:16px;
-    box-shadow:0 -2px 10px rgba(0,0,0,.15)}
-  .sharetotalbar-lbl{font-size:12px;text-transform:uppercase;letter-spacing:.5px;opacity:.85}
-  .sharetotalbar-amt{font-size:19px;font-weight:600}
-  /* room at the bottom so the fixed bar never covers the pager/last line */
-  body.has-totalbar .sharepager{padding-bottom:64px}
+  .sharewrap{padding:36px 40px 44px;background:#fff;color:#222}
+  /* page header: a small eyebrow (who it's for), a big page title, and the
+     quotation number/date as two little labelled chips on the right —
+     replaces the old thin brand-strip look with something that reads as a
+     real page, one per section */
+  .sharehead{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;
+    padding-bottom:18px;margin-bottom:22px;border-bottom:1px solid #e6e8f0}
+  .shareeyebrow{font-size:11.5px;font-weight:700;letter-spacing:.6px;color:#EF7B0B;text-transform:uppercase}
+  .sharetitle{font-size:28px;font-weight:700;color:#1c2563;line-height:1.15;margin-top:4px}
+  .sharesub{font-size:13.5px;color:#666;margin-top:4px}
+  .sharefor{font-size:12px;color:#999;margin-top:8px}
+  .sharemetaboxes{display:flex;gap:10px;flex:0 0 auto}
+  .sharemetabox{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#666;
+    background:#f6f7fb;border-radius:9px;padding:8px 12px;white-space:nowrap}
+  .sharemetabox svg{color:#28338A;flex:0 0 auto}
+  .sharemetabox b{display:block;color:#222;font-size:13px}
+  .sharefoot{margin-top:36px;background:#1c2563;color:#fff;padding:20px 40px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+    margin-left:-40px;margin-right:-40px;margin-bottom:-44px}
+  .sharefootbrand{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+  .sharefootbrand .stmark{width:22px;height:auto}
+  .sharefoottags{font-size:11px;letter-spacing:.6px;color:rgba(255,255,255,.75)}
+  .sharefootsite{font-size:11.5px;color:rgba(255,255,255,.75)}
   /* the "Take this option" button, moved out of .ptitle for the customer
      link (see priceRowHtml) — paired with the price on its own row below
      the name, so the two rows read as "what" then "how much, and the
      action for it" instead of splitting price and button across two rows */
   .takerow{margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:10px}
   .takerow .pval{margin:0}
+  /* ---- redesigned investment-proposal page: a hero card for the base
+     machine (picture, key specs, base price) beside a non-sticky
+     "Investment summary" card (base + upgrades + total, PDF download),
+     then upgrade options and machine alternatives as card grids below —
+     replaces the old plain price-list-only layout on this one page */
+  .shareherowrap{display:flex;gap:24px;align-items:flex-start;margin-bottom:8px}
+  .sharehero{flex:1;min-width:0;border:1px solid #e3e6f0;border-radius:14px;overflow:hidden;background:#fbfbfd}
+  .shareheroimg{width:100%;max-height:300px;object-fit:contain;background:#eef0f7;display:block}
+  .shareherobody{padding:22px 24px}
+  .shareherotitle{font-size:21px;font-weight:700;color:#1c2563;margin:0}
+  .shareherodesc{font-size:13px;color:#666;margin-top:4px;line-height:1.4}
+  .sharespecs{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 20px;margin:18px 0}
+  .sharespecitem{display:flex;align-items:center;gap:10px}
+  .sharespecicon{flex:0 0 34px;width:34px;height:34px;border-radius:9px;background:#eaf0ff;color:#28338A;
+    display:flex;align-items:center;justify-content:center}
+  .sharespeclbl{font-size:11px;color:#888}
+  .sharespecval{font-size:13.5px;font-weight:600;color:#222}
+  .sharebasebar{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    border-top:1px solid #e8e8ee;padding-top:16px;flex-wrap:wrap}
+  .sharebaselbl{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#888}
+  .sharebaseprice{font-size:25px;font-weight:700;color:#EF7B0B}
+  .sharebadge{background:#1c2563;color:#fff;font-size:12px;font-weight:600;line-height:1.4;
+    padding:12px 16px;border-radius:10px;max-width:200px;display:flex;align-items:center;gap:8px}
+
+  .sharesidebar{flex:0 0 300px;display:flex;flex-direction:column;gap:16px}
+  .sharesummary{border-radius:14px;overflow:hidden;border:1px solid #e3e6f0}
+  .sharesummaryhead{background:#1c2563;color:#fff;font-size:12px;font-weight:700;
+    letter-spacing:.4px;text-transform:uppercase;padding:12px 18px}
+  .sharesummarybody{padding:18px 20px;background:#fff}
+  .sharesummaryrow{display:flex;justify-content:space-between;align-items:baseline;
+    font-size:13px;padding:9px 0;border-bottom:1px solid #f0f0f5;gap:10px}
+  .sharesummaryrow b{font-weight:600;color:#222;white-space:nowrap}
+  .sharesummaryrow .sub{display:block;font-size:11px;color:#999;margin-top:2px}
+  .sharesummarytotal{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+    padding-top:14px;margin-top:4px;border-top:2px solid #EF7B0B}
+  .sharesummarytotal .lbl{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#222}
+  .sharesummarytotal .amt{font-size:20px;font-weight:700;color:#1c2563;white-space:nowrap}
+  .sharesummaryvat{font-size:11px;color:#999;margin-top:2px}
+  .sharevalidity{display:flex;gap:10px;align-items:center;font-size:12px;color:#666;
+    background:#f7f8fc;border-radius:10px;padding:10px 12px;margin-top:16px}
+  .sharevalidity svg{flex:0 0 auto;color:#28338A}
+  .sharepdfbtn{width:100%;margin-top:14px;background:#1c2563;color:#fff;border:0;border-radius:9px;
+    padding:12px;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;
+    justify-content:center;gap:8px}
+  .sharepdfbtn:hover{background:#131a4a}
+  .sharepdfbtn:disabled{opacity:.6;cursor:default}
+  .sharequestions{border:1px solid #e3e6f0;border-radius:14px;padding:16px 18px;font-size:13px;color:#555}
+  .sharequestions b{display:block;color:#222;font-size:13.5px;margin-bottom:6px}
+  .sharequestions a{color:#28338A;text-decoration:none}
+  .sharequestions .qrow{display:flex;align-items:center;gap:8px;margin-top:7px}
+  .sharequestions .qrow svg{flex:0 0 auto;color:#28338A}
+
+  .sharesectionhead{margin:34px 0 14px}
+  .sharesectionhead h3{margin:0;font-size:14.5px;font-weight:700;color:#222;text-transform:uppercase;letter-spacing:.3px}
+  .sharesectionsub{font-size:12.5px;color:#777;margin-top:2px}
+  .shareupgrades, .sharealts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+  .shareupcard{border:1px solid #e3e6f0;border-radius:12px;padding:16px;display:flex;flex-direction:column}
+  .shareupicon{width:34px;height:34px;border-radius:9px;background:#fff3e6;color:#EF7B0B;
+    display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+  .shareupname{font-size:13.5px;font-weight:600;color:#222}
+  .shareupdesc{font-size:12px;color:#777;line-height:1.4;margin-top:3px}
+  .shareupprice{font-size:15px;font-weight:700;color:#222;margin:10px 0 10px}
+  .shareupcard .btn{width:100%;text-align:center;border-radius:8px;margin-top:auto}
+  .shareupcard.is-taken{border-color:#1c2563}
+
+  .sharealtcard{position:relative;border:1px solid #e3e6f0;border-radius:12px;padding:14px;
+    display:flex;flex-direction:column}
+  .sharealtcard.current{border-color:#EF7B0B;border-width:2px}
+  .sharealtbadge{position:absolute;top:-10px;left:14px;background:#EF7B0B;color:#fff;
+    font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px}
+  .sharealtimg{width:100%;height:110px;object-fit:contain;background:#f4f5f9;border-radius:8px}
+  .sharealtname{font-size:13.5px;font-weight:600;color:#222;margin-top:8px}
+  .sharealtspec{font-size:11.5px;color:#888;margin-top:2px}
+  .sharealtprice{font-size:15px;font-weight:700;color:#EF7B0B;margin:8px 0 10px}
+  .sharealtcard .btn{width:100%;border-radius:8px;margin-top:auto}
+  .sharealtgroup{margin-top:18px}
+  .sharealtgrouplbl{font-size:11.5px;color:#999;margin-bottom:10px}
+  /* the buttons on the customer's page are on a white document, not in the
+     app's own themed chrome — give them their own fixed light look rather
+     than letting them inherit whatever theme the viewer happens to run */
+  body.share-mode .btn{background:#fff;border:1px solid #ccd0e0;color:#28338A;font-weight:600}
+  body.share-mode .btn:hover{border-color:#28338A;background:#f6f7fb}
+  body.share-mode .pbtn.takeopt{background:#fff;border:1px solid #ccd0e0;color:#28338A}
+  body.share-mode .pbtn.takeopt.taken{background:#1c2563;border-color:#1c2563;color:#fff}
+  body.share-mode .pbtn.cmpswap{background:#1c2563;border-color:#1c2563;color:#fff}
   /* Phone-width fallback for the customer link. Full page width (like the
      sales-facing Documents tab) works fine down to tablet width, so this
      one only holds the general layout tweaks (padding, header wrap). */
+  /* the hero+summary pair only needs its own breakpoint — plenty of room
+     for two 300px+ columns down to tablet width, same reasoning as the
+     compare grid's separate 1000px cutoff elsewhere in this file */
+  @media (max-width:900px){
+    .shareherowrap{flex-direction:column}
+    .sharesidebar{flex:1 1 auto;width:100%}
+  }
+  @media (max-width:480px){
+    .sharespecs{grid-template-columns:1fr}
+  }
   @media (max-width:760px){
     .sharewrap, .sharecover, .sharepager{padding-left:16px;padding-right:16px}
+    .sharefoot{padding-left:16px;padding-right:16px;margin-left:-16px;margin-right:-16px}
     .sharehead{flex-wrap:wrap}
-    .sharemeta{text-align:left}
+    .sharemetaboxes{flex-wrap:wrap}
     .sharecovertitle{font-size:26px}
     /* nav collapses to "current section, tap to open the full list" —
        the list itself becomes a dropdown instead of a wrapped button row */
@@ -8717,7 +8818,12 @@ function investmentGrandTotal(){
   const disc=discountAmount(subtotal-svcTotal);
   return subtotal-disc;
 }
-function proposalHtml(){
+/* `opts.skipOptional`/`opts.skipAlts` leave out the optional-items and
+   alternatives sections — used by the customer link, which shows those two
+   as card grids of their own above the itemised list (see
+   shareProposalHtml()) and would otherwise say everything twice. */
+function proposalHtml(opts){
+  const o_=opts||{};
   /* the two lists are now split at source — buildItemRows() emits either
      the in-scope items or the optional ones — so no post-filtering here.
      Optional items never touch this total; their own Hide price folds a
@@ -8738,7 +8844,7 @@ function proposalHtml(){
   const svcRows   = inScopeRows.filter(r=>isServiceRow(r));
   const optEquip = optRowsAll.filter(r=>!isServiceRow(r));
   const optSvc   = optRowsAll.filter(r=>isServiceRow(r));
-  const altGroups = altOffers();
+  const altGroups = o_.skipAlts ? [] : altOffers();
   const altSection = altGroups.length ? `
     <h3 class="optsection-title altsection-title">Alternatives</h3>
     <div class="secnote">Offered instead of an item in the scope above, not on top of it. Only one of each pair is bought, so these are excluded from the total investment.${
@@ -8746,7 +8852,7 @@ function proposalHtml(){
     ${altCompareHtml(frac)}` : "";
   /* days on site and packaging keep a section of their own, since they sit
      below the discount with the rest of the service lines */
-  const optSection = optSvc.length ? `
+  const optSection = (optSvc.length && !o_.skipOptional) ? `
     <h3 class="optsection-title">Optional service &amp; support</h3>
     <div class="secnote">Selected but excluded from the total investment above.</div>
     ${optionalRowsHtml(scaleRows(optSvc, frac))}` : "";
@@ -8759,12 +8865,12 @@ function proposalHtml(){
        </div></div>` : "";
   const fxNote = (hasAltCur() && t.altCur.note)
     ? `<div class="fxnote">${esc(t.altCur.note)}</div>` : "";
-  return `${openStepsHtml()}<h2>Investment proposal</h2>
+  return `${openStepsHtml()}${o_.skipHeader?"":`<h2>Investment proposal</h2>
     <div class="docsub">${esc(CONFIG.model||"")}</div>
-    <div class="docmeta">Generated ${new Date().toLocaleDateString()}</div>
+    <div class="docmeta">Generated ${new Date().toLocaleDateString()}</div>`}
     ${colHead}
-    ${(equipRows.length||optEquip.length)
-      ? proposalItemsHtml(equipRows, optEquip, frac)
+    ${(equipRows.length||(optEquip.length&&!o_.skipOptional))
+      ? proposalItemsHtml(equipRows, o_.skipOptional?[]:optEquip, frac)
       : '<div class="docempty">Nothing in scope yet — everything selected so far is optional.</div>'}
     ${propSummaryHtml("in",true)}
     ${discountControlHtml(subtotal, svcTotal)}
@@ -10241,6 +10347,208 @@ let shareToken=null, shareSaveTimer=null, shareSectionIdx=0;
    ~8810), but with its own on-screen CSS since coverPageHtml's classes only
    render anything under body.print-all inside @media print (see .coverwrap
    etc.) — no use trying to reuse them for a live page. */
+/* Inline icons for the customer link. Kept as small stroked <svg> literals
+   rather than an icon font or sprite so the page stays self-contained (it is
+   also rendered headless for the PDF, where an external font wouldn't load). */
+const SHARE_ICON = (paths, size) =>
+  `<svg width="${size||16}" height="${size||16}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const shareDocIconSvg      = () => SHARE_ICON('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>');
+const shareCalendarIconSvg = () => SHARE_ICON('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>');
+const shareTagIconSvg      = () => SHARE_ICON('<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V4a1 1 0 0 1 1-1h8a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.6z"/><path d="M7 7h.01"/>', 20);
+const shareDownIconSvg     = () => SHARE_ICON('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>');
+const shareMailIconSvg     = () => SHARE_ICON('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>', 15);
+const sharePhoneIconSvg    = () => SHARE_ICON('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>', 15);
+const shareShieldIconSvg   = () => SHARE_ICON('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>', 18);
+const shareSparkIconSvg    = () => SHARE_ICON('<path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/><circle cx="12" cy="12" r="3"/>');
+/* the four key figures shown as icon tiles in the hero card. Which spec
+   lands in which tile is decided by what its label says, so a catalogue
+   that names things slightly differently still gets a sensible icon. */
+function shareSpecIconFor(label){
+  const l=String(label||"").toLowerCase();
+  if(/width|lfw|lay ?flat|length|height|size/.test(l))
+    return SHARE_ICON('<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>');
+  if(/diameter|product/.test(l))
+    return SHARE_ICON('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>');
+  if(/capacity|speed|bpm|output|per hour/.test(l))
+    return SHARE_ICON('<path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/><path d="M12 12l4-4"/><path d="M3.6 18a10 10 0 1 1 16.8 0"/>');
+  if(/accuracy|tolerance|precision|±/.test(l))
+    return SHARE_ICON('<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>');
+  return shareSparkIconSvg();
+}
+/* ============================================================
+   THE CUSTOMER'S INVESTMENT PROPOSAL PAGE
+   The same numbers proposalHtml() produces, presented as a product page
+   instead of a price list: a hero card for the machine itself, an
+   investment summary card beside it, then the upgrades and the machine
+   alternatives as card grids. The itemised breakdown proposalHtml()
+   renders follows underneath, with its own optional/alternatives sections
+   left out (the cards above already are those).
+   ============================================================ */
+/* the machine the quote is built around: the most expensive top-level item
+   in scope, preferring one that has a picture to show */
+function shareHeroRow(){
+  const tops=buildPriceRows(false).filter(r=>!r.isGroup && !r.subtotal && (r.node.depth||0)===0 && !isServiceRow(r));
+  if(!tops.length) return null;
+  const withPic=tops.filter(r=>rowPicture(r.node.o));
+  const pool=withPic.length?withPic:tops;
+  return pool.reduce((best,r)=>(+r.price||0)>(+best.price||0)?r:best, pool[0]);
+}
+function shareHeroCardHtml(){
+  const r=shareHeroRow();
+  if(!r) return "";
+  const o=r.node.o, pic=rowPicture(o);
+  const specs=(featuresOf(o).length
+      ? featuresOf(o).map(f=>({label:f.label, value:f.value||"yes"}))
+      : (o.specs||[]).map(sp=>({label:fillSupply(sp.label||""), value:fillSupply(sp.value||"")})))
+    .filter(x=>x.label&&x.value).slice(0,4);
+  return `<div class="sharehero">
+    ${pic?`<img class="shareheroimg" src="${pic}" alt="${esc(o.name||"")}">`:""}
+    <div class="shareherobody">
+      <h3 class="shareherotitle">${esc(o.name||"")}</h3>
+      ${(o.text||"").trim()?`<div class="shareherodesc">${esc((o.text||"").trim())}</div>`:""}
+      ${specs.length?`<div class="sharespecs">${specs.map(x=>`
+        <div class="sharespecitem">
+          <div class="sharespecicon">${shareSpecIconFor(x.label)}</div>
+          <div><div class="sharespeclbl">${esc(x.label)}</div><div class="sharespecval">${esc(x.value)}</div></div>
+        </div>`).join("")}</div>`:""}
+      <div class="sharebasebar">
+        <div>
+          <div class="sharebaselbl">Base machine investment</div>
+          <div class="sharebaseprice">${r.price?fmt(r.price):"—"}</div>
+        </div>
+        <div class="sharebadge">${shareShieldIconSvg()}<span>Proven performance.<br>Built for your future.</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+/* base machine + what the customer has taken so far + the running total,
+   with the PDF download. Not sticky: the page is one section at a time, so
+   this card sits at the top of it and stays where the reader left it. */
+function shareSummaryCardHtml(){
+  const hero=shareHeroRow();
+  const heroPrice=hero?(+hero.price||0):0;
+  const grand=investmentGrandTotal();
+  const t=activeTemplate();
+  const taken=takenSet();
+  /* only what the customer added themselves counts as an "upgrade" here —
+     everything the sales rep already put in scope is the base machine */
+  const upgrades=buildPriceRows(false)
+    .filter(r=>!r.isGroup && !r.subtotal && taken.includes(String((r.node&&r.node.o&&r.node.o.id)||"")));
+  const upTotal=upgrades.reduce((s,r)=>s+(+r.price||0),0);
+  const rest=grand-heroPrice-upTotal;
+  return `<div class="sharesidebar">
+    <div class="sharesummary">
+      <div class="sharesummaryhead">Investment summary</div>
+      <div class="sharesummarybody">
+        ${hero?`<div class="sharesummaryrow"><span>Base machine</span><b>${fmt(heroPrice)}</b></div>`:""}
+        ${rest>0.5?`<div class="sharesummaryrow"><span>Further items in scope</span><b>${fmt(rest)}</b></div>`:""}
+        <div class="sharesummaryrow">
+          <span>Selected upgrades${upgrades.length?`<span class="sub">${upgrades.map(r=>esc(r.node.o.name||"")).join(", ")}</span>`
+            :`<span class="sub">No upgrades selected</span>`}</span>
+          <b>${fmt(upTotal)}</b>
+        </div>
+        <div class="sharesummarytotal">
+          <div>
+            <div class="lbl">Total investment</div>
+            <div class="sharesummaryvat">Excl. VAT${t.priceLabel?` &middot; ${esc(t.priceLabel)}`:""}</div>
+          </div>
+          <div class="amt">${grand?fmt(grand):"—"}</div>
+        </div>
+        <div class="sharevalidity">${shareTagIconSvg()}
+          <span>This proposal is valid for <b>${esc(CONFIG.validity||ensureCommercial().validity||"30 days")}</b> from the date above.</span></div>
+        <button type="button" class="sharepdfbtn" id="sharePdfBtn">${shareDownIconSvg()} Download proposal (PDF)</button>
+      </div>
+    </div>
+    <div class="sharequestions">
+      <b>Questions?</b>
+      We are here to help.
+      ${(t.phone||[]).filter(x=>/@/.test(x)).map(x=>`<div class="qrow">${shareMailIconSvg()}<a href="mailto:${esc(x.replace(/^.*?:\s*/,""))}">${esc(x.replace(/^.*?:\s*/,""))}</a></div>`).join("")}
+      ${(t.phone||[]).filter(x=>!/@/.test(x)).slice(0,2).map(x=>`<div class="qrow">${sharePhoneIconSvg()}<span>${esc(x)}</span></div>`).join("")}
+    </div>
+  </div>`;
+}
+/* every optional item the customer can add, one card each — the same
+   take/put-back buttons the price list has, so wirePriceToggles() picks
+   them up unchanged */
+function shareUpgradeCardsHtml(frac){
+  const rows=scaleRows(buildOptionalRows(false), frac)
+    .filter(r=>!r.isGroup && !r.subtotal && takeableId(r.node.o));
+  if(!rows.length) return "";
+  return `<div class="sharesectionhead">
+      <h3>Upgrade options</h3>
+      <div class="sharesectionsub">Enhance your line with proven upgrades — each is quoted separately, on top of the total above.</div>
+    </div>
+    <div class="shareupgrades">${rows.map(r=>{
+      const o=r.node.o, id=takeableId(o);
+      const q=+(o.qty||0)||optQty(o);
+      const note=(o.text||"").trim() || (featuresOf(o)[0]
+        ? `${featuresOf(o)[0].label} ${featuresOf(o)[0].value||""}`.trim() : "") || o.fmtFor || "";
+      return `<div class="shareupcard ${r.taken?"is-taken":""}">
+        <div class="shareupicon">${shareSparkIconSvg()}</div>
+        <div class="shareupname">${q>1?`${q}&times; `:""}${esc(o.name||"")}</div>
+        ${note?`<div class="shareupdesc">${esc(note.length>90?note.slice(0,88)+"…":note)}</div>`:""}
+        <div class="shareupprice">${r.hide?"price on request":(r.price?fmt(r.price):"included")}</div>
+        ${r.taken
+          ? `<button class="btn sm pbtn takeopt taken no-print" data-untake="${esc(id)}">In your quote — remove</button>`
+          : `<button class="btn sm pbtn takeopt no-print" data-take="${esc(id)}">Add upgrade &nbsp;+</button>`}
+      </div>`;
+    }).join("")}</div>`;
+}
+/* the machines offered instead of the one in scope, side by side as cards.
+   The full spec-by-spec comparison table still follows below (altCompareHtml
+   in the itemised part), this is the at-a-glance version. */
+function shareAltCardsHtml(frac){
+  const list=altCompares(frac);
+  if(!list.length) return "";
+  return `<div class="sharesectionhead">
+      <h3>Other machine alternatives</h3>
+      <div class="sharesectionsub">Compare and choose the best fit for your production — an alternative is offered instead of the item it replaces, not on top of it.</div>
+    </div>` + list.map(c=>{
+    const specLine=h=>{
+      const f=featuresOf((h&&h.opt)||{}).slice(0,2)
+        .map(x=>`${x.label} ${x.value||""}`.trim());
+      if(f.length) return f.join(" | ");
+      const sp=(((h&&h.opt)||{}).specs||[]).slice(0,2)
+        .map(x=>`${fillSupply(x.label||"")} ${fillSupply(x.value||"")}`.trim());
+      return sp.join(" | ");
+    };
+    const cards=[{name:c.target, opt:c.targetOpt, base:true, total:c.targetPrice}]
+      .concat(c.cols.map(x=>Object.assign({}, x, {total:c.targetPrice+(+x.delta||0)})));
+    return `<div class="sharealtgroup">
+      <div class="sharealtgrouplbl">Instead of ${esc(c.target)}</div>
+      <div class="sharealts">${cards.map(h=>`
+        <div class="sharealtcard ${h.base?"current":""}">
+          ${h.base?`<span class="sharealtbadge">Current selection</span>`:""}
+          ${h.opt&&h.opt.image?`<img class="sharealtimg" src="${h.opt.image}" alt="${esc(h.name)}">`:""}
+          <div class="sharealtname">${esc(h.name)}</div>
+          ${specLine(h)?`<div class="sharealtspec">${esc(specLine(h))}</div>`:""}
+          <div class="sharealtprice">${h.total?fmt(h.total):"included"}</div>
+          ${h.base?"":`<button class="btn sm pbtn cmpswap no-print" data-cmpswap="${esc(c.key)}|${esc(h.vid||(h.opt&&h.opt.id)||h.name)}">Choose this machine</button>`}
+        </div>`).join("")}</div>
+      ${c.note?`<div class="secnote">${esc(c.note)}</div>`:""}
+    </div>`;
+  }).join("");
+}
+function shareProposalHtml(){
+  const inScopeRows=buildPriceRows(priceDetail==="top");
+  const optRowsAll=buildOptionalRows(priceDetail==="top");
+  if(!inScopeRows.length && !optRowsAll.length)
+    return '<div class="docempty">Nothing configured yet.</div>';
+  const subtotal=priceRowsTotal(inScopeRows);
+  const frac=discountFraction(subtotal-serviceRowsTotal(inScopeRows));
+  return `<div class="shareherowrap">
+      ${shareHeroCardHtml()}
+      ${shareSummaryCardHtml()}
+    </div>
+    ${shareUpgradeCardsHtml(frac)}
+    ${shareAltCardsHtml(frac)}
+    <div class="sharesectionhead">
+      <h3>Detailed breakdown</h3>
+      <div class="sharesectionsub">Every item in the scope of this quotation, with its price.</div>
+    </div>
+    ${proposalHtml({skipHeader:true, skipOptional:true, skipAlts:true})}`;
+}
 function shareCoverHtml(){
   const t=activeTemplate();
   ensureCustomer();
@@ -10264,21 +10572,30 @@ function shareCoverHtml(){
 /* the customer's link should read like the quotation itself, not like a
    screen inside the sales tool — same letterhead as the printed document
    (logo, entity, quote number/date), repeated on every page after the cover,
-   same idea as docPage()'s running header for print */
-function shareLetterheadHtml(inner){
+   same idea as docPage()'s running header for print. A big page title (the
+   section's own nav label) plus a small "for <company>" eyebrow reads more
+   like a real page than the old thin brand-strip did. */
+function shareLetterheadHtml(inner, pageTitle){
   const t=activeTemplate();
   const cust=CONFIG.customer||(CONFIG.customerInfo&&CONFIG.customerInfo.company)||"";
   return `<div class="sharewrap">
     <div class="sharehead">
-      <div class="sharebrand">${logoSvg("stmark sm")}<div class="shareentity">${esc(t.entity||"")}</div></div>
-      <div class="sharemeta">
-        <div>Quotation number <b>${esc(CONFIG.quoteNumber||"")}</b></div>
-        <div>Date ${quoteDate()}</div>
+      <div>
+        ${cust?`<div class="shareeyebrow">For ${esc(cust)}</div>`:""}
+        <div class="sharetitle">${esc(pageTitle||"")}</div>
+        ${CONFIG.model?`<div class="sharesub">${esc(CONFIG.model)}</div>`:""}
+      </div>
+      <div class="sharemetaboxes">
+        <div class="sharemetabox">${shareDocIconSvg()}<div><div>Quotation number</div><b>${esc(CONFIG.quoteNumber||"")}</b></div></div>
+        <div class="sharemetabox">${shareCalendarIconSvg()}<div><div>Date</div><b>${quoteDate()}</b></div></div>
       </div>
     </div>
-    ${cust?`<div class="sharefor">For ${esc(cust)}</div>`:""}
     ${inner}
-    <div class="sharefoot">www.sleevetechnology.com</div>
+    <div class="sharefoot">
+      <div class="sharefootbrand">${logoSvg("stmark sm")}${esc(t.entity||"")}</div>
+      <div class="sharefoottags">INNOVATION&nbsp;&nbsp;|&nbsp;&nbsp;RELIABILITY&nbsp;&nbsp;|&nbsp;&nbsp;PERFORMANCE</div>
+      <div class="sharefootsite">www.sleevetechnology.com</div>
+    </div>
   </div>`;
 }
 /* every section "Create complete PDF" prints, minus the cover and contact
@@ -10294,7 +10611,7 @@ function shareDocSections(){
     {id:"scope", nav:"Scope of supply", html: scopeHtml()},
     {id:"specs", nav:"Product & sleeve specs", html: printSpecsHtml()},
     {id:"machinespecs", nav:"Machine specs", html: machineSpecSectionHtml()},
-    {id:"proposal", nav:"Investment proposal", html: proposalHtml()},
+    {id:"proposal", nav:"Investment proposal", html: shareProposalHtml()},
     {id:"delivery", nav:"Commercial terms", html: deliverySectionHtml()},
     {id:"terms", nav:"Terms & conditions", html: printTermsHtml()}
   ].filter(s=>s && (s.html||"").trim());
@@ -10308,32 +10625,29 @@ function renderShareMode(){
   shareSectionIdx=Math.max(0, Math.min(shareSectionIdx, sections.length-1));
   const cur=sections[shareSectionIdx];
 
+  const t=activeTemplate();
   const nav=`<nav class="sharenav">
+    <div class="sharenavbrand">${logoSvg("stmark sm")}<div>
+      <div class="stword">${esc(t.entity||"")}</div>
+      <div class="sttag">INNOVATION IN SLEEVING</div>
+    </div></div>
     <button type="button" class="sharenavcur" id="shareNavToggle" aria-expanded="false">
       <span>${esc(cur.nav)}</span><i class="chev">&#9662;</i>
     </button>
     <div class="sharenavlist" id="shareNavList">${sections.map((s,i)=>
       `<button type="button" class="${i===shareSectionIdx?"on":""}" data-shareidx="${i}">${esc(s.nav)}</button>`).join("")}</div>
   </nav>`;
-  const page=cur.bare ? cur.html : shareLetterheadHtml(cur.html);
+  const page=cur.bare ? cur.html : shareLetterheadHtml(cur.html, cur.nav);
   const pager=`<div class="sharepager">
     <button type="button" class="btn sm" id="sharePrev" ${shareSectionIdx===0?"disabled":""}>&larr; Previous</button>
     <span>${shareSectionIdx+1} / ${sections.length}</span>
     <button type="button" class="btn sm" id="shareNext" ${shareSectionIdx===sections.length-1?"disabled":""}>Next &rarr;</button>
   </div>`;
-  /* the investment proposal gets a fixed bar at the very bottom of the
-     viewport showing the running total — always in view without needing
-     its own column (which only worked on a wide screen anyway) or a
-     scroll to the bottom of a long option list */
-  const onProposal=cur.id==="proposal";
-  document.body.classList.toggle("has-totalbar", onProposal);
-  const totalBar=onProposal ? `<div class="sharetotalbar">
-      <span class="sharetotalbar-lbl">Total investment</span>
-      <span class="sharetotalbar-amt">${fmt(investmentGrandTotal())}</span>
-    </div>` : "";
 
-  el.innerHTML=nav+page+pager+totalBar;
+  el.innerHTML=nav+page+pager;
   wirePriceToggles(el);
+  const pdfBtn=document.getElementById("sharePdfBtn");
+  if(pdfBtn) pdfBtn.onclick=()=>shareDownloadPdf(pdfBtn);
 
   const goTo=(i)=>{ shareSectionIdx=i; renderShareMode(); };
   el.querySelectorAll("[data-shareidx]").forEach(b=>{ b.onclick=()=>goTo(+b.dataset.shareidx); });
@@ -10470,6 +10784,29 @@ function downloadBase64Pdf(base64, filename){
   a.download=filename||"quotation.pdf";
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+/* The customer's own "Download proposal (PDF)" button on the share page.
+   Their share token is the credential — api/render-pdf.js validates it with
+   the same get_shared_quote RPC the page itself used, so no sign-in is
+   involved. Any pending edit is flushed first, otherwise the PDF could be
+   rendered from the state before the upgrade they just added. */
+async function shareDownloadPdf(btn){
+  if(!shareToken) return;
+  const label=btn.innerHTML;
+  btn.disabled=true; btn.textContent="Preparing your PDF…";
+  try{
+    clearTimeout(shareSaveTimer);
+    await supa.rpc("update_shared_quote", {p_token: shareToken, p_data: quotePayload()});
+    const r=await fetch("/api/render-pdf", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({token: shareToken})
+    });
+    const out=await r.json();
+    if(!r.ok || !out.pdfBase64) throw new Error(out.error||"Rendering failed");
+    downloadBase64Pdf(out.pdfBase64, out.filename);
+  }catch(err){
+    alert("Sorry, the PDF could not be prepared just now. Please try again, or ask your sales contact to send it.");
+  }finally{ btn.disabled=false; btn.innerHTML=label; }
 }
 document.getElementById("btnEmailPdf").onclick=async ()=>{
   if(!supa) return alert("Cloud sign-in is required to render a PDF.");

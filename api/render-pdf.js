@@ -22,43 +22,62 @@ module.exports = async (req, res) => {
   }
 
   const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const { quoteId, token } = req.body || {};
 
   const admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-  // TEMPORARY TEST MODE: a missing/invalid bearer is allowed through so PDF
-  // rendering can be tried before Microsoft/Azure sign-in is set up (see the
-  // matching comment in cpq-configurator.html's btnEmailPdf handler and
-  // supabase-schema-testmode.sql). Restore the hard 401s below — remove the
-  // `if (bearer)` guard so a missing/invalid token always rejects — once
-  // real sign-in is back.
-  if (bearer) {
-    const { data: userRes, error: authErr } = await admin.auth.getUser(bearer);
-    if (authErr || !userRes || !userRes.user) {
-      res.status(401).json({ error: 'Not signed in' });
+  if (!quoteId && !token) {
+    res.status(400).json({ error: 'quoteId or token is required' });
+    return;
+  }
+
+  let quoteData, quoteNumber, catalogueData;
+
+  if (token) {
+    // Customer downloading their own proposal from the share link — the
+    // token itself is the credential, validated (and expiry/revoked-checked)
+    // by the same RPC the share page uses, so no bearer is required here.
+    const { data: shared, error: sharedErr } = await admin.rpc('get_shared_quote', { p_token: token });
+    if (sharedErr || !shared || !shared.ok) {
+      res.status(404).json({ error: 'This link is no longer active' });
       return;
     }
+    quoteData = shared.quote;
+    quoteNumber = shared.number;
+    catalogueData = shared.catalogue;
+  } else {
+    // TEMPORARY TEST MODE: a missing/invalid bearer is allowed through so PDF
+    // rendering can be tried before Microsoft/Azure sign-in is set up (see the
+    // matching comment in cpq-configurator.html's btnEmailPdf handler and
+    // supabase-schema-testmode.sql). Restore the hard 401s below — remove the
+    // `if (bearer)` guard so a missing/invalid token always rejects — once
+    // real sign-in is back.
+    if (bearer) {
+      const { data: userRes, error: authErr } = await admin.auth.getUser(bearer);
+      if (authErr || !userRes || !userRes.user) {
+        res.status(401).json({ error: 'Not signed in' });
+        return;
+      }
+    }
+
+    const { data: quoteRow, error: quoteErr } = await admin
+      .from('quotes').select('data,number').eq('id', quoteId).single();
+    if (quoteErr || !quoteRow) {
+      res.status(404).json({ error: 'Quote not found' });
+      return;
+    }
+    const { data: catRow, error: catErr } = await admin
+      .from('catalogue_versions').select('data').order('version', { ascending: false }).limit(1).single();
+    if (catErr || !catRow) {
+      res.status(404).json({ error: 'No catalogue published yet' });
+      return;
+    }
+    quoteData = quoteRow.data;
+    quoteNumber = quoteRow.number;
+    catalogueData = catRow.data;
   }
 
-  const { quoteId } = req.body || {};
-  if (!quoteId) {
-    res.status(400).json({ error: 'quoteId is required' });
-    return;
-  }
-
-  const { data: quoteRow, error: quoteErr } = await admin
-    .from('quotes').select('data,number').eq('id', quoteId).single();
-  if (quoteErr || !quoteRow) {
-    res.status(404).json({ error: 'Quote not found' });
-    return;
-  }
-  const { data: catRow, error: catErr } = await admin
-    .from('catalogue_versions').select('data').order('version', { ascending: false }).limit(1).single();
-  if (catErr || !catRow) {
-    res.status(404).json({ error: 'No catalogue published yet' });
-    return;
-  }
-
-  const payload = { quote: quoteRow.data, catalogue: catRow.data };
+  const payload = { quote: quoteData, catalogue: catalogueData };
 
   let browser;
   try {
@@ -76,7 +95,7 @@ module.exports = async (req, res) => {
     const pdf = await page.pdf({ format: 'A4', printBackground: true });
     res.status(200).json({
       ok: true,
-      filename: `Quotation-${quoteRow.number || 'draft'}.pdf`,
+      filename: `Quotation-${quoteNumber || 'draft'}.pdf`,
       pdfBase64: pdf.toString('base64'),
     });
   } catch (err) {
