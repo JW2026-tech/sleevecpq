@@ -711,6 +711,12 @@
        wrap puts the button on its own line right under the full name
        instead. */
     body.share-mode .ptitle{flex-wrap:wrap}
+    /* depth indentation (padding-left:depth*18px, set inline per row) eats
+       real width on a phone, and the breadcrumb trail already printed
+       above a run of nested items says the same thing in words — a small
+       flat indent instead of a growing one frees up space for the parts
+       that actually need it (the button, the wrapped name) */
+    body.share-mode .pline, body.share-mode .scopeline{padding-left:10px!important}
     /* a format part's price sits in its own wrapped line once the name
        claims the full row above — text-align:right only aligns the text
        inside that box, not the box itself, so it was reading flush left */
