@@ -2590,10 +2590,11 @@ function searchSelectHtml(cfg){
            title="Type part of a step or option name to filter the list"
            value="${cur?esc(label(cur)):""}" data-sslabel="${cur?esc(label(cur)):""}">
     <div class="sslist">
-      ${cfg.clearLabel?`<div class="ssitem ssclear" data-ssid="" data-sstext="">${esc(cfg.clearLabel)}</div>`:""}
+      ${cfg.clearLabel?`<div class="ssitem ssclear" data-ssid="" data-sstext="" data-sslabel="">${esc(cfg.clearLabel)}</div>`:""}
       ${groups.map(g=>`<div class="ssgrp">
         <div class="ssgroup">${esc(g.label)}</div>
         ${g.items.map(x=>`<div class="ssitem ${x.id===cfg.value?"sscurrent":""}" data-ssid="${esc(x.id)}"
+             data-sslabel="${esc(label(x))}"
              data-sstext="${esc(label(x).toLowerCase())}"><span class="sstep">${esc(x.step)} ›</span
              ><span class="ssname">${esc(x.name)}</span></div>`).join("")}
       </div>`).join("")}
@@ -2641,8 +2642,11 @@ function wireSearchSelect(root, onPick){
     };
     const pick=el=>{
       const id=el.dataset.ssid||"";
-      const label=el.classList.contains("ssclear") ? ""
-        : el.textContent.replace(/\s+/g," ").replace(/\s*current$/,"").trim();
+      /* the label comes off the item's own data attribute, not its
+         textContent — the two spans are written without whitespace between
+         them (the gap is a flex gap), so textContent would read
+         "Shrinking ›Steam Tunnel HSS3000" with the space missing */
+      const label=el.dataset.sslabel||"";
       sel.dataset.ssval=id; inp.dataset.sslabel=label;
       close();
       onPick(sel, id);
