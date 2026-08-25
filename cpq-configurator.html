@@ -10394,6 +10394,27 @@ function shareHeroRow(){
   const pool=withPic.length?withPic:tops;
   return pool.reduce((best,r)=>(+r.price||0)>(+best.price||0)?r:best, pool[0]);
 }
+/* What the customer has added themselves. buildOptionalRows() keeps a taken
+   item in the optional list marked `taken`, with its own price — the only
+   place that price is reliably visible, since a rolled-up step folds nested
+   items into their parent's line and they have no row of their own there. */
+function shareTakenRows(){
+  return buildOptionalRows(false).filter(r=>!r.isGroup && !r.subtotal && r.taken);
+}
+/* a taken upgrade nested under the hero item is already inside that item's
+   rolled-up line price, so it has to come off to keep the hero figure and
+   the summary's "selected upgrades" row from counting it twice */
+function shareHeroBasePrice(heroRow){
+  if(!heroRow) return 0;
+  const heroId=String(heroRow.node.o.id||"");
+  const inside=shareTakenRows().filter(r=>{
+    const id=String(r.node.o.id||"");
+    if(id===heroId) return false;
+    if((r.node.root||null)===(heroRow.node.root||null)) return true;
+    return optionAncestors(id).some(a=>String(a.id)===heroId);
+  });
+  return Math.max(0, (+heroRow.price||0) - inside.reduce((s,r)=>s+(+r.price||0),0));
+}
 function shareHeroCardHtml(){
   const r=shareHeroRow();
   if(!r) return "";
@@ -10415,7 +10436,7 @@ function shareHeroCardHtml(){
       <div class="sharebasebar">
         <div>
           <div class="sharebaselbl">Base machine investment</div>
-          <div class="sharebaseprice">${r.price?fmt(r.price):"—"}</div>
+          <div class="sharebaseprice">${(()=>{const p=shareHeroBasePrice(r);return p?fmt(p):"—";})()}</div>
         </div>
         <div class="sharebadge">${shareShieldIconSvg()}<span>Proven performance.<br>Built for your future.</span></div>
       </div>
@@ -10427,27 +10448,27 @@ function shareHeroCardHtml(){
    this card sits at the top of it and stays where the reader left it. */
 function shareSummaryCardHtml(){
   const hero=shareHeroRow();
-  const heroPrice=hero?(+hero.price||0):0;
+  const heroPrice=shareHeroBasePrice(hero);
   const grand=investmentGrandTotal();
   const t=activeTemplate();
-  const taken=takenSet();
   /* only what the customer added themselves counts as an "upgrade" here —
      everything the sales rep already put in scope is the base machine */
-  const upgrades=buildPriceRows(false)
-    .filter(r=>!r.isGroup && !r.subtotal && taken.includes(String((r.node&&r.node.o&&r.node.o.id)||"")));
+  const upgrades=shareTakenRows();
   const upTotal=upgrades.reduce((s,r)=>s+(+r.price||0),0);
-  const rest=grand-heroPrice-upTotal;
+  const svcTotal=serviceRowsTotal(buildPriceRows(priceDetail==="top"));
+  const rest=grand-heroPrice-upTotal-svcTotal;
   return `<div class="sharesidebar">
     <div class="sharesummary">
       <div class="sharesummaryhead">Investment summary</div>
       <div class="sharesummarybody">
         ${hero?`<div class="sharesummaryrow"><span>Base machine</span><b>${fmt(heroPrice)}</b></div>`:""}
-        ${rest>0.5?`<div class="sharesummaryrow"><span>Further items in scope</span><b>${fmt(rest)}</b></div>`:""}
+        ${rest>0.5?`<div class="sharesummaryrow"><span>Further equipment</span><b>${fmt(rest)}</b></div>`:""}
         <div class="sharesummaryrow">
           <span>Selected upgrades${upgrades.length?`<span class="sub">${upgrades.map(r=>esc(r.node.o.name||"")).join(", ")}</span>`
             :`<span class="sub">No upgrades selected</span>`}</span>
           <b>${fmt(upTotal)}</b>
         </div>
+        ${svcTotal?`<div class="sharesummaryrow"><span>Installation &amp; services</span><b>${fmt(svcTotal)}</b></div>`:""}
         <div class="sharesummarytotal">
           <div>
             <div class="lbl">Total investment</div>
@@ -10456,7 +10477,7 @@ function shareSummaryCardHtml(){
           <div class="amt">${grand?fmt(grand):"—"}</div>
         </div>
         <div class="sharevalidity">${shareTagIconSvg()}
-          <span>This proposal is valid for <b>${esc(CONFIG.validity||ensureCommercial().validity||"30 days")}</b> from the date above.</span></div>
+          <span>This proposal is valid for <b>${esc(CONFIG.validity||ensureCommercial().validity||"30 days from the date above")}</b>.</span></div>
         <button type="button" class="sharepdfbtn" id="sharePdfBtn">${shareDownIconSvg()} Download proposal (PDF)</button>
       </div>
     </div>
@@ -10508,10 +10529,10 @@ function shareAltCardsHtml(frac){
     const specLine=h=>{
       const f=featuresOf((h&&h.opt)||{}).slice(0,2)
         .map(x=>`${x.label} ${x.value||""}`.trim());
-      if(f.length) return f.join(" | ");
-      const sp=(((h&&h.opt)||{}).specs||[]).slice(0,2)
+      const sp=f.length ? f : (((h&&h.opt)||{}).specs||[]).slice(0,2)
         .map(x=>`${fillSupply(x.label||"")} ${fillSupply(x.value||"")}`.trim());
-      return sp.join(" | ");
+      const s=sp.join(" | ");
+      return s.length>80 ? s.slice(0,78)+"…" : s;
     };
     const cards=[{name:c.target, opt:c.targetOpt, base:true, total:c.targetPrice}]
       .concat(c.cols.map(x=>Object.assign({}, x, {total:c.targetPrice+(+x.delta||0)})));
