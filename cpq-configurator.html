@@ -808,11 +808,17 @@
   /* a property line ("6× standard feet") is a note about the row above it,
      not an item of its own — same dot, hollow, so it is recognisably the
      same system one step quieter */
+  /* flex-basis, not width — the .lvl0 rule above sets a basis of 8px, and on
+     a flex item the basis wins over width, so a top-level property line
+     would otherwise take the heading size */
   body.share-mode .pline.propline .bullet{
-    width:6px;height:6px;background:#fff!important;border:1.5px solid #9aa1bd!important;opacity:1}
-  /* optional: the one place colour changes, on both the dot and the row */
+    flex:0 0 6px;width:6px;height:6px;min-height:6px;
+    background:#fff!important;border:1.5px solid #9aa1bd!important;opacity:1}
+  /* optional: the one place colour changes, on both the dot and the row.
+     Full strength whatever the depth — the whole point of the colour is
+     that it stands out, so the deep-nesting fade must not apply to it */
   body.share-mode .scopeline.is-optional .bullet,
-  body.share-mode .pline.is-taken .bullet{background:#EF7B0B!important}
+  body.share-mode .pline.is-taken .bullet{background:#EF7B0B!important;opacity:1}
   body.share-mode .scopeline.is-optional{background:#fff8f1;border-left:3px solid #EF7B0B;
     border-radius:8px;padding:7px 10px;margin:2px 0}
   body.share-mode .scopeline.is-alt{background:#f7f8fc;border-left:3px solid #28338A;
