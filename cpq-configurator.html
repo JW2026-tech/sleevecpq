@@ -4033,9 +4033,16 @@ function buildItemRows(forceTop, wantOptional){
      about. */
   let ord=0;
   const at=r=>{ r.ord=ord; return r; };
-  (function walk(nodes, parentOid){
+  (function walk(nodes, parentOid, underAlt){
     for(const nd of nodes){
       ord++;
+      /* an alternative's own children (e.g. HSS6000's add-ons, offered
+         instead of the in-scope HSS3000) only make sense inside that
+         alternative's own Compare card — without this check they'd also
+         leak into the root step's plain in-scope/optional lists, showing
+         up as if they applied to whichever option is actually chosen */
+      const skip = underAlt && want!=="alt";
+      const nodeIsAlt = scopeKind(nd.o)==="alt";
       const rolled = nd.depth===0 && (forceTop || !!nd.o[ROLL]);
       if(rolled){
         if(branchHas(nd, wantOptional))
@@ -4044,7 +4051,7 @@ function buildItemRows(forceTop, wantOptional){
         continue;                       // descendants are folded into that line
       }
       let mine=parentOid;
-      if(scopeKind(nd.o)===want){
+      if(!skip && scopeKind(nd.o)===want){
         raw.push(at({node:nd, own:optionPrice(nd.o), rolled:false, parentOid,
                   propsAgg:branchProps({o:nd.o, kids:[]}, wantOptional)}));
         mine=nd.o.id;
@@ -4086,7 +4093,7 @@ function buildItemRows(forceTop, wantOptional){
       /* a part quoted as optional under an item that is itself in scope:
          the item has no line in this list, so its parts would fall through
          the floor — they are listed here, named after the item they need */
-      if(want!=="in" && scopeKind(nd.o)==="in"){
+      if(!skip && want!=="in" && scopeKind(nd.o)==="in"){
         for(const fr of ownedFormatRows(nd.o.id, want)){
           raw.push(at({
             isPropLine:true, price:(+fr.x.price||0)*fr.qty, rolled:false, hide:false, canHide:false,
@@ -4098,9 +4105,9 @@ function buildItemRows(forceTop, wantOptional){
           }));
         }
       }
-      if(nd.kids.length) walk(nd.kids, mine);
+      if(nd.kids.length) walk(nd.kids, mine, underAlt||nodeIsAlt);
     }
-  })(optionTree(), null);
+  })(optionTree(), null, false);
   ord=100000;                       // the blocks below always follow the options
   /* the quote's own custom lines */
   {
