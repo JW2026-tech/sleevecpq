@@ -696,6 +696,23 @@
     .ptilehead{flex-wrap:wrap}
     .ptilehead .pval{white-space:normal}
     .ptilespecs{grid-template-columns:1fr}
+    /* Machine specs / Delivery terms inherited the internal tool's "wide
+       tables scroll sideways rather than squash" rule (.spectable
+       min-width:640px, further up this stylesheet) — that's a deliberate
+       choice for the sales-facing app on a narrow-ish laptop, but on a
+       phone it just forces horizontal scrolling. The customer link should
+       always shrink to fit instead, so this only overrides it there. */
+    body.share-mode .spectable{min-width:0}
+    /* a label cell stays exactly as wide as its content (width:1%) via
+       white-space:nowrap — fine at desktop width, but "Estimated
+       consumption" etc. needs to be allowed to wrap on a phone instead of
+       overflowing past its narrow column into the value column */
+    body.share-mode .spectable td.flabel{white-space:normal}
+    /* a long compound pill ("6× Standard feet, 6× Access door default")
+       needs to wrap its own text, and the row it sits in needs to let it
+       drop to its own line, instead of forcing the whole row wider */
+    body.share-mode .proplbl{white-space:normal}
+    body.share-mode .stitle{flex-wrap:wrap}
     /* a rolled-up step with its own thumbnail (e.g. "Shrinking") — same
        idea: the price was sitting on the same line as the picture+title
        via justify-content:space-between, squeezing the title down to
