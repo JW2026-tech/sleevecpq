@@ -671,6 +671,23 @@
   .sharefor{font-size:13px;color:#555;margin-bottom:18px}
   .sharefoot{margin-top:24px;padding-top:8px;border-top:2px solid #EF7B0B;
     font-size:11px;color:#777;text-align:center}
+  /* Phone-width fallback for the customer link. Full page width (like the
+     sales-facing Documents tab) works fine down to tablet width, but the
+     compare grid's fixed label + N columns (.cmpgrid) has nowhere left to
+     go on a phone — this switches it to one column, stacked, instead. The
+     DOM already emits one row-label cell followed by each option's cell in
+     source order (see the compare-table generator), so a single grid column
+     lays them out top to bottom in the right order with no JS changes. */
+  @media (max-width:760px){
+    .sharewrap, .sharecover, .sharenav, .sharepager{padding-left:16px;padding-right:16px}
+    .sharehead{flex-wrap:wrap}
+    .sharemeta{text-align:left}
+    .sharecovertitle{font-size:26px}
+    .cmpgrid{grid-template-columns:1fr!important}
+    .gcell.rl.ghead{display:none}
+    .ghbody{flex-wrap:wrap}
+    .ghbody .cmppic{flex-basis:100%!important;max-height:160px!important}
+  }
   /* rev-conflict notice — a colleague saved this quote after it was opened */
   .cloudconflict{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:60;
     display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:var(--radius);
