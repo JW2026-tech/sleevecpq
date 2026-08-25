@@ -5989,126 +5989,144 @@ function renderAdmin(){
             ${optionPlaces(o.id).length>1?`<span class="dupnote" title="${esc(optionPlaces(o.id).map(pl=>pl.path).join(" | "))}">also in ${optionPlaces(o.id).length-1} other place${optionPlaces(o.id).length>2?"s":""} — deleting removes all</span>`:""}
             <input class="in" value="${esc(o.tag||"")}" data-f="tag" placeholder="Tag (optional)">
           </div>
-          <div class="ofields">
-          <div class="ofield">
-            <span class="deflabel">Installation days</span>
-            <div class="ofieldbody">
-              <input class="in qtybox" type="number" min="0" step="0.5" value="${+o.installDays||""}" data-f="installDays"
-                     placeholder="0" title="Days on site this option adds — summed into the Services lines that draw from the configuration">
-              <span class="times">days on site</span>
-            </div>
-          </div>
-          <div class="ofield">
-            <span class="deflabel">Dimensions</span>
-            <div class="ofieldbody">
-              <input class="in" value="${esc(o.dims||"")}" data-f="dims"
-                     placeholder="2400 × 1200 × 1400 mm" title="Printed with this item in the scope of supply, marked provisional">
-            </div>
-          </div>
-          <div class="ofield">
-            <span class="deflabel">Packaging</span>
-            <div class="ofieldbody">
-              <input class="in qtybox" type="number" min="0" step="50" value="${+o.packaging||""}" data-f="packaging"
-                     placeholder="0" title="What crating this option needs — added up on the Services tab">
-              <span class="times">for crating</span>
-            </div>
-          </div>
-          <div class="ofield">
-            <span class="deflabel">In a quote it starts as</span>
-            <div class="ofieldbody">
-              <input class="in qtybox" type="number" min="0" step="1" value="${+o.defQty||""}" data-f="defQty"
-                     placeholder="1" title="Standard number of this item — still changeable per quote">
-              <span class="times">&times;</span>
-              <select class="in" data-f="defScope" title="How this option is set the first time the step joins a quote — still changeable per quote">
-                <option value=""    ${!o.defScope?"selected":""}>nothing (ask me)</option>
-                <option value="in"  ${o.defScope==="in"?"selected":""}>In scope</option>
-                <option value="opt" ${o.defScope==="opt"?"selected":""}>Optional</option>
-                <option value="na"  ${o.defScope==="na"?"selected":""}>Not applicable</option>
-              </select>
-            </div>
-          </div>
-          <div class="ofield conflictrow">
-            <span class="deflabel">Can't be combined with</span>
-            ${conflictEntries(o).map(c=>`<span class="reqpill ${c.mode==="hard"?"hard":""}">
-                ${esc(optionLabel(c.id))}
-                <select class="in clashmode" data-clashmode="${esc(c.id)}" title="How strict this pair is">
-                  <option value="scope" ${c.mode!=="hard"?"selected":""}>not both in scope</option>
-                  <option value="hard"  ${c.mode==="hard"?"selected":""}>never together</option>
+          <details class="foldbox" data-fold="scope:${esc(o.id)}" ${openAdminBlocks.has("scope:"+o.id)?"open":""}>
+            <summary class="deflabel">Scope and rules</summary>
+            <div class="ofields">
+              <div class="ofield">
+                <span class="deflabel">In a quote it starts as</span>
+                <div class="ofieldbody">
+                  <input class="in qtybox" type="number" min="0" step="1" value="${+o.defQty||""}" data-f="defQty"
+                         placeholder="1" title="Standard number of this item — still changeable per quote">
+                  <span class="times">&times;</span>
+                  <select class="in" data-f="defScope" title="How this option is set the first time the step joins a quote — still changeable per quote">
+                    <option value=""    ${!o.defScope?"selected":""}>nothing (ask me)</option>
+                    <option value="in"  ${o.defScope==="in"?"selected":""}>In scope</option>
+                    <option value="opt" ${o.defScope==="opt"?"selected":""}>Optional</option>
+                    <option value="na"  ${o.defScope==="na"?"selected":""}>Not applicable</option>
+                  </select>
+                </div>
+              </div>
+              <div class="ofield conflictrow">
+                <span class="deflabel">Can't be combined with</span>
+                ${conflictEntries(o).map(c=>`<span class="reqpill ${c.mode==="hard"?"hard":""}">
+                    ${esc(optionLabel(c.id))}
+                    <select class="in clashmode" data-clashmode="${esc(c.id)}" title="How strict this pair is">
+                      <option value="scope" ${c.mode!=="hard"?"selected":""}>not both in scope</option>
+                      <option value="hard"  ${c.mode==="hard"?"selected":""}>never together</option>
+                    </select>
+                    <b data-unclash="${esc(c.id)}" title="Remove">&times;</b></span>`).join("")}
+                <select class="in" data-addclash="1" title="They can't both be in scope — either one may still be quoted as an optional item">
+                  <option value="">${conflictIds(o).length?"+ another…":"nothing"}</option>
+                  ${optionCatalogue().filter(x=>x.id!==o.id).map(x=>`<option value="${esc(x.id)}" ${conflictIds(o).includes(x.id)?"disabled":""}>${esc(x.step)} › ${esc(x.name)}</option>`).join("")}
                 </select>
-                <b data-unclash="${esc(c.id)}" title="Remove">&times;</b></span>`).join("")}
-            <select class="in" data-addclash="1" title="They can't both be in scope — either one may still be quoted as an optional item">
-              <option value="">${conflictIds(o).length?"+ another…":"nothing"}</option>
-              ${optionCatalogue().filter(x=>x.id!==o.id).map(x=>`<option value="${esc(x.id)}" ${conflictIds(o).includes(x.id)?"disabled":""}>${esc(x.step)} › ${esc(x.name)}</option>`).join("")}
-            </select>
-          </div>
-          </div>
-          <div class="ofield conflictrow recrow">
-            <span class="deflabel">Recommend it when the specifications say</span>
-            ${recommendEntries(o).map((r,ri)=>{
-              const f=specFieldOf(r.group,r.field);
-              return `<span class="reqpill rec">${esc(f?f.label:r.field)} = ${esc(r.value)}<b data-unrec="${ri}" title="Remove">&times;</b></span>`;
-            }).join("")}
-            <select class="in" data-recfield="1" title="Which specification answer suggests this option">
-              <option value="">+ add a rule…</option>
-              ${specFieldList().map(x=>`<option value="${esc(x.group+"|"+x.f.id)}">${esc(x.f.label)}${x.group==="sleeve"?" (sleeve)":""}</option>`).join("")}
-            </select>
-          </div>
-          <div class="descbox">
-            <span class="deflabel">Description <i>— printed under this item in the scope of supply</i></span>
-            <textarea class="in" rows="3" data-f="text" placeholder="What this option is and what it does — a paragraph the customer reads">${esc(o.text||"")}</textarea>
-          </div>
-          <details class="specrows featrows foldbox" data-fold="ft:${esc(o.id)}" ${openAdminBlocks.has("ft:"+o.id)?"open":""}>
-            <summary class="deflabel">Machine functionalities ${featuresOf(o).length?`<b class="cnt">${featuresOf(o).length}</b>`:""}<i>— shown with the description and when this item is offered as an alternative</i></summary>
-            ${featureRows(o).map((ft,fi)=>`<div class="featrow" data-fti="${fi}">
-              <input class="in" value="${esc(ft.label)}" data-ft="label" placeholder="e.g. Buffer length">
-              <input class="in" value="${esc(ft.value)}" data-ft="value" placeholder="e.g. 3 m, or 400V/50Hz via {supply}">
-              <button class="btn sm" data-ftact="up" ${fi===0?"disabled":""} title="Move up">&#9650;</button>
-              <button class="btn sm" data-ftact="down" ${fi===(featureRows(o).length-1)?"disabled":""} title="Move down">&#9660;</button>
-              <button class="x" data-ftact="del" title="Remove line">&times;</button>
-            </div>`).join("")}
-            <button class="btn sm" data-ftact="add">+ Add functionality</button>
-            ${(()=>{const src=optionsWithFeatures(o); return src.length?`
-              <select class="in speccopy" data-featcopy="1" title="Take the functionalities from another option">
-                <option value="">copy from…</option>
-                ${src.map(x=>`<option value="${esc(x.o.id)}">${esc(x.step)} › ${esc(x.o.name)} (${x.n})</option>`).join("")}
-              </select>`:"";})()}
-          </details>
-          <div class="picbox">
-            <span class="deflabel">Picture <i>— travels with the catalogue, so keep it modest</i></span>
-            <div class="picrow">
-              ${o.image?`<img class="picprev" src="${o.image}" alt="">`:'<div class="picprev empty">no picture</div>'}
-              <div class="picact">
-                <input type="file" accept="image/*" data-pic="1">
-                ${o.image?`<button class="btn sm" data-picdel="1">Remove</button>
-                  <span class="meta">${Math.round((o.image.length*0.75)/1024)} kB stored</span>`:""}
               </div>
             </div>
-          </div>
-          <details class="specrows foldbox" data-fold="sp:${esc(o.id)}" ${openAdminBlocks.has("sp:"+o.id)?"open":""}>
-            <summary class="deflabel">Machine specifications ${(o.specs||[]).length?`<b class="cnt">${o.specs.length}</b>`:""}<i>— shown in section 4 when this option is in scope</i></summary>
-            ${(o.specs||[]).map((sp,si)=>`<div class="specrow" data-spi="${si}">
-              <input class="in" value="${esc(sp.label||"")}" data-sp="label" placeholder="e.g. Steam consumption">
-              <input class="in" value="${esc(sp.value||"")}" data-sp="value" placeholder="e.g. 40 kg/h">
-              <button class="btn sm" data-spact="up" ${si===0?"disabled":""} title="Move up">&#9650;</button>
-              <button class="btn sm" data-spact="down" ${si===(o.specs.length-1)?"disabled":""} title="Move down">&#9660;</button>
-              <button class="x" data-spact="del" title="Remove line">&times;</button>
-            </div>`).join("")}
-            <button class="btn sm" data-spact="add">+ Add specification line</button>
-            ${(()=>{const src=optionsWithSpecs(o); return src.length?`
-              <select class="in speccopy" data-speccopy="1" title="Take the specification lines from another option">
-                <option value="">copy from…</option>
-                ${src.map(x=>`<option value="${esc(x.o.id)}">${esc(x.step)} › ${esc(x.o.name)} (${x.n})</option>`).join("")}
-              </select>`:"";})()}
+            <div class="ofield conflictrow recrow">
+              <span class="deflabel">Recommend it when the specifications say</span>
+              ${recommendEntries(o).map((r,ri)=>{
+                const f=specFieldOf(r.group,r.field);
+                return `<span class="reqpill rec">${esc(f?f.label:r.field)} = ${esc(r.value)}<b data-unrec="${ri}" title="Remove">&times;</b></span>`;
+              }).join("")}
+              <select class="in" data-recfield="1" title="Which specification answer suggests this option">
+                <option value="">+ add a rule…</option>
+                ${specFieldList().map(x=>`<option value="${esc(x.group+"|"+x.f.id)}">${esc(x.f.label)}${x.group==="sleeve"?" (sleeve)":""}</option>`).join("")}
+              </select>
+            </div>
           </details>
-          ${(CONFIG.props&&CONFIG.props.length)?`
-          <div class="proprow">
-            <span class="deflabel">Adds to the machine</span>
-            ${CONFIG.props.map(p=>`<label class="propqty" title="How many ${esc(p.plural||p.label+"s")} this option puts in the machine">
-              <input class="in" type="number" min="0" step="1" value="${(o.props&&+o.props[p.id])||0}" data-pq="${esc(p.id)}">
-              <span>${esc(p.plural||p.label+"s")}</span>
-            </label>`).join("")}
-          </div>
-          `:""}
+
+          <details class="foldbox" data-fold="log:${esc(o.id)}" ${openAdminBlocks.has("log:"+o.id)?"open":""}>
+            <summary class="deflabel">Logistics</summary>
+            <div class="ofields">
+              <div class="ofield">
+                <span class="deflabel">Installation days</span>
+                <div class="ofieldbody">
+                  <input class="in qtybox" type="number" min="0" step="0.5" value="${+o.installDays||""}" data-f="installDays"
+                         placeholder="0" title="Days on site this option adds — summed into the Services lines that draw from the configuration">
+                  <span class="times">days on site</span>
+                </div>
+              </div>
+              <div class="ofield">
+                <span class="deflabel">Dimensions</span>
+                <div class="ofieldbody">
+                  <input class="in" value="${esc(o.dims||"")}" data-f="dims"
+                         placeholder="2400 × 1200 × 1400 mm" title="Printed with this item in the scope of supply, marked provisional">
+                </div>
+              </div>
+              <div class="ofield">
+                <span class="deflabel">Packaging</span>
+                <div class="ofieldbody">
+                  <input class="in qtybox" type="number" min="0" step="50" value="${+o.packaging||""}" data-f="packaging"
+                         placeholder="0" title="What crating this option needs — added up on the Services tab">
+                  <span class="times">for crating</span>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details class="foldbox" data-fold="cust:${esc(o.id)}" ${openAdminBlocks.has("cust:"+o.id)?"open":""}>
+            <summary class="deflabel">Customer-facing</summary>
+            <div class="descbox">
+              <span class="deflabel">Description <i>— printed under this item in the scope of supply</i></span>
+              <textarea class="in" rows="3" data-f="text" placeholder="What this option is and what it does — a paragraph the customer reads">${esc(o.text||"")}</textarea>
+            </div>
+            <details class="specrows featrows foldbox" data-fold="ft:${esc(o.id)}" ${openAdminBlocks.has("ft:"+o.id)?"open":""}>
+              <summary class="deflabel">Machine functionalities ${featuresOf(o).length?`<b class="cnt">${featuresOf(o).length}</b>`:""}<i>— shown with the description and when this item is offered as an alternative</i></summary>
+              ${featureRows(o).map((ft,fi)=>`<div class="featrow" data-fti="${fi}">
+                <input class="in" value="${esc(ft.label)}" data-ft="label" placeholder="e.g. Buffer length">
+                <input class="in" value="${esc(ft.value)}" data-ft="value" placeholder="e.g. 3 m, or 400V/50Hz via {supply}">
+                <button class="btn sm" data-ftact="up" ${fi===0?"disabled":""} title="Move up">&#9650;</button>
+                <button class="btn sm" data-ftact="down" ${fi===(featureRows(o).length-1)?"disabled":""} title="Move down">&#9660;</button>
+                <button class="x" data-ftact="del" title="Remove line">&times;</button>
+              </div>`).join("")}
+              <button class="btn sm" data-ftact="add">+ Add functionality</button>
+              ${(()=>{const src=optionsWithFeatures(o); return src.length?`
+                <select class="in speccopy" data-featcopy="1" title="Take the functionalities from another option">
+                  <option value="">copy from…</option>
+                  ${src.map(x=>`<option value="${esc(x.o.id)}">${esc(x.step)} › ${esc(x.o.name)} (${x.n})</option>`).join("")}
+                </select>`:"";})()}
+            </details>
+            <div class="picbox">
+              <span class="deflabel">Picture <i>— travels with the catalogue, so keep it modest</i></span>
+              <div class="picrow">
+                ${o.image?`<img class="picprev" src="${o.image}" alt="">`:'<div class="picprev empty">no picture</div>'}
+                <div class="picact">
+                  <input type="file" accept="image/*" data-pic="1">
+                  ${o.image?`<button class="btn sm" data-picdel="1">Remove</button>
+                    <span class="meta">${Math.round((o.image.length*0.75)/1024)} kB stored</span>`:""}
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details class="foldbox" data-fold="spec:${esc(o.id)}" ${openAdminBlocks.has("spec:"+o.id)?"open":""}>
+            <summary class="deflabel">Specifications</summary>
+            <details class="specrows foldbox" data-fold="sp:${esc(o.id)}" ${openAdminBlocks.has("sp:"+o.id)?"open":""}>
+              <summary class="deflabel">Machine specifications ${(o.specs||[]).length?`<b class="cnt">${o.specs.length}</b>`:""}<i>— shown in section 4 when this option is in scope</i></summary>
+              ${(o.specs||[]).map((sp,si)=>`<div class="specrow" data-spi="${si}">
+                <input class="in" value="${esc(sp.label||"")}" data-sp="label" placeholder="e.g. Steam consumption">
+                <input class="in" value="${esc(sp.value||"")}" data-sp="value" placeholder="e.g. 40 kg/h">
+                <button class="btn sm" data-spact="up" ${si===0?"disabled":""} title="Move up">&#9650;</button>
+                <button class="btn sm" data-spact="down" ${si===(o.specs.length-1)?"disabled":""} title="Move down">&#9660;</button>
+                <button class="x" data-spact="del" title="Remove line">&times;</button>
+              </div>`).join("")}
+              <button class="btn sm" data-spact="add">+ Add specification line</button>
+              ${(()=>{const src=optionsWithSpecs(o); return src.length?`
+                <select class="in speccopy" data-speccopy="1" title="Take the specification lines from another option">
+                  <option value="">copy from…</option>
+                  ${src.map(x=>`<option value="${esc(x.o.id)}">${esc(x.step)} › ${esc(x.o.name)} (${x.n})</option>`).join("")}
+                </select>`:"";})()}
+            </details>
+            ${(CONFIG.props&&CONFIG.props.length)?`
+            <div class="proprow">
+              <span class="deflabel">Adds to the machine</span>
+              ${CONFIG.props.map(p=>`<label class="propqty" title="How many ${esc(p.plural||p.label+"s")} this option puts in the machine">
+                <input class="in" type="number" min="0" step="1" value="${(o.props&&+o.props[p.id])||0}" data-pq="${esc(p.id)}">
+                <span>${esc(p.plural||p.label+"s")}</span>
+              </label>`).join("")}
+            </div>
+            `:""}
+          </details>
+
           <div class="sub">
             ${o.children&&o.children.length
               ? `<span class="subpill" data-act="into">${o.children.length} sub-step${o.children.length>1?"s":""} &rsaquo;</span>` : ""}
