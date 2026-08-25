@@ -695,6 +695,13 @@
     .ptilewrap{flex-direction:column}
     .ptilehead{flex-wrap:wrap}
     .ptilehead .pval{white-space:normal}
+    /* .ptitle (name + the feet/adjustments pill + the "incl. sub-items"
+       tag) was flex:1;min-width:0 — sharing the row with the price let it
+       shrink into a narrow column, which squeezed the pill's own text into
+       a jumble of numbers and words instead of just wrapping normally.
+       Full width here means the price (already set to wrap above) simply
+       drops to its own line below instead. */
+    .pline.tilerow .ptitle{flex:1 1 100%}
     .ptilespecs{grid-template-columns:1fr}
     /* Machine specs / Delivery terms inherited the internal tool's "wide
        tables scroll sideways rather than squash" rule (.spectable
