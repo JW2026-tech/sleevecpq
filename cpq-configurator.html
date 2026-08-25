@@ -672,17 +672,24 @@
   .sharefoot{margin-top:24px;padding-top:8px;border-top:2px solid #EF7B0B;
     font-size:11px;color:#777;text-align:center}
   /* Phone-width fallback for the customer link. Full page width (like the
-     sales-facing Documents tab) works fine down to tablet width, but the
-     compare grid's fixed label + N columns (.cmpgrid) has nowhere left to
-     go on a phone — this switches it to one column, stacked, instead. The
-     DOM already emits one row-label cell followed by each option's cell in
-     source order (see the compare-table generator), so a single grid column
-     lays them out top to bottom in the right order with no JS changes. */
+     sales-facing Documents tab) works fine down to tablet width, so this
+     one only holds the general layout tweaks (padding, header wrap). */
   @media (max-width:760px){
     .sharewrap, .sharecover, .sharenav, .sharepager{padding-left:16px;padding-right:16px}
     .sharehead{flex-wrap:wrap}
     .sharemeta{text-align:left}
     .sharecovertitle{font-size:26px}
+  }
+  /* The compare grid's fixed label + N columns (.cmpgrid) needs real room
+     per column (a picture plus name/price/config text) — it breaks well
+     before a phone width, e.g. at ordinary browser zoom levels on an
+     otherwise-wide screen, so this gets its own, much more generous
+     threshold instead of sharing the phone breakpoint above. Below it,
+     everything stacks into one column: the DOM already emits one row-label
+     cell followed by each option's cell in source order (see the
+     compare-table generator), so a single grid column lays them out top to
+     bottom in the right order with no JS changes. */
+  @media (max-width:1000px){
     .cmpgrid{grid-template-columns:1fr!important}
     .gcell.rl.ghead{display:none}
     .ghbody{flex-wrap:wrap}
