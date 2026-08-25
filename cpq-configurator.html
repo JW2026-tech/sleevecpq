@@ -10047,11 +10047,11 @@ function shareDocSections(){
     {id:"intro", nav:"Introduction", html: introSectionHtml()},
     memo && {id:"memo", nav:"Note", html: memo},
     {id:"scope", nav:"Scope of supply", html: scopeHtml()},
-    {id:"specs", nav:"Specifications", html: printSpecsHtml()},
-    {id:"machinespecs", nav:"Machine specifications", html: machineSpecSectionHtml()},
+    {id:"specs", nav:"Product & sleeve specs", html: printSpecsHtml()},
+    {id:"machinespecs", nav:"Machine specs", html: machineSpecSectionHtml()},
     {id:"proposal", nav:"Investment proposal", html: proposalHtml()},
-    {id:"delivery", nav:"Delivery", html: deliverySectionHtml()},
-    {id:"terms", nav:"Terms", html: printTermsHtml()}
+    {id:"delivery", nav:"Commercial terms", html: deliverySectionHtml()},
+    {id:"terms", nav:"Terms & conditions", html: printTermsHtml()}
   ].filter(s=>s && (s.html||"").trim());
 }
 /* one section at a time, like separate pages, instead of one long scroll —
