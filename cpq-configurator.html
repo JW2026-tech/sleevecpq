@@ -10675,15 +10675,30 @@ function shareLetterheadHtml(inner, pageTitle){
     </div>
   </div>`;
 }
-/* every section "Create complete PDF" prints, minus the cover and contact
-   pages — the letterhead already carries that identity. Only the
-   investment proposal is interactive; the rest reads the same as the PDF. */
+/* Every section body opens with its own heading carrying the chapter number
+   it has in the printed PDF ("<h2>6. Delivery terms</h2>"). On the customer
+   link those numbers are wrong the moment the set of pages differs from the
+   PDF's — and the page header already prints the section's name in full, so
+   the heading is a duplicate either way.
+   Only the section's own opening <h2> goes. Headings deeper in the body are
+   left exactly as they are: the Terms & Conditions text is authored in Admin
+   and its clause numbering ("1. Definitions") is part of the legal text, not
+   a chapter number to tidy away. */
+function shareStripHeading(html){
+  return String(html||"").replace(/^\s*<h2\b[^>]*>[\s\S]*?<\/h2>\s*/i, "");
+}
+/* every section "Create complete PDF" prints, minus the cover, the contact
+   pages and the introduction — the introduction is boilerplate explaining
+   what each following chapter contains, which a page-per-section link with
+   a nav bar says by itself. Only the investment proposal is interactive;
+   the rest reads the same as the PDF.
+   Order follows the printed quotation: what you get, what it was based on,
+   what the machine does, what it costs, how it is delivered, the terms. */
 function shareDocSections(){
   ensureLanguages(); ensureSpecs();
   const memo=(CONFIG.docs&&CONFIG.docs.memo||"").trim();
   return [
     {id:"cover", nav:"Cover", html: shareCoverHtml(), bare:true},
-    {id:"intro", nav:"Introduction", html: introSectionHtml()},
     memo && {id:"memo", nav:"Note", html: memo},
     {id:"scope", nav:"Scope of supply", html: scopeHtml()},
     {id:"specs", nav:"Product & sleeve specs", html: printSpecsHtml()},
@@ -10691,7 +10706,12 @@ function shareDocSections(){
     {id:"proposal", nav:"Investment proposal", html: shareProposalHtml()},
     {id:"delivery", nav:"Commercial terms", html: deliverySectionHtml()},
     {id:"terms", nav:"Terms & conditions", html: printTermsHtml()}
-  ].filter(s=>s && (s.html||"").trim());
+  ].filter(Boolean)
+   .map(s=>s.bare ? s : Object.assign({}, s, {html: shareStripHeading(s.html)}))
+   /* a section whose only content WAS its heading (an empty Terms text, say)
+      has nothing left to show once the heading is stripped, so it drops out
+      of the nav rather than becoming a blank page */
+   .filter(s=>s.bare || /\S/.test(String(s.html).replace(/<[^>]*>/g," ")) || /<(img|table|input)\b/i.test(s.html));
 }
 /* one section at a time, like separate pages, instead of one long scroll —
    the nav bar and prev/next both just change shareSectionIdx and re-render */
