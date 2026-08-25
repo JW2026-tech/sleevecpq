@@ -490,7 +490,7 @@
   .ocard .row{display:grid;grid-template-columns:150px 200px;gap:9px;margin-top:9px}
 
   /* the small settings that follow, side by side while there is room */
-  .ofields{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  .ofields{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,420px));
     gap:10px 18px;margin-top:12px;padding-top:11px;border-top:1px solid var(--line-soft)}
   .ofield{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
   .ofield .deflabel{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--txt-faint)}
@@ -6020,17 +6020,17 @@ function renderAdmin(){
                   ${optionCatalogue().filter(x=>x.id!==o.id).map(x=>`<option value="${esc(x.id)}" ${conflictIds(o).includes(x.id)?"disabled":""}>${esc(x.step)} › ${esc(x.name)}</option>`).join("")}
                 </select>
               </div>
-            </div>
-            <div class="ofield conflictrow recrow">
-              <span class="deflabel">Recommend it when the specifications say</span>
-              ${recommendEntries(o).map((r,ri)=>{
-                const f=specFieldOf(r.group,r.field);
-                return `<span class="reqpill rec">${esc(f?f.label:r.field)} = ${esc(r.value)}<b data-unrec="${ri}" title="Remove">&times;</b></span>`;
-              }).join("")}
-              <select class="in" data-recfield="1" title="Which specification answer suggests this option">
-                <option value="">+ add a rule…</option>
-                ${specFieldList().map(x=>`<option value="${esc(x.group+"|"+x.f.id)}">${esc(x.f.label)}${x.group==="sleeve"?" (sleeve)":""}</option>`).join("")}
-              </select>
+              <div class="ofield conflictrow recrow">
+                <span class="deflabel">Recommend it when the specifications say</span>
+                ${recommendEntries(o).map((r,ri)=>{
+                  const f=specFieldOf(r.group,r.field);
+                  return `<span class="reqpill rec">${esc(f?f.label:r.field)} = ${esc(r.value)}<b data-unrec="${ri}" title="Remove">&times;</b></span>`;
+                }).join("")}
+                <select class="in" data-recfield="1" title="Which specification answer suggests this option">
+                  <option value="">+ add a rule…</option>
+                  ${specFieldList().map(x=>`<option value="${esc(x.group+"|"+x.f.id)}">${esc(x.f.label)}${x.group==="sleeve"?" (sleeve)":""}</option>`).join("")}
+                </select>
+              </div>
             </div>
           </details>
 
