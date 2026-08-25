@@ -632,12 +632,17 @@
   body.share-mode > #viewConfigure, body.share-mode > #viewFormats,
   body.share-mode > #viewService, body.share-mode > #viewAdmin,
   body.share-mode > #viewDocs, body.share-mode > #viewQuotes{display:none!important}
-  .sharenav{position:sticky;top:0;z-index:10;display:flex;flex-wrap:wrap;gap:4px 6px;
-    padding:10px 28px;background:#28338A;font-size:13px}
+  .sharenav{position:sticky;top:0;z-index:10;background:#28338A;font-size:13px}
   .sharenav button{color:#fff;opacity:.8;background:none;border:0;border-radius:6px;
     padding:5px 10px;font-size:13px;cursor:pointer}
   .sharenav button:hover{opacity:1;background:rgba(255,255,255,.12)}
   .sharenav button.on{opacity:1;background:rgba(255,255,255,.2);font-weight:500}
+  .sharenavlist{display:flex;flex-wrap:wrap;gap:4px 6px;padding:10px 28px}
+  /* the tap-to-open compact bar only ever shows on the narrow breakpoint
+     below — hidden here so a wide screen just gets the plain button row */
+  .sharenavcur{display:none;width:100%;align-items:center;justify-content:space-between;
+    color:#fff;font-weight:500;padding:12px 20px}
+  .sharenavcur .chev{font-size:11px;opacity:.8}
   .sharepager{display:flex;align-items:center;justify-content:center;gap:16px;
     padding:16px 40px 44px;font-size:13px;color:#555}
   /* full front page, screen equivalent of coverPageHtml()'s print-only look.
@@ -675,10 +680,21 @@
      sales-facing Documents tab) works fine down to tablet width, so this
      one only holds the general layout tweaks (padding, header wrap). */
   @media (max-width:760px){
-    .sharewrap, .sharecover, .sharenav, .sharepager{padding-left:16px;padding-right:16px}
+    .sharewrap, .sharecover, .sharepager{padding-left:16px;padding-right:16px}
     .sharehead{flex-wrap:wrap}
     .sharemeta{text-align:left}
     .sharecovertitle{font-size:26px}
+    /* nav collapses to "current section, tap to open the full list" —
+       the list itself becomes a dropdown instead of a wrapped button row */
+    .sharenavcur{display:flex}
+    .sharenavlist{display:none;flex-direction:column;padding:6px 16px 10px}
+    .sharenavlist.open{display:flex}
+    .sharenavlist button{text-align:left;padding:9px 10px}
+    /* the picture-and-price tile: photo on top, details below, instead of
+       side by side with no room to breathe */
+    .ptilewrap{flex-direction:column}
+    .ptilehead{flex-wrap:wrap}
+    .ptilespecs{grid-template-columns:1fr}
   }
   /* The compare grid's fixed label + N columns (.cmpgrid) needs real room
      per column (a picture plus name/price/config text) — it breaks well
@@ -10161,8 +10177,13 @@ function renderShareMode(){
   shareSectionIdx=Math.max(0, Math.min(shareSectionIdx, sections.length-1));
   const cur=sections[shareSectionIdx];
 
-  const nav=`<nav class="sharenav">${sections.map((s,i)=>
-    `<button type="button" class="${i===shareSectionIdx?"on":""}" data-shareidx="${i}">${esc(s.nav)}</button>`).join("")}</nav>`;
+  const nav=`<nav class="sharenav">
+    <button type="button" class="sharenavcur" id="shareNavToggle" aria-expanded="false">
+      <span>${esc(cur.nav)}</span><i class="chev">&#9662;</i>
+    </button>
+    <div class="sharenavlist" id="shareNavList">${sections.map((s,i)=>
+      `<button type="button" class="${i===shareSectionIdx?"on":""}" data-shareidx="${i}">${esc(s.nav)}</button>`).join("")}</div>
+  </nav>`;
   const page=cur.bare ? cur.html : shareLetterheadHtml(cur.html);
   const pager=`<div class="sharepager">
     <button type="button" class="btn sm" id="sharePrev" ${shareSectionIdx===0?"disabled":""}>&larr; Previous</button>
@@ -10177,6 +10198,14 @@ function renderShareMode(){
   el.querySelectorAll("[data-shareidx]").forEach(b=>{ b.onclick=()=>goTo(+b.dataset.shareidx); });
   const prev=document.getElementById("sharePrev"); if(prev) prev.onclick=()=>goTo(shareSectionIdx-1);
   const next=document.getElementById("shareNext"); if(next) next.onclick=()=>goTo(shareSectionIdx+1);
+  /* on a phone the full section list only opens on tap (see the matching
+     media query) — on a wide screen this button is hidden and the list is
+     always shown, so this toggle simply has nothing to do there */
+  const navToggle=document.getElementById("shareNavToggle"), navList=document.getElementById("shareNavList");
+  if(navToggle) navToggle.onclick=()=>{
+    const open=navList.classList.toggle("open");
+    navToggle.setAttribute("aria-expanded", open?"true":"false");
+  };
 }
 function showShareError(reason){
   const msgs={
