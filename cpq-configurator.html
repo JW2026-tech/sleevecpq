@@ -1119,6 +1119,32 @@
   .altpick .in{max-width:320px;font-size:12px;padding:4px 8px}
   .altpick .meta{font-size:11px}
   .altwarn{font-size:11px;color:var(--warn)}
+  /* ---- type-to-filter picker (searchSelectHtml / wireSearchSelect) ----
+     A plain <select> over the option catalogue runs to dozens of entries in
+     one scrolling list, so finding "autosplicer" means reading the whole
+     thing. This is the same data behind a text field that filters it. */
+  .ssel{position:relative;flex:1 1 260px;min-width:200px;max-width:340px}
+  .ssel .ssinput{width:100%;box-sizing:border-box;font-size:12px;padding:4px 8px}
+  .ssel .ssinput::placeholder{font-style:italic;opacity:.8}
+  .sslist{display:none;position:absolute;z-index:60;left:0;right:0;top:calc(100% + 3px);
+    max-height:270px;overflow-y:auto;background:var(--panel);border:1px solid var(--line-strong);
+    border-radius:9px;box-shadow:0 10px 28px rgba(0,0,0,.28);padding:4px}
+  .ssel.open .sslist{display:block}
+  .ssgroup{font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--txt-faint);
+    padding:7px 8px 3px;font-weight:700}
+  .ssitem{display:flex;gap:6px;align-items:baseline;padding:5px 8px;border-radius:6px;
+    font-size:12.5px;cursor:pointer;color:var(--txt)}
+  .ssitem .sstep{color:var(--txt-faint);font-size:11px;flex:0 0 auto;max-width:45%;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ssitem .ssname{flex:1;min-width:0}
+  .ssitem.cur, .ssitem:hover{background:var(--accent-soft);color:var(--txt)}
+  .ssitem.ssclear{color:var(--txt-faint);font-style:italic}
+  .ssitem.sscurrent{font-weight:600}
+  .ssitem.sscurrent::after{content:"current";font-size:9.5px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.4px;color:var(--accent);flex:0 0 auto}
+  .ssempty{padding:8px;color:var(--txt-faint);font-size:12px;font-style:italic}
+  .sshint{padding:3px 8px 5px;color:var(--txt-faint);font-size:10.5px;border-top:1px solid var(--line-soft);
+    margin-top:3px}
   .altpill{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
     padding:1px 6px;border-radius:20px;border:1px solid #8b5cf6;color:#8b5cf6;margin-right:6px;vertical-align:1px}
   .altdiff{font-size:11.5px;color:var(--txt-dim);font-weight:400}
@@ -2542,6 +2568,112 @@ function altTargetChoices(o){
   if(here.length) out.push({label:"In this quote", items:here});
   if(rest.length) out.push({label:here.length?"Elsewhere in the catalogue — picking one puts it in scope":"Anything in the catalogue", items:rest});
   return out;
+}
+/* ============================================================
+   TYPE-TO-FILTER PICKER
+   The option catalogue is far too long to pick from by scrolling a native
+   <select>: it runs to dozens of "Step › Option" entries in one flat list.
+   These two build a text field that filters the same data instead — type
+   "autosplicer" and only the matching lines stay.
+   Kept generic (groups in, an id out through onPick) so the other long
+   pickers in Admin can move onto it without another copy.
+   ============================================================ */
+/* `groups` is what altTargetChoices() returns: [{label, items:[{id,step,name}]}] */
+function searchSelectHtml(cfg){
+  const groups=(cfg.groups||[]).filter(g=>(g.items||[]).length);
+  const label=x=>`${x.step} › ${x.name}`;
+  let cur=null;
+  groups.forEach(g=>(g.items||[]).forEach(x=>{ if(x.id===cfg.value) cur=x; }));
+  return `<div class="ssel" ${cfg.attr||""} data-ssval="${esc(cfg.value||"")}">
+    <input class="in ssinput" type="text" autocomplete="off" spellcheck="false"
+           placeholder="${esc(cfg.placeholder||"type to search…")}"
+           title="Type part of a step or option name to filter the list"
+           value="${cur?esc(label(cur)):""}" data-sslabel="${cur?esc(label(cur)):""}">
+    <div class="sslist">
+      ${cfg.clearLabel?`<div class="ssitem ssclear" data-ssid="" data-sstext="">${esc(cfg.clearLabel)}</div>`:""}
+      ${groups.map(g=>`<div class="ssgrp">
+        <div class="ssgroup">${esc(g.label)}</div>
+        ${g.items.map(x=>`<div class="ssitem ${x.id===cfg.value?"sscurrent":""}" data-ssid="${esc(x.id)}"
+             data-sstext="${esc(label(x).toLowerCase())}"><span class="sstep">${esc(x.step)} ›</span
+             ><span class="ssname">${esc(x.name)}</span></div>`).join("")}
+      </div>`).join("")}
+      <div class="ssempty" hidden>Nothing matches that</div>
+      <div class="sshint">Type to filter &middot; &uarr;&darr; to move &middot; Enter to choose</div>
+    </div>
+  </div>`;
+}
+/* `root` may be the .ssel itself or anything containing some. onPick gets
+   (sselElement, chosenId) — an empty id means the "clear" row was taken. */
+function wireSearchSelect(root, onPick){
+  if(!root) return;
+  const sels = root.classList && root.classList.contains("ssel")
+    ? [root] : [...root.querySelectorAll(".ssel")];
+  for(const sel of sels){
+    if(sel.__ssWired) continue;
+    sel.__ssWired=true;
+    const inp=sel.querySelector(".ssinput"), list=sel.querySelector(".sslist");
+    const empty=sel.querySelector(".ssempty");
+    const items=()=>[...sel.querySelectorAll(".ssitem")];
+    const shown=()=>items().filter(i=>!i.hidden);
+    const mark=el=>{ items().forEach(i=>i.classList.remove("cur")); if(el){ el.classList.add("cur");
+      el.scrollIntoView({block:"nearest"}); } };
+    const filter=()=>{
+      /* every word has to appear somewhere in "step › name", so "tunnel
+         6000" finds it as readily as "6000 tunnel" */
+      const words=inp.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      let n=0;
+      for(const i of items()){
+        if(i.classList.contains("ssclear")){ i.hidden=words.length>0; continue; }
+        const t=i.dataset.sstext||"";
+        const hit=words.every(w=>t.includes(w));
+        i.hidden=!hit; if(hit) n++;
+      }
+      sel.querySelectorAll(".ssgrp").forEach(g=>{ g.hidden=!g.querySelector(".ssitem:not([hidden])"); });
+      if(empty) empty.hidden=n>0;
+      mark(shown().find(i=>!i.classList.contains("ssclear")));
+    };
+    const close=()=>{
+      sel.classList.remove("open");
+      inp.value=inp.dataset.sslabel||"";
+      items().forEach(i=>{ i.hidden=false; i.classList.remove("cur"); });
+      sel.querySelectorAll(".ssgrp").forEach(g=>g.hidden=false);
+      if(empty) empty.hidden=true;
+    };
+    const pick=el=>{
+      const id=el.dataset.ssid||"";
+      const label=el.classList.contains("ssclear") ? ""
+        : el.textContent.replace(/\s+/g," ").replace(/\s*current$/,"").trim();
+      sel.dataset.ssval=id; inp.dataset.sslabel=label;
+      close();
+      onPick(sel, id);
+    };
+    inp.addEventListener("focus",()=>{ sel.classList.add("open"); inp.select(); });
+    inp.addEventListener("input",()=>{ sel.classList.add("open"); filter(); });
+    inp.addEventListener("keydown",e=>{
+      if(e.key==="Escape"){ e.stopPropagation(); close(); inp.blur(); return; }
+      if(e.key==="Enter"){
+        const c=sel.querySelector(".ssitem.cur:not([hidden])")||shown()[0];
+        if(c){ e.preventDefault(); pick(c); }
+        return;
+      }
+      if(e.key==="ArrowDown"||e.key==="ArrowUp"){
+        e.preventDefault();
+        sel.classList.add("open");
+        const vis=shown(); if(!vis.length) return;
+        const at=vis.findIndex(x=>x.classList.contains("cur"));
+        mark(vis[e.key==="ArrowDown" ? Math.min(vis.length-1, at+1) : Math.max(0, at-1)] || vis[0]);
+      }
+    });
+    /* mousedown, not click: the input's blur would close the list first */
+    list.addEventListener("mousedown",e=>{
+      const it=e.target.closest(".ssitem"); if(!it) return;
+      e.preventDefault(); e.stopPropagation(); pick(it);
+    });
+    inp.addEventListener("blur",()=>setTimeout(close,120));
+    /* the row this sits in selects the option when clicked — a click meant
+       for the picker must not also do that */
+    sel.addEventListener("click",e=>e.stopPropagation());
+  }
 }
 /* would pointing "from" at "to" close a loop? An alternative may replace
    another alternative, but not itself, however long the chain. */
@@ -5938,11 +6070,9 @@ function renderConfigure(){
             ${(!(sel && !o.optional) && recommendReason(o))?`<div class="recnote" title="Advice from the product and sleeve specifications">Recommended in scope — ${esc(recommendReason(o))}</div>`:""}
             ${selAlt?`<div class="altpick">
               <span class="altlbl">Instead of</span>
-              <select class="in" data-altfor="${esc(o.id)}">
-                <option value="">choose what it replaces…</option>
-                ${altTargetChoices(o).map(gr=>`<optgroup label="${esc(gr.label)}">${gr.items.map(x=>
-                  `<option value="${esc(x.id)}" ${o.altFor===x.id?"selected":""}>${esc(x.step)} &rsaquo; ${esc(x.name)}</option>`).join("")}</optgroup>`).join("")}
-              </select>
+              ${searchSelectHtml({attr:`data-altfor="${esc(o.id)}"`, value:o.altFor||"",
+                 placeholder:"choose what it replaces… (type to search)",
+                 clearLabel:"— nothing yet —", groups:altTargetChoices(o)})}
               ${o.altFor?`<span class="meta">Both are quoted, only one is bought.</span>`
                         :`<span class="altwarn">Pick one, or this item is quoted as a plain optional.</span>`}
             </div>`:(o.altFor?`<div class="altnote">Can be offered instead of <b>${esc(altName)}</b></div>`:"")}
@@ -6001,12 +6131,10 @@ function renderConfigure(){
   document.querySelectorAll("#main .scope").forEach(sc=>{
     sc.addEventListener("click",e=>e.stopPropagation());
     const ap=sc.parentElement&&sc.parentElement.querySelector("[data-altfor]");
-    if(ap) ap.addEventListener("click",e=>e.stopPropagation());
-    if(ap) ap.addEventListener("change",e=>{
-      e.stopPropagation();
-      const o=(m.options||[]).find(x=>x.id===ap.dataset.altfor);
+    if(ap) wireSearchSelect(ap, (sel, id)=>{
+      const o=(m.options||[]).find(x=>x.id===sel.dataset.altfor);
       if(!o) return;
-      if(ap.value){ o.altFor=ap.value; ensureAltTarget(ap.value); } else delete o.altFor;
+      if(id){ o.altFor=id; ensureAltTarget(id); } else delete o.altFor;
       reconcile(); renderConfigure();
     });
     sc.querySelectorAll("input[type=radio]").forEach(r=>{
