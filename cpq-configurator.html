@@ -694,7 +694,19 @@
        side by side with no room to breathe */
     .ptilewrap{flex-direction:column}
     .ptilehead{flex-wrap:wrap}
+    .ptilehead .pval{white-space:normal}
     .ptilespecs{grid-template-columns:1fr}
+    /* a rolled-up step with its own thumbnail (e.g. "Shrinking") — same
+       idea: the price was sitting on the same line as the picture+title
+       via justify-content:space-between, squeezing the title down to
+       almost nothing. Stack them instead. */
+    .grouphead.haspic .ghmain{flex-direction:column;align-items:flex-start;gap:6px}
+    /* compare-card header: pill, name and button were fighting for space
+       in one flex row — .cmpname's min-width:0 let it shrink to near
+       nothing and wrap letter by letter instead of the row wrapping.
+       Giving each its own full-width line fixes that outright. */
+    .ghtop{flex-direction:column;align-items:flex-start!important}
+    .cmpname{flex:none!important;width:100%}
   }
   /* The compare grid's fixed label + N columns (.cmpgrid) needs real room
      per column (a picture plus name/price/config text) — it breaks well
