@@ -4453,6 +4453,13 @@ function takeOptional(id){
   if(line){ serviceEntry(s).scope="in"; return done(); }
   const o=optionById(s);
   if(o){
+    /* the Configure screen already stops a clashing pair from both being
+       picked there — "Take this option" is a second route into scope (used
+       on the price list and the customer's share link) that skipped the
+       same check entirely, so two "can't be combined" items could end up
+       both taken with no warning at all */
+    const clash=blockedHardReason(o)||blockedReason(o);
+    if(clash){ alert(`"${o.name}" can't be combined with "${clash}".`); return; }
     const wasAltOpt=!!o.altOptional;
     /* An item under an alternative only exists if that alternative is
        bought. Taking it therefore takes the alternative too — and an
@@ -5173,6 +5180,45 @@ function conflictIds(o){ return conflictEntries(o).map(c=>c.id); }
 function setConflicts(o, entries){
   if(entries.length) o.conflicts=entries.map(c=>({id:c.id, mode:c.mode}));
   else delete o.conflicts;
+}
+function allCatalogueOptions(list=CONFIG.modules||[], out=[]){
+  for(const m of list){
+    if(m.generated) continue;
+    for(const o of (m.options||[])){
+      out.push(o);
+      if(o.children&&o.children.length) allCatalogueOptions(o.children, out);
+    }
+  }
+  return out;
+}
+/* Used to be recorded on only one option of a pair and honoured from both
+   sides at runtime (conflictsWith below still does that, for anything a
+   catalogue saved before this still has one-sided) — but that left the
+   OTHER option's own admin screen showing no conflict at all, which read
+   as if it had none. Recording it on both sides makes it show, and be
+   removable, from either option's editor. */
+function addConflictPair(o, otherId, mode){
+  setConflicts(o, conflictEntries(o).filter(c=>c.id!==otherId).concat([{id:otherId, mode}]));
+  const other=optionById(otherId);
+  if(other) setConflicts(other, conflictEntries(other).filter(c=>c.id!==o.id).concat([{id:o.id, mode}]));
+}
+function removeConflictPair(o, otherId){
+  setConflicts(o, conflictEntries(o).filter(c=>c.id!==otherId));
+  const other=optionById(otherId);
+  if(other) setConflicts(other, conflictEntries(other).filter(c=>c.id!==o.id));
+}
+/* one-time repair for a catalogue saved before conflicts were symmetric —
+   mirrors any entry that only lives on one side of the pair */
+function ensureSymmetricConflicts(){
+  const all=allCatalogueOptions();
+  const byId=new Map(all.map(o=>[o.id,o]));
+  for(const o of all){
+    for(const c of conflictEntries(o)){
+      const other=byId.get(c.id);
+      if(other && !conflictEntries(other).some(x=>x.id===o.id))
+        other.conflicts=(other.conflicts||[]).concat([{id:o.id, mode:c.mode}]);
+    }
+  }
 }
 /* null when they get along, otherwise the strictest rule of the pair */
 function conflictsWith(a, b){
@@ -7208,21 +7254,21 @@ function wireEditor(m,list,idx){
     const o=m.options[+selc.closest(".ocard").dataset.oi];
     selc.onchange=()=>{
       if(!selc.value) return;
-      setConflicts(o, conflictEntries(o).concat([{id:selc.value, mode:"scope"}]));
+      addConflictPair(o, selc.value, "scope");
       renderConfigureQuiet(); renderAdmin();
     };
   });
   ed.querySelectorAll("[data-unclash]").forEach(x=>{
     const o=m.options[+x.closest(".ocard").dataset.oi];
     x.onclick=()=>{
-      setConflicts(o, conflictEntries(o).filter(c=>c.id!==x.dataset.unclash));
+      removeConflictPair(o, x.dataset.unclash);
       renderConfigureQuiet(); renderAdmin();
     };
   });
   ed.querySelectorAll("[data-clashmode]").forEach(sel6=>{
     const o=m.options[+sel6.closest(".ocard").dataset.oi];
     sel6.onchange=()=>{
-      setConflicts(o, conflictEntries(o).map(c=>c.id===sel6.dataset.clashmode?{id:c.id, mode:sel6.value}:c));
+      addConflictPair(o, sel6.dataset.clashmode, sel6.value);
       renderConfigureQuiet(); renderAdmin();
     };
   });
@@ -9350,7 +9396,7 @@ function applyCatalogue(d){
   for(const k of CATALOGUE_KEYS) if(c[k]!==undefined) CONFIG[k]=clone(c[k]);
   CONFIG.languages=CONFIG.templates;
   sel=CONFIG.modules.length?[0]:[];
-  ensureLanguages(); ensureSpecs(); ensureProps(); ensureParts(); ensureCustomer(); reconcile();
+  ensureLanguages(); ensureSpecs(); ensureProps(); ensureParts(); ensureCustomer(); ensureSymmetricConflicts(); reconcile();
   return true;
 }
 /* a quote lands on top of whatever catalogue is loaded */
@@ -9576,7 +9622,7 @@ function applySnapshot(raw){
     applyNavWidth();
     if(!CONFIG.modules.length || !moduleAt(sel)) sel=CONFIG.modules.length?[0]:[];
     /* migrate/repair anything the saved copy predates */
-    ensureLanguages(); ensureSpecs(); ensureCustomer(); reconcile();
+    ensureLanguages(); ensureSpecs(); ensureCustomer(); ensureSymmetricConflicts(); reconcile();
     return true;
   }catch(err){ return false; }
 }
