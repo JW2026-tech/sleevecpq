@@ -1204,6 +1204,31 @@
   .specrows .deflabel{display:block;margin-bottom:7px;font-size:10px;text-transform:uppercase;
     letter-spacing:.7px;color:var(--txt-faint)}
   .specrows .deflabel i{text-transform:none;letter-spacing:0;font-style:normal;opacity:.85}
+  /* ---- option editor: two columns of always-open cards ----
+     These four groups were collapsed <details>, so reaching an ordinary
+     field meant opening and shutting the same sections on every option.
+     Now they are laid out side by side and stay open; only the two long
+     lists (functionalities, specification lines) keep a disclosure. */
+  .ogrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;align-items:start}
+  .ocol{display:flex;flex-direction:column;gap:14px;min-width:0}
+  .oblk{border:1px solid var(--line);border-radius:11px;background:var(--sunken);padding:13px 15px 15px}
+  .oblkhead{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;color:var(--txt);
+    margin-bottom:12px}
+  .oblkhead i{font-weight:400;font-style:normal;font-size:11.5px;color:var(--txt-faint)}
+  .oblknum{flex:0 0 21px;width:21px;height:21px;border-radius:50%;border:1px solid var(--accent);
+    color:var(--accent);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  /* inside a card the fields stack in one column — the card itself is
+     already half the width, so the auto-fit grid below would only ever
+     manage one column anyway and its min-width would force overflow */
+  .oblk .ofields{grid-template-columns:1fr;gap:12px}
+  .oblk .ofields.ofields-row{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+  .oblk .descbox{margin-top:0;border:0;padding:0;background:none}
+  .oblk .picbox{margin-top:0}
+  .oblk .ofieldbody select{min-width:0}
+  /* the two long lists: a chevron row, not a whole collapsed section */
+  .oblk .deepfold{margin-top:12px;border-top:1px solid var(--line-soft);padding-top:10px}
+  .oblk .deepfold:first-child{margin-top:0;border-top:0;padding-top:0}
+  @media (max-width:1100px){ .ogrid{grid-template-columns:1fr} }
   .foldbox{margin-top:12px;border-top:1px solid var(--line-soft);padding-top:9px}
   .foldbox>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
   .foldbox>summary::-webkit-details-marker{display:none}
@@ -6552,8 +6577,15 @@ function renderAdmin(){
             ${optionPlaces(o.id).length>1?`<span class="dupnote" title="${esc(optionPlaces(o.id).map(pl=>pl.path).join(" | "))}">also in ${optionPlaces(o.id).length-1} other place${optionPlaces(o.id).length>2?"s":""} — deleting removes all</span>`:""}
             <input class="in" value="${esc(o.tag||"")}" data-f="tag" placeholder="Tag (optional)">
           </div>
-          <details class="foldbox" data-fold="scope:${esc(o.id)}" ${openAdminBlocks.has("scope:"+o.id)?"open":""}>
-            <summary class="deflabel">Scope and rules</summary>
+          ${/* Two columns of always-open cards. These four used to be
+                collapsed <details>, which meant opening and shutting the
+                same sections on every option just to reach ordinary fields.
+                Only the two genuinely long lists (functionalities and
+                specification lines) stay behind a disclosure row. */""}
+          <div class="ogrid">
+          <div class="ocol">
+          <section class="oblk">
+            <div class="oblkhead"><span class="oblknum">1</span>Scope &amp; rules</div>
             <div class="ofields">
               <div class="ofield">
                 <span class="deflabel">In a quote it starts as</span>
@@ -6595,11 +6627,11 @@ function renderAdmin(){
                 </select>
               </div>
             </div>
-          </details>
+          </section>
 
-          <details class="foldbox" data-fold="log:${esc(o.id)}" ${openAdminBlocks.has("log:"+o.id)?"open":""}>
-            <summary class="deflabel">Logistics</summary>
-            <div class="ofields">
+          <section class="oblk">
+            <div class="oblkhead"><span class="oblknum">2</span>Logistics</div>
+            <div class="ofields ofields-row">
               <div class="ofield">
                 <span class="deflabel">Installation days</span>
                 <div class="ofieldbody">
@@ -6624,15 +6656,15 @@ function renderAdmin(){
                 </div>
               </div>
             </div>
-          </details>
+          </section>
 
-          <details class="foldbox" data-fold="cust:${esc(o.id)}" ${openAdminBlocks.has("cust:"+o.id)?"open":""}>
-            <summary class="deflabel">Customer-facing</summary>
+          <section class="oblk">
+            <div class="oblkhead"><span class="oblknum">3</span>Customer-facing</div>
             <div class="descbox">
               <span class="deflabel">Description <i>— printed under this item in the scope of supply</i></span>
               <textarea class="in" rows="3" data-f="text" placeholder="What this option is and what it does — a paragraph the customer reads">${esc(o.text||"")}</textarea>
             </div>
-            <details class="specrows featrows foldbox" data-fold="ft:${esc(o.id)}" ${openAdminBlocks.has("ft:"+o.id)?"open":""}>
+            <details class="specrows featrows foldbox deepfold" data-fold="ft:${esc(o.id)}" ${openAdminBlocks.has("ft:"+o.id)?"open":""}>
               <summary class="deflabel">Machine functionalities ${featuresOf(o).length?`<b class="cnt">${featuresOf(o).length}</b>`:""}<i>— shown with the description and when this item is offered as an alternative</i></summary>
               ${featureRows(o).map((ft,fi)=>`<div class="featrow" data-fti="${fi}">
                 <input class="in" value="${esc(ft.label)}" data-ft="label" placeholder="e.g. Buffer length">
@@ -6648,8 +6680,13 @@ function renderAdmin(){
                   ${src.map(x=>`<option value="${esc(x.o.id)}">${esc(x.step)} › ${esc(x.o.name)} (${x.n})</option>`).join("")}
                 </select>`:"";})()}
             </details>
+          </section>
+          </div>
+
+          <div class="ocol">
+          <section class="oblk">
+            <div class="oblkhead">Picture <i>— travels with the catalogue, so keep it modest</i></div>
             <div class="picbox">
-              <span class="deflabel">Picture <i>— travels with the catalogue, so keep it modest</i></span>
               <div class="picrow">
                 ${o.image?`<img class="picprev" src="${o.image}" alt="">`:'<div class="picprev empty">no picture</div>'}
                 <div class="picact">
@@ -6659,11 +6696,11 @@ function renderAdmin(){
                 </div>
               </div>
             </div>
-          </details>
+          </section>
 
-          <details class="foldbox" data-fold="spec:${esc(o.id)}" ${openAdminBlocks.has("spec:"+o.id)?"open":""}>
-            <summary class="deflabel">Specifications</summary>
-            <details class="specrows foldbox" data-fold="sp:${esc(o.id)}" ${openAdminBlocks.has("sp:"+o.id)?"open":""}>
+          <section class="oblk">
+            <div class="oblkhead"><span class="oblknum">4</span>Specifications</div>
+            <details class="specrows foldbox deepfold" data-fold="sp:${esc(o.id)}" ${openAdminBlocks.has("sp:"+o.id)?"open":""}>
               <summary class="deflabel">Machine specifications ${(o.specs||[]).length?`<b class="cnt">${o.specs.length}</b>`:""}<i>— shown in section 4 when this option is in scope</i></summary>
               ${(o.specs||[]).map((sp,si)=>`<div class="specrow" data-spi="${si}">
                 <input class="in" value="${esc(sp.label||"")}" data-sp="label" placeholder="e.g. Steam consumption">
@@ -6688,7 +6725,9 @@ function renderAdmin(){
               </label>`).join("")}
             </div>
             `:""}
-          </details>
+          </section>
+          </div>
+          </div>
 
           <div class="sub">
             ${o.children&&o.children.length
