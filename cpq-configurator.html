@@ -862,6 +862,18 @@
   .sharealtspec{font-size:11.5px;color:#888;margin-top:2px}
   .sharealtprice{font-size:15px;font-weight:700;color:#EF7B0B;margin:8px 0 10px}
   .sharealtcard .btn{width:100%;border-radius:8px;margin-top:auto}
+  /* what an alternative's own property positions could become — a preview,
+     so it is visually separated from the card's own price and explicitly
+     labelled as applying only if this machine is chosen */
+  .sharealtprops{margin-top:10px;padding-top:9px;border-top:1px dashed #d8dbe8}
+  .sharealtpropshead{font-size:10px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.4px;color:#28338A;margin-bottom:5px}
+  .sharealtproprow{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+    font-size:11.5px;color:#555;padding:2px 0}
+  .sharealtproprow b{white-space:nowrap;color:#EF7B0B;font-weight:700}
+  .sharealtproprow.is-std{color:#999}
+  .sharealtproprow.is-std b{color:#999;font-weight:400}
+  .sharealtpropnote{font-size:10px;color:#aaa;margin-top:4px;font-style:italic}
   .sharealtgroup{margin-top:18px}
   .sharealtgrouplbl{font-size:11.5px;color:#999;margin-bottom:10px}
 
@@ -4454,10 +4466,53 @@ function partGapHtml(){
                  :`${g.possible} part${g.possible>1?"s":""} available, none picked`}</i></span>`).join("")}</div>
   </div>`;
 }
+/* An alternative that carries property positions with nothing offered on
+   them. Those positions only exist if that alternative is bought, so the
+   customer can never discover that the HSS6000W's twelve adjustments could
+   be digital counters — and it is exactly the kind of thing you forget when
+   putting the alternative on offer, because the types were already set up
+   somewhere else. Names the money that stays out of sight. */
+function altPropGaps(){
+  const out=[];
+  for(const m of allModules()){
+    const v=state[m.id];
+    if(v===undefined) continue;
+    const ids=Array.isArray(v)?v:[v];
+    for(const o of (m.options||[])){
+      if(!ids.includes(o.id) || !o.alt) continue;
+      for(const p of (CONFIG.props||[])){
+        if(propSkipped(p)) continue;
+        const qty=propQtyOf(o, p.id);
+        if(!qty || !(p.variants||[]).length) continue;
+        const e=assignEntry(p, o.id);
+        if(p.variants.some(x=>(e[x.id]||[]).some(s=>s==="opt"||s==="alt"))) continue;
+        const supplied=assignedVariant(p, o.id);
+        const base=supplied?(+supplied.unitPrice||0):0;
+        const best=p.variants.reduce((mx,x)=>Math.max(mx,(+x.unitPrice||0)-base),0);
+        out.push({m, o, p, qty, value:qty*best});
+      }
+    }
+  }
+  return out;
+}
+function altPropGapHtml(){
+  const gaps=altPropGaps();
+  if(!gaps.length) return "";
+  return `<div class="openwarn altpropwarn no-print">
+    <div class="ow-head">${gaps.length===1
+      ? "An alternative carries types nobody has offered"
+      : `${gaps.length} alternatives carry types nobody has offered`}</div>
+    <div class="ow-list">${gaps.map(g=>`<span class="ow-item" data-goto="${esc((g.p.step&&g.p.step.id)||g.m.id)}"
+        title="Open the ${esc(propName(g.p,g.qty))} step and offer a type on these">
+        <b>${esc(g.o.name)}</b> brings ${g.qty}&times; ${esc(String(propName(g.p,g.qty)).toLowerCase())}
+        <i>${g.value?`up to ${fmt(g.value)} the customer never sees`:"nothing offered on them"}</i>
+      </span>`).join("")}</div>
+  </div>`;
+}
 function openStepsHtml(cls){
   const open=openSteps();
-  if(!open.length) return recommendWarnHtml()+partGapHtml();
-  return recommendWarnHtml()+partGapHtml()+`<div class="openwarn no-print ${cls||""}">
+  if(!open.length) return recommendWarnHtml()+partGapHtml()+altPropGapHtml();
+  return recommendWarnHtml()+partGapHtml()+altPropGapHtml()+`<div class="openwarn no-print ${cls||""}">
     <div class="ow-head">${open.length} step${open.length>1?"s":""} still unanswered — this quote may be incomplete</div>
     <div class="ow-list">${open.map(o=>`<span class="ow-item" data-goto="${esc(o.m.id)}" title="Go to this step">${
       o.trail.length?`<span class="ow-trail">${o.trail.map(esc).join(" › ")} › </span>`:""}${esc(o.m.title||"Untitled")}</span>`).join("")}</div>
@@ -11254,6 +11309,46 @@ function sharePropAltGroups(frac){
   }
   return out;
 }
+/* ============================================================
+   WHAT AN ALTERNATIVE'S OWN PROPERTY POSITIONS COULD BECOME
+   An alternative brings its own property positions with it — the HSS6000W
+   carries twelve adjustments where the tunnel in scope carries none. Types
+   put on offer for those positions never reached the customer: the offer
+   pipeline (propOfferLines) deliberately ignores anything not in scope,
+   because its output feeds the in-scope totals and the printed documents,
+   and an alternative's extras must never land in either.
+   So this reads the same assignments directly, for one alternative, and
+   stays outside every total. It is a preview of what the customer would be
+   choosing between IF they took the alternative — without it, twelve
+   positions at up to €5.000 each were invisible until after the swap.
+   ============================================================ */
+function shareAltPropPreview(altOptId, frac){
+  const o=altOptId?optionById(altOptId):null;
+  if(!o) return [];
+  const cut=n=>(+n||0)*(1-(frac||0));
+  const out=[];
+  for(const p of (CONFIG.props||[])){
+    if(propSkipped(p)) continue;
+    const qty=propQtyOf(o, p.id);
+    if(!qty || !(p.variants||[]).length) continue;
+    const e=assignEntry(p, altOptId);
+    const supplied=assignedVariant(p, altOptId);
+    const base=supplied?(+supplied.unitPrice||0):0;
+    const levels=[];
+    for(const v of p.variants){
+      const isSupplied=!!supplied && supplied.id===v.id;
+      const offered=(e[v.id]||[]).some(s=>s==="opt"||s==="alt");
+      if(!isSupplied && !offered) continue;
+      levels.push({name:v.name, supplied:isSupplied,
+                   delta:cut(qty*((+v.unitPrice||0)-base))});
+    }
+    /* nothing to choose between — one type and no offer against it — is not
+       worth a panel; the sales-side warning covers the case where the offer
+       was simply never set up */
+    if(levels.some(l=>!l.supplied)) out.push({qty, label:propName(p,qty), levels});
+  }
+  return out;
+}
 /* every comparison the customer's page offers: the option alternatives as
    altCompares() builds them, plus the property ones regrouped per module */
 function shareAltGroups(frac){
@@ -11271,7 +11366,7 @@ function shareStepChosen(m){
 /* one product card per top-level item in the quote. `first` gets the
    reassurance badge — repeating it on every card would turn a claim into
    wallpaper. */
-function shareHeroCardHtml(block, first){
+function shareHeroCardHtml(block, first, frac){
   const o=block.o, pic=rowPicture(o);
   const specs=(featuresOf(o).length
       ? featuresOf(o).map(f=>({label:f.label, value:f.value||"yes"}))
@@ -11312,7 +11407,7 @@ function shareHeroCardHtml(block, first){
       ${(block.alts||[]).length?`<div class="shareheroups shareheroalts">
         <div class="shareupshead">Alternatives for this module
           <i>— offered instead of what is quoted above, not on top of it</i></div>
-        ${block.alts.map(shareAltGroupHtml).join("")}
+        ${block.alts.map(c=>shareAltGroupHtml(c, frac)).join("")}
       </div>`:""}
     </div>
   </div>`;
@@ -11409,9 +11504,9 @@ function shareAltCardsHtml(frac, blocks){
   return `<div class="sharesectionhead">
       <h3>Other alternatives</h3>
       <div class="sharesectionsub">An alternative replaces the item it stands against, it is not quoted on top of it.</div>
-    </div>` + list.map(shareAltGroupHtml).join("");
+    </div>` + list.map(c=>shareAltGroupHtml(c, frac)).join("");
 }
-function shareAltGroupHtml(c){
+function shareAltGroupHtml(c, frac){
     const specLine=h=>{
       const f=featuresOf((h&&h.opt)||{}).slice(0,2)
         .map(x=>`${x.label} ${x.value||""}`.trim());
@@ -11435,6 +11530,21 @@ function shareAltGroupHtml(c){
             /* "Choose this machine" is wrong on a set of feet or a lock
                bracket — those are types fitted to the machine, not a machine */
             String(c.key||"").startsWith("prop:")?"Choose this instead":"Choose this machine"}</button>`}
+          ${/* what this machine's own property positions could become — the
+                figures only apply if this alternative is the one taken, so
+                they are framed as "with this machine", never as included */""}
+          ${(h.base||!h.opt)?"":(()=>{
+            const prev=shareAltPropPreview(h.opt.id, frac);
+            if(!prev.length) return "";
+            return prev.map(x=>`<div class="sharealtprops">
+              <div class="sharealtpropshead">Brings ${x.qty}&times; ${esc(String(x.label).toLowerCase())}</div>
+              ${x.levels.map(l=>`<div class="sharealtproprow ${l.supplied?"is-std":""}">
+                <span class="nm">${esc(l.name)}</span>
+                <b>${l.supplied?"included":(l.delta?`+ ${fmt(l.delta)}`:"no extra cost")}</b>
+              </div>`).join("")}
+              <div class="sharealtpropnote">Choosable once this machine is selected</div>
+            </div>`).join("");
+          })()}
         </div>`).join("")}</div>
       ${c.note?`<div class="secnote">${esc(c.note)}</div>`:""}
     </div>`;
@@ -11491,7 +11601,7 @@ function shareProposalHtml(){
   return `<div class="shareproposalwrap">
       <div class="shareproposalmain">
         <div class="shareheroes">
-          ${blocks.map((b,i)=>shareHeroCardHtml(b, i===0)).join("")}
+          ${blocks.map((b,i)=>shareHeroCardHtml(b, i===0, frac)).join("")}
         </div>
         ${shareUpgradeCardsHtml(frac, blocks)}
         ${shareAltCardsHtml(frac, blocks)}
