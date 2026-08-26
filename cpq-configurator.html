@@ -733,8 +733,9 @@
   .sharebaselbl{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#888}
   .sharebaseprice{font-size:25px;font-weight:700;color:#EF7B0B}
   .sharebaseincl{font-size:11px;color:#888;margin-top:2px}
-  .sharebadge{background:#1c2563;color:#fff;font-size:12px;font-weight:600;line-height:1.4;
-    padding:12px 16px;border-radius:10px;max-width:200px;display:flex;align-items:center;gap:8px}
+  .sharebadge{background:#1c2563;color:#fff;font-size:11.5px;font-weight:500;line-height:1.45;
+    padding:12px 16px;border-radius:10px;max-width:215px;display:flex;align-items:center;gap:9px}
+  .sharebadge b{font-weight:700;font-size:12.5px}
 
   /* the summary follows the reader down the page. sticky (not fixed) keeps
      it inside its own column, so it never covers the item list, and
@@ -10687,7 +10688,11 @@ function shareHeroCardHtml(block, first){
           ${block.taken.length?`<div class="sharebaseincl">incl. ${
             block.taken.map(r=>esc(r.node.o.name||"")).join(", ")}</div>`:""}
         </div>
-        ${first?`<div class="sharebadge">${shareShieldIconSvg()}<span>Proven performance.<br>Built for your future.</span></div>`:""}
+        ${/* a figure the customer can hold us to, rather than a slogan:
+              ≥98% measured over an 8-hour test and written into the SAT
+              protocol. The plan's "trust and transparency" point is that
+              customers value being given hard performance data. */""}
+        ${first?`<div class="sharebadge">${shareShieldIconSvg()}<span><b>&ge;98% machine efficiency</b><br>Agreed in your SAT protocol</span></div>`:""}
       </div>
     </div>
   </div>`;
@@ -10823,7 +10828,12 @@ function shareCoverHtml(){
   const cust=(CONFIG.customer||"").trim();
   return `<div class="sharecover">
     ${logoBlock("big")}
-    <div class="sharecovertag">The best shrink sleeve machinery in the world</div>
+    ${/* The marketing plan's own cover line. It replaced "the best shrink
+          sleeve machinery in the world": an unbacked superlative sits badly
+          with the "Independent & Authentic" value and with ranking third
+          today, and the printed PDF never carried it either — the same quote
+          said two different things depending on how the customer opened it. */""}
+    <div class="sharecovertag">Strong on the inside. Built to perform on the outside.</div>
     <div class="sharecovertag2">The partner for tight solutions</div>
     <div class="sharecoverrule"></div>
     <div class="sharecovertitle">Quotation</div>
