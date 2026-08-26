@@ -824,21 +824,6 @@
      page — the hero and alternative cards use their own classes — so this
      reaches exactly the breakdown. */
   body.share-mode .plinepic{display:none!important}
-  /* ---- what was chosen, and what wasn't ---- */
-  .shareconf{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
-  .shareconfstep{border:1px solid #e3e6f0;border-radius:11px;padding:13px 15px 9px;background:#fbfbfd}
-  .shareconfhead{font-size:12.5px;font-weight:700;color:#1c2563;margin-bottom:9px}
-  .shareconftrail{display:block;font-size:10.5px;font-weight:400;color:#999;margin-top:2px}
-  .shareconfrow{display:flex;align-items:baseline;gap:8px;font-size:12.5px;color:#8a8a94;
-    padding:5px 0;border-top:1px solid #f0f1f6}
-  .shareconfrow.first{border-top:0}
-  .shareconfrow .mark{flex:0 0 13px;width:13px;color:#EF7B0B;font-weight:700;font-size:11.5px}
-  .shareconfrow .nm{flex:1;min-width:0}
-  .shareconfrow .st{flex:0 0 auto;font-size:9.5px;font-weight:700;text-transform:uppercase;
-    letter-spacing:.4px;color:#c3c3cc}
-  .shareconfrow.on{color:#222}
-  .shareconfrow.on .nm{font-weight:600}
-  .shareconfrow.on .st{color:#28338A}
   .sharesectionhead{margin:34px 0 14px}
   .sharesectionhead h3{margin:0;font-size:14.5px;font-weight:700;color:#222;text-transform:uppercase;letter-spacing:.3px}
   .sharesectionsub{font-size:12.5px;color:#777;margin-top:2px}
@@ -11549,45 +11534,6 @@ function shareAltGroupHtml(c, frac){
       ${c.note?`<div class="secnote">${esc(c.note)}</div>`:""}
     </div>`;
 }
-/* ============================================================
-   WHAT WAS CHOSEN, AND WHAT WASN'T
-   The breakdown lists what is being quoted. This says what the choice was:
-   every step in the configuration with the options it offered, and which of
-   them this quote includes. It answers "did they consider X?" without the
-   customer having to ask.
-   Deliberately without prices on the lines that were not chosen — those are
-   not being quoted, and printing a figure against them would read as an
-   offer. What IS quoted already carries its price in the breakdown above.
-   ============================================================ */
-function shareConfigChoicesHtml(){
-  /* generated steps (property types, format parts, services) carry no
-     options of their own, so they drop out here by themselves */
-  const steps=flattenD(activeModules()).filter(nd=>(nd.m.options||[]).length>1);
-  if(!steps.length) return "";
-  return `<div class="sharesectionhead">
-      <h3>Configuration — what was chosen</h3>
-      <div class="sharesectionsub">Every step of this configuration, the options it offers, and which of them this quotation includes.</div>
-    </div>
-    <div class="shareconf">${steps.map(nd=>{
-      const m=nd.m;
-      const v=state[m.id];
-      const ids=(v===undefined)?[]:(Array.isArray(v)?v:[v]);
-      return `<div class="shareconfstep">
-        <div class="shareconfhead">${esc(m.title||"")}${nd.trail.length
-          ?`<span class="shareconftrail">${nd.trail.map(esc).join(" &rsaquo; ")}</span>`:""}</div>
-        ${(m.options||[]).map((o,i)=>{
-          const on=ids.includes(o.id);
-          const label = on ? (o.alt?"alternative":(o.optional?"optional":"included"))
-                           : (isNA(o.id)?"not applicable":"not selected");
-          return `<div class="shareconfrow ${on?"on":""} ${i===0?"first":""}">
-            <span class="mark">${on?"&#10003;":""}</span>
-            <span class="nm">${esc(o.name||"")}</span>
-            <span class="st">${label}</span>
-          </div>`;
-        }).join("")}
-      </div>`;
-    }).join("")}</div>`;
-}
 function shareProposalHtml(){
   const inScopeRows=buildPriceRows(priceDetail==="top");
   const optRowsAll=buildOptionalRows(priceDetail==="top");
@@ -11610,7 +11556,6 @@ function shareProposalHtml(){
           <div class="sharesectionsub">Every item in the scope of this quotation, with its price.</div>
         </div>
         ${proposalHtml({skipHeader:true, skipOptional:true, skipAlts:true})}
-        ${shareConfigChoicesHtml()}
       </div>
       ${shareSummaryCardHtml(frac)}
     </div>`;
