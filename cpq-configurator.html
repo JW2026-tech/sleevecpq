@@ -91,7 +91,7 @@
     color:var(--txt-faint);opacity:0;transition:opacity .12s}
   .step:hover .foldall-btn,.mrow:hover .foldall-btn{opacity:1}
   .foldall-btn:hover{color:var(--txt);background:var(--panel-2)}
-  .mrow .foldall-btn{margin-left:auto}
+  .mrow .foldall-btn,.step .foldall-btn{margin-left:auto}
   .step{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border-radius:8px;cursor:pointer;color:var(--txt-dim);transition:.12s}
   .step:hover{background:var(--panel-2);color:var(--txt)}
   .step.active{background:var(--accent-soft);color:var(--txt)}
@@ -6211,11 +6211,14 @@ function renderConfigure(){
     return `${branch}<div class="step ${i===cursor?"active":""} ${done?"done":""} ${hasOptSel?"opt-sel":""} ${nd.depth?"nested":""} ${mm.generated?"generated":""}" data-i="${i}">
       <div class="guides">${guides(nd.depth)}</div>
       ${toggle}
+      <div class="dot">${done?"&#10003;":""}</div>
+      <div class="body"><div class="t">${esc(mm.title)}${hiddenOpen?`<span class="openbadge" title="${hiddenOpen} step${hiddenOpen>1?"s":""} under here still unanswered">${hiddenOpen}</span>`:""}${hasOptSel?' <span class="optpill">optional</span>':""}</div></div>
+      ${/* at the END of the row on purpose: sitting before the dot, it stole
+            16px from every row that has children and left the dots of rows
+            without children out of line with them */""}
       ${hasChildren?`<span class="foldall-btn" data-foldall="${esc(mm.id)}"
         title="${allOpenBelow?"Collapse everything under this step":"Expand everything under this step"}">${
-        allOpenBelow?"&#8722;":"&#43;"}</span>`:""}
-      <div class="dot">${done?"&#10003;":""}</div>
-      <div class="body"><div class="t">${esc(mm.title)}${hiddenOpen?`<span class="openbadge" title="${hiddenOpen} step${hiddenOpen>1?"s":""} under here still unanswered">${hiddenOpen}</span>`:""}${hasOptSel?' <span class="optpill">optional</span>':""}</div></div></div>`;
+        allOpenBelow?"&#8722;":"&#43;"}</span>`:""}</div>`;
   }).join("");
   document.querySelectorAll("#nav .step").forEach(el=>el.onclick=()=>{cursor=+el.dataset.i;renderConfigure();});
   document.querySelectorAll("#nav .fold-toggle[data-fold]").forEach(t=>t.onclick=(e)=>{
