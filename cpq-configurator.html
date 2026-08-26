@@ -432,7 +432,18 @@
   }
 
   /* ==================== ADMIN VIEW (feature-tree style) ==================== */
-  .admin{display:grid;grid-template-columns:290px 1fr;min-height:calc(100vh - 53px)}
+  .admin{display:grid;grid-template-columns:290px 1fr;grid-template-rows:auto 1fr;
+    min-height:calc(100vh - 53px)}
+  /* the publish bar spans both Admin columns, above the tree and the editor */
+  .catbar{grid-column:1 / -1;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    padding:9px 16px;border-bottom:1px solid var(--line);background:var(--rail);font-size:12.5px}
+  .catbar.dirty{background:var(--warn-softer);border-bottom-color:var(--warn)}
+  .catbar .catmsg{flex:1;min-width:180px;color:var(--txt-dim)}
+  .catbar.dirty .catmsg{color:var(--txt)}
+  .catbar .catmsg b{color:var(--txt)}
+  .catbar .catdot{flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:var(--ok)}
+  .catbar.dirty .catdot{background:var(--warn)}
+  .catbar .btn{white-space:nowrap}
   .mlist{border-right:1px solid var(--line);background:var(--rail);padding:18px 12px;overflow-y:auto}
   .mrow{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;cursor:pointer;color:var(--txt-dim);white-space:nowrap}
   .mrow:hover{background:var(--panel-2);color:var(--txt)}
@@ -2035,6 +2046,11 @@
 
 <!-- ===== admin ===== -->
 <div class="admin hidden" id="viewAdmin">
+  <!-- Publishing the catalogue lives here, next to the edits it publishes:
+       Admin changes only reach the team (and the PDF renderer, and live
+       customer links) once published, and it was too easy to walk away
+       without doing it. renderCatalogueBar() fills this in. -->
+  <div class="catbar" id="catBar"></div>
   <div class="mlist">
     <div class="nav-label">Documents</div>
     <div class="mrow section-nav" id="langNavBtn"><span class="ic">&#127760;</span><div class="n">Quote templates</div></div>
@@ -6446,6 +6462,7 @@ function treeHtml(list,path,depth){
 
 function renderAdmin(){
   if(typeof saveSoon==="function") saveSoon();   // remember which section is open
+  renderCatalogueBar();                          // publish state, above everything
   invalidateQtyCache();
   ensureLanguages();
   ensureSpecs();
@@ -9902,6 +9919,92 @@ function pickKeys(src, keys){
 function cataloguePayload(){
   return {kind:"cpq-catalogue", v:1, savedAt:Date.now(), catalogue:pickKeys(CONFIG, CATALOGUE_KEYS)};
 }
+/* ============================================================
+   UNPUBLISHED CATALOGUE CHANGES
+   Admin edits (prices, options, parts, templates…) are auto-saved to
+   localStorage with everything else, but they only reach the team — and the
+   PDF renderer, and live customer links — when the catalogue is published.
+   Worse, boot() used to load the cloud catalogue over the top of the
+   restored local one every time, so a plain refresh silently threw away
+   unpublished Admin work. These three keep track of whether the catalogue
+   in memory still matches the last one published or loaded, so nothing is
+   discarded without asking.
+   ============================================================ */
+let publishedSig=null;         // signature of the catalogue as last published/loaded
+let _sigCache={at:0, sig:null};
+/* A 32-bit rolling hash of the catalogue JSON. Cheap enough to call from a
+   render, and cached briefly because base64 images make the string large. */
+function catalogueSig(){
+  const now=Date.now();
+  if(_sigCache.sig!==null && (now-_sigCache.at)<400) return _sigCache.sig;
+  let s;
+  try{ s=JSON.stringify(pickKeys(CONFIG, CATALOGUE_KEYS)); }
+  catch(err){ return _sigCache.sig; }        // circular/oversized: keep the last answer
+  let h=5381;
+  for(let i=0;i<s.length;i++) h=(((h<<5)+h)^s.charCodeAt(i))>>>0;
+  const sig=h.toString(36)+"-"+s.length.toString(36);
+  _sigCache={at:now, sig};
+  return sig;
+}
+function markCataloguePublished(){ _sigCache={at:0,sig:null}; publishedSig=catalogueSig(); }
+/* null publishedSig means we never had a baseline (no cloud, first run), and
+   claiming "unpublished changes" then would cry wolf on every load */
+function catalogueChanged(){ return !!publishedSig && catalogueSig()!==publishedSig; }
+/* Set when boot() finds unpublished edits and therefore refuses to pull the
+   team catalogue over them. Holds the version it did not load, so the bar can
+   offer to take it after publishing (or instead of it). */
+let heldCloudCatalogue=null;
+function renderCatalogueBar(){
+  const bar=document.getElementById("catBar");
+  if(!bar) return;
+  const dirty=catalogueChanged();
+  bar.classList.toggle("dirty", dirty);
+  const held=heldCloudCatalogue
+    ? ` The team's version ${heldCloudCatalogue.version?`(${heldCloudCatalogue.version}) `:""}was <b>not</b> loaded, so it can't overwrite them.`
+    : "";
+  bar.innerHTML=`
+    <span class="catdot"></span>
+    <span class="catmsg">${dirty
+      ? `<b>Unpublished catalogue changes.</b> They are saved on this computer, but colleagues, new PDFs and customer links still see the old prices until you publish.${held}`
+      : `Catalogue is up to date with the published version.`}</span>
+    ${dirty?`<button class="btn primary sm" id="catPublish">Publish catalogue</button>`:""}
+    ${dirty?`<button class="btn sm" id="catDiscard" title="Throw away your unpublished edits and load the published catalogue">Discard my changes</button>`:""}
+    ${(!dirty&&heldCloudCatalogue)?`<button class="btn sm" id="catTake">Load the team's latest</button>`:""}`;
+  const pub=document.getElementById("catPublish");
+  if(pub) pub.onclick=async ()=>{
+    pub.disabled=true;
+    const label=prompt("Label for this catalogue version (optional):", new Date().toISOString().slice(0,10).replace(/-/g,""));
+    if(label===null){ pub.disabled=false; return; }
+    try{
+      const v=await cloudPublishCatalogue(label);
+      heldCloudCatalogue=null;
+      flagSaved("Published version "+v);
+      renderCatalogueBar();
+    }catch(err){
+      pub.disabled=false;
+      alert("Could not publish: "+(err&&err.message||err));
+    }
+  };
+  const dis=document.getElementById("catDiscard");
+  if(dis) dis.onclick=async ()=>{
+    if(!confirm("Throw away your unpublished catalogue changes and load the published version? This cannot be undone.")) return;
+    if(await cloudLoadLatestCatalogue()){
+      heldCloudCatalogue=null;
+      flagSaved("Loaded the published catalogue");
+      renderAdmin();
+      renderCatalogueBar();
+    } else alert("Could not load a catalogue — has one ever been published?");
+  };
+  const take=document.getElementById("catTake");
+  if(take) take.onclick=async ()=>{
+    if(await cloudLoadLatestCatalogue()){
+      heldCloudCatalogue=null;
+      flagSaved("Catalogue updated");
+      renderAdmin();
+      renderCatalogueBar();
+    }
+  };
+}
 function quotePayload(name){
   return {kind:"cpq-quote", v:2, name:name||defaultQuoteName(), savedAt:Date.now(),
           quote:pickKeys(CONFIG, QUOTE_KEYS),
@@ -9953,7 +10056,11 @@ async function cloudLoadLatestCatalogue(){
   const {data, error} = await supa.from("catalogue_versions").select("data")
     .order("version",{ascending:false}).limit(1).single();
   if(error || !data) return false;
-  return applyCatalogue({catalogue: data.data});
+  const ok=applyCatalogue({catalogue: data.data});
+  /* what is now in memory is exactly what the team has, so that becomes the
+     baseline unpublished edits are measured against */
+  if(ok) markCataloguePublished();
+  return ok;
 }
 /* TEMPORARY TEST MODE: publishing normally goes through the `publish_catalogue`
    RPC (supabase-schema.sql), which only a signed-in admin may call. With
@@ -9969,6 +10076,8 @@ async function cloudPublishCatalogue(label){
   const {data, error} = await supa.from("catalogue_versions")
     .insert({version, label: label||null, data: cataloguePayload().catalogue}).select("version").single();
   if(error) throw error;
+  markCataloguePublished();
+  renderCatalogueBar();
   return data.version;
 }
 function quoteRowPayload(){
@@ -10086,8 +10195,11 @@ const SAVE_KEY="cpq-configurator/v1";
 let saveTimer=null, storageOK=true;
 
 function snapshot(){
+  /* publishedSig travels with the snapshot: without it a reload has no
+     baseline to compare against and could not tell an unpublished Admin
+     edit from a catalogue that was already published */
   return JSON.stringify({v:1, savedAt:Date.now(), CONFIG, state, docLang, cursor, includedSteps,
-                         navWidth, partsColW, mode, docsTab, adminSection, sel});
+                         navWidth, partsColW, mode, docsTab, adminSection, sel, publishedSig});
 }
 function saveNow(){
   if(!storageOK) return;
@@ -10131,6 +10243,8 @@ function applySnapshot(raw){
     includedSteps=Array.isArray(d.includedSteps)?d.includedSteps:[];
     navWidth=+d.navWidth||null;
     partsColW=(d.partsColW&&typeof d.partsColW==="object")?d.partsColW:{};
+    publishedSig=(typeof d.publishedSig==="string")?d.publishedSig:null;
+    _sigCache={at:0, sig:null};
     /* pick up where the last session left off — the screen that was open,
        which document tab, and which Admin section */
     if(["configure","formats","service","admin","docs","quotes"].includes(d.mode)) mode=d.mode;
@@ -11108,7 +11222,18 @@ function shareSaveSoon(){
 document.addEventListener("input", saveSoon, true);
 document.addEventListener("change", saveSoon, true);
 /* last-chance flush so an edit made in the final 400ms isn't lost */
-window.addEventListener("beforeunload", ()=>{ clearTimeout(saveTimer); saveNow(); });
+window.addEventListener("beforeunload", (e)=>{
+  clearTimeout(saveTimer); saveNow();
+  /* Unpublished catalogue edits survive a reload now, but they are still
+     only on this computer — a colleague, a fresh PDF or a customer link
+     won't see them. Worth one prompt before walking away. Browsers show
+     their own wording; returnValue just has to be non-empty. */
+  if(catalogueChanged()){
+    e.preventDefault();
+    e.returnValue="You have unpublished catalogue changes.";
+    return e.returnValue;
+  }
+});
 document.addEventListener("visibilitychange", ()=>{ if(document.hidden){ clearTimeout(saveTimer); saveNow(); } });
 
 /* the normal, signed-in, local-first startup this app has always done —
@@ -11305,9 +11430,24 @@ async function boot(){
      await afterSignIn(session);` here in place of the block below, and run
      the REVERT statements at the bottom of supabase-schema-testmode.sql. */
   bootLocalOnly();
-  /* catalogue now comes from the cloud regardless of sign-in state (see
-     supabase-schema-testmode.sql) — the old S-drive auto-load is gone */
-  try{ await cloudLoadLatestCatalogue(); }catch(err){}
+  /* Catalogue comes from the cloud regardless of sign-in state (see
+     supabase-schema-testmode.sql) — the old S-drive auto-load is gone.
+     But NOT over the top of unpublished Admin edits: this used to run
+     unconditionally, so every refresh silently destroyed catalogue work that
+     had never been published. If the restored session has changes the team
+     hasn't seen, the cloud copy is held back and the Admin bar offers the
+     choice instead. */
+  try{
+    if(catalogueChanged()){
+      const {data} = await supa.from("catalogue_versions").select("version")
+        .order("version",{ascending:false}).limit(1).maybeSingle();
+      heldCloudCatalogue={version:(data&&data.version)||null};
+      flagSaved("Unpublished catalogue changes kept", true);
+    } else {
+      await cloudLoadLatestCatalogue();
+    }
+  }catch(err){}
+  renderCatalogueBar();
   const {data:{session}}=await supa.auth.getSession();
   if(session){
     document.getElementById("whoAmI").textContent=session.user.email||"";
