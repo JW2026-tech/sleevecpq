@@ -3988,7 +3988,7 @@ function propItemName(p, o, qty){
 function propsLabel(o){
   if(!o || !o.props) return "";
   return (CONFIG.props||[])
-    .filter(p=>propQtyOf(o,p.id)>0)
+    .filter(p=>!propSkipped(p) && propQtyOf(o,p.id)>0)
     .map(p=>{ const q=propQtyOf(o,p.id); return `${q}× ${esc(propItemName(p,o,q))}`; })
     .join(", ");
 }
@@ -4574,7 +4574,7 @@ const addProps=(into,from)=>{ for(const k in from) into[k]=(into[k]||0)+from[k];
 function propsMapLabel(map){
   if(!map) return "";
   return (CONFIG.props||[])
-    .filter(p=>map[p.id]>0)
+    .filter(p=>!propSkipped(p) && map[p.id]>0)
     .map(p=>`${map[p.id]}× ${esc(propName(p,map[p.id]))}`)
     .join(", ");
 }
@@ -5561,6 +5561,7 @@ function altCompareHtml(frac){
     /* what each choice adds to the machine, named by the type it gets */
     const propRows=[];
     for(const pp of (CONFIG.props||[])){
+      if(propSkipped(pp)) continue;          // left out of this quote entirely
       const cells=heads.map(h=>{
         const o=h.opt||{};
         const q=propQtyOf(o, pp.id);
