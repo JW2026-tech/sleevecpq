@@ -793,6 +793,16 @@
   .sharequestions .qrow{display:flex;align-items:center;gap:8px;margin-top:7px}
   .sharequestions .qrow svg{flex:0 0 auto;color:#28338A}
 
+  /* Upgrades living inside the machine card they belong to. It sits inside
+     .shareherobody, which already pads 22px/24px — the negative margins pull
+     it back out to the card's own edges so the divider spans the full width
+     instead of floating inside the text column. */
+  .shareheroups{border-top:1px solid #e8e8ee;margin:20px -24px -22px;
+    padding:16px 24px 20px;background:#fff}
+  .shareupshead{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+    color:#28338A;margin-bottom:11px}
+  .shareupshead i{font-weight:400;font-style:normal;text-transform:none;letter-spacing:0;color:#999}
+  .shareheroups .shareupgrades{grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
   .sharesectionhead{margin:34px 0 14px}
   .sharesectionhead h3{margin:0;font-size:14.5px;font-weight:700;color:#222;text-transform:uppercase;letter-spacing:.3px}
   .sharesectionsub{font-size:12.5px;color:#777;margin-top:2px}
@@ -10865,7 +10875,22 @@ function shareStepBlocks(frac){
     const home=blocks.find(b=>b.step && b.step===(t.node.root||null));
     if(home) home.taken.push(t);
   }
+  /* Each upgrade belongs to the machine it bolts onto, so it is shown inside
+     that machine's card rather than in one long list at the bottom where the
+     reader has to work out for themselves which item an upgrade is for. Same
+     root-step match as above. Anything with no matching block stays in the
+     leftover list (see shareProposalHtml) so no upgrade can go missing. */
+  for(const u of shareUpgradeRows(frac)){
+    const home=blocks.find(b=>b.step && b.step===(u.node.root||null));
+    if(home){ (home.upgrades||(home.upgrades=[])).push(u); u.__placed=true; }
+  }
   return blocks;
+}
+/* the optional items a customer can actually add or drop, priced at the same
+   discount as everything else on the page */
+function shareUpgradeRows(frac){
+  return scaleRows(buildOptionalRows(false), frac)
+    .filter(r=>!r.isGroup && !r.subtotal && takeableId(r.node.o));
 }
 /* what a step actually holds in scope — the picked options that are neither
    optional extras nor alternatives */
@@ -10909,6 +10934,13 @@ function shareHeroCardHtml(block, first){
               quotation and the website make the same promise */""}
         ${first?`<div class="sharebadge">${shareShieldIconSvg()}<span><b>Guaranteed &ge;98% efficiency</b></span></div>`:""}
       </div>
+      ${/* the upgrades for THIS machine, inside its own card — so it is never
+            a puzzle which item an upgrade bolts onto */""}
+      ${(block.upgrades||[]).length?`<div class="shareheroups">
+        <div class="shareupshead">Upgrade options for this module
+          <i>— quoted separately, on top of the price above</i></div>
+        <div class="shareupgrades">${block.upgrades.map(shareUpgradeCardHtml).join("")}</div>
+      </div>`:""}
     </div>
   </div>`;
 }
@@ -10957,29 +10989,32 @@ function shareSummaryCardHtml(frac){
 /* every optional item the customer can add, one card each — the same
    take/put-back buttons the price list has, so wirePriceToggles() picks
    them up unchanged */
+function shareUpgradeCardHtml(r){
+  const o=r.node.o, id=takeableId(o);
+  const q=+(o.qty||0)||optQty(o);
+  const note=(o.text||"").trim() || (featuresOf(o)[0]
+    ? `${featuresOf(o)[0].label} ${featuresOf(o)[0].value||""}`.trim() : "") || o.fmtFor || "";
+  return `<div class="shareupcard ${r.taken?"is-taken":""}">
+    <div class="shareupicon">${shareSparkIconSvg()}</div>
+    <div class="shareupname">${q>1?`${q}&times; `:""}${esc(o.name||"")}</div>
+    ${note?`<div class="shareupdesc">${esc(note.length>90?note.slice(0,88)+"…":note)}</div>`:""}
+    <div class="shareupprice">${r.hide?"price on request":(r.price?fmt(r.price):"included")}</div>
+    ${r.taken
+      ? `<button class="btn sm pbtn takeopt taken no-print" data-untake="${esc(id)}">In your quote — remove</button>`
+      : `<button class="btn sm pbtn takeopt no-print" data-take="${esc(id)}">Add upgrade &nbsp;+</button>`}
+  </div>`;
+}
+/* only the upgrades that found no home in a product card — normally none.
+   A step can be removed from the quote while an optional item it produced is
+   still around, and an orphan must not vanish silently. */
 function shareUpgradeCardsHtml(frac){
-  const rows=scaleRows(buildOptionalRows(false), frac)
-    .filter(r=>!r.isGroup && !r.subtotal && takeableId(r.node.o));
+  const rows=shareUpgradeRows(frac).filter(r=>!r.__placed);
   if(!rows.length) return "";
   return `<div class="sharesectionhead">
-      <h3>Upgrade options</h3>
-      <div class="sharesectionsub">Enhance your line with proven upgrades — each is quoted separately, on top of the total above.</div>
+      <h3>Other upgrade options</h3>
+      <div class="sharesectionsub">Each is quoted separately, on top of the total.</div>
     </div>
-    <div class="shareupgrades">${rows.map(r=>{
-      const o=r.node.o, id=takeableId(o);
-      const q=+(o.qty||0)||optQty(o);
-      const note=(o.text||"").trim() || (featuresOf(o)[0]
-        ? `${featuresOf(o)[0].label} ${featuresOf(o)[0].value||""}`.trim() : "") || o.fmtFor || "";
-      return `<div class="shareupcard ${r.taken?"is-taken":""}">
-        <div class="shareupicon">${shareSparkIconSvg()}</div>
-        <div class="shareupname">${q>1?`${q}&times; `:""}${esc(o.name||"")}</div>
-        ${note?`<div class="shareupdesc">${esc(note.length>90?note.slice(0,88)+"…":note)}</div>`:""}
-        <div class="shareupprice">${r.hide?"price on request":(r.price?fmt(r.price):"included")}</div>
-        ${r.taken
-          ? `<button class="btn sm pbtn takeopt taken no-print" data-untake="${esc(id)}">In your quote — remove</button>`
-          : `<button class="btn sm pbtn takeopt no-print" data-take="${esc(id)}">Add upgrade &nbsp;+</button>`}
-      </div>`;
-    }).join("")}</div>`;
+    <div class="shareupgrades">${rows.map(shareUpgradeCardHtml).join("")}</div>`;
 }
 /* the machines offered instead of the one in scope, side by side as cards.
    The full spec-by-spec comparison table still follows below (altCompareHtml
