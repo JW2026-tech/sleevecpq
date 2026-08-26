@@ -10596,15 +10596,31 @@ function shareSpecIconFor(label){
    up to exactly investmentGrandTotal() — a summary whose lines don't sum to
    its own total is worse than no summary. */
 function shareStepBlocks(frac){
-  const rows=scaleRows(buildPriceRows(false), frac).filter(r=>!r.isGroup && !r.subtotal);
+  const rows=scaleRows(buildPriceRows(false), frac).filter(r=>!r.subtotal);
   const blocks=[];
   let cur=null;
   for(const r of rows){
+    /* A step the salesperson rolled up has no rows of its own — every item
+       in it is folded onto one group line that carries the whole price. It
+       is still one block; skipping these lost both the card and its money
+       from the total. */
+    if(r.isGroup){
+      cur=null;
+      if(isServiceRow(r)) continue;
+      const chosen=shareStepChosen(r.group);
+      /* name it after what was chosen in the step rather than the step
+         itself, so the card reads "Steam Tunnel HSS3000", not "Shrinking" */
+      const o = chosen.length===1 ? chosen[0]
+        : {name:(r.group&&r.group.title)||"", image:stepPicture(r.group), text:"", specs:[]};
+      blocks.push({row:r, o, price:(r.hide?0:(+r.price||0)), taken:[],
+                   also:(chosen.length>1?chosen:[])});
+      continue;
+    }
     const depth=r.node.depth||0;
     if(depth===0){
       /* days on site and packaging are summarised on their own line, not as
          a product card — they are not a thing with a picture and specs */
-      cur = isServiceRow(r) ? null : {row:r, o:r.node.o, price:0, taken:[]};
+      cur = isServiceRow(r) ? null : {row:r, o:r.node.o, price:0, taken:[], also:[]};
       if(cur) blocks.push(cur);
     }
     if(!cur || isServiceRow(r)) continue;
@@ -10613,6 +10629,14 @@ function shareStepBlocks(frac){
     cur.price += (+r.price||0);
   }
   return blocks;
+}
+/* what a step actually holds in scope — the picked options that are neither
+   optional extras nor alternatives */
+function shareStepChosen(m){
+  const v=state[m&&m.id];
+  if(v===undefined) return [];
+  const ids=Array.isArray(v)?v:[v];
+  return (m.options||[]).filter(o=>ids.includes(o.id) && !o.optional && !o.alt);
 }
 /* one product card per top-level item in the quote. `first` gets the
    reassurance badge — repeating it on every card would turn a claim into
@@ -10638,6 +10662,8 @@ function shareHeroCardHtml(block, first){
         <div>
           <div class="sharebaselbl">${esc(o.name||"")} — investment</div>
           <div class="sharebaseprice">${block.price?fmt(block.price):"—"}</div>
+          ${(block.also||[]).length?`<div class="sharebaseincl">${
+            block.also.map(o=>esc(o.name||"")).join(" &middot; ")}</div>`:""}
           ${block.taken.length?`<div class="sharebaseincl">incl. ${
             block.taken.map(r=>esc(r.node.o.name||"")).join(", ")}</div>`:""}
         </div>
@@ -10659,7 +10685,8 @@ function shareSummaryCardHtml(frac){
       <div class="sharesummaryhead">Investment summary</div>
       <div class="sharesummarybody">
         ${blocks.length?blocks.map(b=>`<div class="sharesummaryrow">
-          <span>${esc(b.o.name||"")}${b.taken.length
+          <span>${esc(b.o.name||"")}${(b.also||[]).length
+            ?`<span class="sub">${b.also.map(o=>esc(o.name||"")).join(" &middot; ")}</span>`:""}${b.taken.length
             ?`<span class="sub">incl. ${b.taken.map(r=>esc(r.node.o.name||"")).join(", ")}</span>`:""}</span>
           <b>${b.price?fmt(b.price):"—"}</b>
         </div>`).join("")
