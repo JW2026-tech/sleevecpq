@@ -10882,7 +10882,7 @@ function shareStepBlocks(frac){
      leftover list (see shareProposalHtml) so no upgrade can go missing. */
   for(const u of shareUpgradeRows(frac)){
     const home=blocks.find(b=>b.step && b.step===(u.node.root||null));
-    if(home){ (home.upgrades||(home.upgrades=[])).push(u); u.__placed=true; }
+    if(home) (home.upgrades||(home.upgrades=[])).push(u);
   }
   return blocks;
 }
@@ -11004,11 +11004,16 @@ function shareUpgradeCardHtml(r){
       : `<button class="btn sm pbtn takeopt no-print" data-take="${esc(id)}">Add upgrade &nbsp;+</button>`}
   </div>`;
 }
-/* only the upgrades that found no home in a product card — normally none.
-   A step can be removed from the quote while an optional item it produced is
-   still around, and an orphan must not vanish silently. */
-function shareUpgradeCardsHtml(frac){
-  const rows=shareUpgradeRows(frac).filter(r=>!r.__placed);
+/* Only the upgrades that found no home in a product card — normally none.
+   An optional item can outlive the step that produced it, and an orphan must
+   not vanish silently.
+   Membership is decided by the same root-step match the cards use, NOT by a
+   flag set while building them: scaleRows() copies every row, so each call
+   hands back fresh objects and a mark left on one set would be invisible to
+   the next — which duplicated every upgrade into both places. */
+function shareUpgradeCardsHtml(frac, blocks){
+  const homed=(blocks||[]).filter(b=>b.step).map(b=>b.step);
+  const rows=shareUpgradeRows(frac).filter(r=>!homed.includes(r.node.root||null));
   if(!rows.length) return "";
   return `<div class="sharesectionhead">
       <h3>Other upgrade options</h3>
@@ -11058,12 +11063,15 @@ function shareProposalHtml(){
     return '<div class="docempty">Nothing configured yet.</div>';
   const subtotal=priceRowsTotal(inScopeRows);
   const frac=discountFraction(subtotal-serviceRowsTotal(inScopeRows));
+  /* one set of blocks for the cards and for working out which upgrades still
+     need a home, so the two can't disagree about what was already shown */
+  const blocks=shareStepBlocks(frac);
   return `<div class="shareproposalwrap">
       <div class="shareproposalmain">
         <div class="shareheroes">
-          ${shareStepBlocks(frac).map((b,i)=>shareHeroCardHtml(b, i===0)).join("")}
+          ${blocks.map((b,i)=>shareHeroCardHtml(b, i===0)).join("")}
         </div>
-        ${shareUpgradeCardsHtml(frac)}
+        ${shareUpgradeCardsHtml(frac, blocks)}
         ${shareAltCardsHtml(frac)}
         <div class="sharesectionhead">
           <h3>Detailed breakdown</h3>
