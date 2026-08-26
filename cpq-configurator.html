@@ -4785,7 +4785,14 @@ function buildItemRows(forceTop, wantOptional){
     if(root && rollOf(root, ROLL)){
       let sum=0, j=i; const agg={};
       while(j<raw.length && raw[j].node.root===root){
-        if(!raw[j].hide){ sum+=raw[j].price; addProps(agg, raw[j].propsAgg); }
+        /* Skip exactly what priceRowsTotal() skips. A `subtotal` row is a
+           reading line ("Together") restating an item plus the types it
+           carries, so counting it here added that item's whole value a
+           second time — a step rolled up to one price came out nearly
+           double as soon as any option carried a property surcharge. */
+        if(!raw[j].hide && !raw[j].subtotal && !raw[j].taken){
+          sum+=raw[j].price; addProps(agg, raw[j].propsAgg);
+        }
         j++;
       }
       out.push({group:root, price:sum, isGroup:true, propsAgg:agg});
