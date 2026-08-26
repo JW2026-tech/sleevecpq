@@ -10624,7 +10624,13 @@ function shareStepBlocks(frac){
       if(cur) blocks.push(cur);
     }
     if(!cur || isServiceRow(r)) continue;
-    if(r.taken && depth>0) cur.taken.push(r);
+    /* Something the customer added themselves. Once taken it is genuinely in
+       scope, so these rows carry no `taken` flag any more (that flag lives on
+       the ghost copies buildOptionalRows keeps in the optional list) — the
+       mark left by takeOptional is the only reliable signal here. Its price
+       is already inside this block; naming it just confirms to the customer
+       that their choice landed. */
+    if(depth>0 && isTaken(String(r.node.o.id||""))) cur.taken.push(r);
     if(r.hide || r.taken) continue;                 // matches priceRowsTotal
     cur.price += (+r.price||0);
   }
