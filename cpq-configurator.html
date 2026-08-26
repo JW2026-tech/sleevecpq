@@ -10635,15 +10635,26 @@ function shareSpecIconFor(label){
 function shareStepBlocks(frac){
   const rows=scaleRows(buildPriceRows(false), frac).filter(r=>!r.subtotal);
   const blocks=[];
-  let cur=null;
+  let cur=null, fmtBlock=null, curFmtPart=null;
   for(const r of rows){
     /* A step the salesperson rolled up has no rows of its own — every item
        in it is folded onto one group line that carries the whole price. It
        is still one block; skipping these lost both the card and its money
        from the total. */
     if(r.isGroup){
-      cur=null;
+      cur=null; curFmtPart=null;
       if(isServiceRow(r)) continue;
+      /* the whole format step collapsed onto one line — same destination as
+         the per-product rows above, so the two routes agree */
+      if(r.group && r.group===formatStep()){
+        if(!fmtBlock){
+          fmtBlock={row:r, step:r.group, price:0, taken:[], also:[],
+                    o:{name:"Format parts", text:"", specs:[]}};
+          blocks.push(fmtBlock);
+        }
+        if(!r.hide) fmtBlock.price += (+r.price||0);
+        continue;
+      }
       const chosen=shareStepChosen(r.group);
       /* name it after what was chosen in the step rather than the step
          itself, so the card reads "Steam Tunnel HSS3000", not "Shrinking" */
@@ -10654,9 +10665,28 @@ function shareStepBlocks(frac){
       continue;
     }
     const depth=r.node.depth||0;
-    if(depth===0){
+    /* Format parts arrive as one depth-0 row per product ("500ml", "1000ml",
+       "550ml", "General format parts"), each with its own parts underneath.
+       Listing every size separately turns the summary into a parts list and
+       buries the machines it is meant to summarise — and a product whose
+       parts are not rolled up carries no price on its own header row, so it
+       showed up as a bare "—". They all belong to the same format step, so
+       they fold into one "Format parts" line, with the sizes named under it
+       and each size's own subtotal kept so only the ones that actually cost
+       something get named. */
+    if(depth===0 && (r.isFormat || (r.node.o&&r.node.o.isFormatLine))){
+      if(!fmtBlock){
+        fmtBlock={row:r, step:r.node.root||null, price:0, taken:[], also:[],
+                  o:{name:"Format parts", text:"", specs:[]}};
+        blocks.push(fmtBlock);
+      }
+      cur=fmtBlock;
+      curFmtPart={name:(r.node.o&&r.node.o.name)||"", price:0};
+      fmtBlock.also.push(curFmtPart);
+    } else if(depth===0){
       /* days on site and packaging are summarised on their own line, not as
          a product card — they are not a thing with a picture and specs */
+      curFmtPart=null;
       cur = isServiceRow(r) ? null
         : {row:r, step:r.node.root||null, o:r.node.o, price:0, taken:[], also:[]};
       if(cur) blocks.push(cur);
@@ -10664,7 +10694,11 @@ function shareStepBlocks(frac){
     if(!cur || isServiceRow(r)) continue;
     if(r.hide || r.taken) continue;                 // matches priceRowsTotal
     cur.price += (+r.price||0);
+    if(curFmtPart) curFmtPart.price += (+r.price||0);
   }
+  /* only name the sizes that carry money, so a size quoted at nothing (or a
+     general block with nothing picked) doesn't pad the line */
+  if(fmtBlock) fmtBlock.also=fmtBlock.also.filter(p=>p.price>0.005);
   /* Name what the customer added themselves on the block it landed in.
      It cannot be read off the rows above: once taken, an item is genuinely
      in scope so it carries no `taken` flag there, and a rolled-up step has
