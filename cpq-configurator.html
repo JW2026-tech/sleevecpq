@@ -11522,6 +11522,31 @@ function shareAltGroupHtml(c, frac){
     };
     const cards=[{name:c.target, opt:c.targetOpt, base:true, total:c.targetPrice}]
       .concat(c.cols.map(x=>Object.assign({}, x, {total:c.targetPrice+(+x.delta||0)})));
+    /* Taking an alternative makes the two trade places, so the card the
+       customer just clicked jumped from right to left and the one they had
+       moved the other way — the list rearranging itself under the cursor.
+       Order on the catalogue instead: a type keeps the position its property
+       gives it, a machine the position it has in its step, whichever one is
+       currently chosen. Only the badge and the button change. */
+    const isProp=String(c.key||"").startsWith("prop:");
+    const bits=String(c.key||"").replace(/@@.*$/,"").split(":");
+    const prop=isProp?(CONFIG.props||[]).find(p=>p.id===bits[1]):null;
+    const suppliedVid=isProp?bits.slice(2).join(":"):"";
+    const ordOf=h=>{
+      if(isProp){
+        const vid=h.base?suppliedVid:(h.vid||"");
+        const i=((prop&&prop.variants)||[]).findIndex(v=>v.id===vid);
+        return i<0?999:i;
+      }
+      const id=(h.opt&&h.opt.id)||"";
+      if(!id) return 999;
+      for(const m of allModules()){
+        const i=(m.options||[]).findIndex(o=>o.id===id);
+        if(i>=0) return i;
+      }
+      return 999;
+    };
+    cards.sort((a,b)=>ordOf(a)-ordOf(b));      // stable: ties keep their order
     return `<div class="sharealtgroup">
       <div class="sharealtgrouplbl">Instead of ${esc(c.target)}</div>
       <div class="sharealts">${cards.map(h=>`
