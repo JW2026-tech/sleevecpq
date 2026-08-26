@@ -766,6 +766,16 @@
     justify-content:center;gap:8px}
   .sharepdfbtn:hover{background:#131a4a}
   .sharepdfbtn:disabled{opacity:.6;cursor:default}
+  /* the website's own assurances, next to the price where the buyer is
+     weighing it — see SHARE_ASSURANCES */
+  .shareassure{border:1px solid #e3e6f0;border-radius:14px;padding:14px 16px;background:#f7f8fc}
+  .shareassurerow{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#444;padding:4px 0}
+  .shareassurerow svg{flex:0 0 auto;color:#EF7B0B;margin-top:2px}
+  /* the four figures from the website's "Our clients" block, on the cover */
+  .sharecoverstats{display:flex;flex-wrap:wrap;gap:14px 40px;margin-top:36px;
+    padding-top:22px;border-top:1px solid #e6e8f0;width:100%}
+  .sharestat b{display:block;font-size:26px;font-weight:700;color:#28338A;line-height:1.1}
+  .sharestat span{font-size:11.5px;color:#777}
   .sharequestions{border:1px solid #e3e6f0;border-radius:14px;padding:16px 18px;font-size:13px;color:#555}
   .sharequestions b{display:block;color:#222;font-size:13.5px;margin-bottom:6px}
   .sharequestions a{color:#28338A;text-decoration:none}
@@ -10570,6 +10580,25 @@ const shareMailIconSvg     = () => SHARE_ICON('<rect x="2" y="4" width="20" heig
 const sharePhoneIconSvg    = () => SHARE_ICON('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>', 15);
 const shareShieldIconSvg   = () => SHARE_ICON('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>', 18);
 const shareSparkIconSvg    = () => SHARE_ICON('<path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/><circle cx="12" cy="12" r="3"/>');
+const shareCheckIconSvg    = () => SHARE_ICON('<path d="m20 6-11 11-5-5"/>', 14);
+/* The figures sleevetechnology.com publishes in its own "Our clients" block,
+   and the assurances from its hero section. Kept here as one list so the
+   quotation and the website always say the same thing — and because this is
+   what answers the objection the marketing plan's SWOT names: customers
+   reading a price from a smaller supplier worry about continuity, and these
+   are the facts that settle it. */
+const SHARE_PROOF = [
+  {n:"300+", l:"Operational machines"},
+  {n:"120+", l:"Countries"},
+  {n:"35",   l:"Years of experience"},
+  {n:"2",    l:"Generations, our family business"}
+];
+const SHARE_ASSURANCES = [
+  "Guaranteed ≥ 98% efficiency",
+  "Worldwide supply of spare parts",
+  "Excellent service and support",
+  "Machines built entirely in-house"
+];
 /* the four key figures shown as icon tiles in the hero card. Which spec
    lands in which tile is decided by what its label says, so a catalogue
    that names things slightly differently still gets a sensible icon. */
@@ -10688,11 +10717,10 @@ function shareHeroCardHtml(block, first){
           ${block.taken.length?`<div class="sharebaseincl">incl. ${
             block.taken.map(r=>esc(r.node.o.name||"")).join(", ")}</div>`:""}
         </div>
-        ${/* a figure the customer can hold us to, rather than a slogan:
-              ≥98% measured over an 8-hour test and written into the SAT
-              protocol. The plan's "trust and transparency" point is that
-              customers value being given hard performance data. */""}
-        ${first?`<div class="sharebadge">${shareShieldIconSvg()}<span><b>&ge;98% machine efficiency</b><br>Agreed in your SAT protocol</span></div>`:""}
+        ${/* a figure the customer can hold us to, rather than a slogan —
+              worded exactly as sleevetechnology.com states it, so the
+              quotation and the website make the same promise */""}
+        ${first?`<div class="sharebadge">${shareShieldIconSvg()}<span><b>Guaranteed &ge;98% efficiency</b></span></div>`:""}
       </div>
     </div>
   </div>`;
@@ -10729,6 +10757,8 @@ function shareSummaryCardHtml(frac){
         <button type="button" class="sharepdfbtn" id="sharePdfBtn">${shareDownIconSvg()} Download proposal (PDF)</button>
       </div>
     </div>
+    <div class="shareassure">${SHARE_ASSURANCES.map(a=>
+      `<div class="shareassurerow">${shareCheckIconSvg()}<span>${esc(a)}</span></div>`).join("")}</div>
     <div class="sharequestions">
       <b>Questions?</b>
       We are here to help.
@@ -10845,6 +10875,8 @@ function shareCoverHtml(){
       <tr><td>Date</td><td>${quoteDate()}</td></tr>
       <tr><td>Validity</td><td>${esc(CONFIG.validity||ensureCommercial().validity)}</td></tr>
     </table>
+    <div class="sharecoverstats">${SHARE_PROOF.map(p=>
+      `<div class="sharestat"><b>${esc(p.n)}</b><span>${esc(p.l)}</span></div>`).join("")}</div>
   </div>`;
 }
 /* the customer's link should read like the quotation itself, not like a
