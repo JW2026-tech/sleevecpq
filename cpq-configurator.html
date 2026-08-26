@@ -1610,6 +1610,15 @@
   .asg-row.needs td{background:var(--warn-softer)}
   .asg-row.is-optional td.asgitem{border-left:2px solid var(--warn);padding-left:8px}
   .asg-row.is-alt td.asgitem{border-left:2px solid #8b5cf6;padding-left:8px}
+  /* "not included in this quote" for a property — the escape hatch for a
+     simple quote, and the panel that replaces the type matrix once taken */
+  .propskip{margin-top:16px;padding-top:14px;border-top:1px solid var(--line-soft);
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .propskip .meta{font-size:11.5px;color:var(--txt-faint);flex:1;min-width:220px}
+  .propskip.on{margin-top:0;padding:16px 18px;border:1px solid var(--line);border-radius:10px;
+    background:var(--sunken);display:block;max-width:70ch}
+  .propskip.on .pshead{font-size:13px;font-weight:600;color:var(--txt);margin-bottom:6px}
+  .propskip.on .psbody{font-size:12.5px;line-height:1.6;color:var(--txt-dim);margin-bottom:12px}
   .asg-with{color:var(--txt-faint)}
   .asg-none{color:var(--txt-faint);font-style:italic;font-size:11.5px}
   .asg-extra{font-size:11px;color:var(--warn);font-variant-numeric:tabular-nums}
@@ -3186,6 +3195,49 @@ function setVariantScope(p, optionId, variantId, scope, on){
   if(Object.keys(e).length) map[optionId]=e; else delete map[optionId];
   state[assignKey(p)]=map;
 }
+/* ============================================================
+   A PROPERTY THIS QUOTE DOESN'T DISCUSS
+   Not every customer wants to be asked which feet or access doors they get.
+   Marking a property "not included in this quote" means: every item that
+   carries it silently gets the standard type, so the machine is complete and
+   correctly priced, but nothing about it is offered, asked about, or printed
+   — no type matrix, no optional or alternative lines, no pills on the price
+   list, nothing in the scope of supply or the investment proposal, and no
+   "still to be decided" nag when a new option is picked later.
+   Held in state, so it is a per-quote decision like every other answer.
+   ============================================================ */
+const PROPSKIP_KEY="__propskip";
+const propSkipMap = () => (state[PROPSKIP_KEY] && typeof state[PROPSKIP_KEY]==="object")
+  ? state[PROPSKIP_KEY] : {};
+const propSkipped = p => !!propSkipMap()[(p && p.id) || p];
+/* the type a skipped property falls back to — the first on the list, which
+   is the "standard" one by the same convention assignedVariantId() uses */
+const propDefaultVariant = p => (p && p.variants && p.variants[0]) || null;
+function setPropSkipped(p, on){
+  const m=Object.assign({}, propSkipMap());
+  if(on) m[p.id]=true; else delete m[p.id];
+  if(Object.keys(m).length) state[PROPSKIP_KEY]=m; else delete state[PROPSKIP_KEY];
+  if(on) applyPropSkip(p);
+}
+/* Give every contributor the standard type and drop every offer. Called from
+   reconcile() as well, so an option chosen after the property was excluded is
+   settled the same way instead of reopening the question. */
+function applyPropSkip(p){
+  const def=propDefaultVariant(p);
+  if(!def) return;
+  for(const c of propContributors(p)){
+    const e=assignEntry(p, c.o.id);
+    const keys=Object.keys(e);
+    const settled = keys.length===1 && keys[0]===def.id
+      && (e[def.id]||[]).length===1 && e[def.id][0]==="in";
+    if(settled) continue;
+    for(const k of keys) if(k!==def.id) setVariantScope(p, c.o.id, k, null);
+    setVariantScope(p, c.o.id, def.id, "in", true);
+  }
+}
+function applyAllPropSkips(){
+  for(const p of (CONFIG.props||[])) if(propSkipped(p)) applyPropSkip(p);
+}
 /* Every type an in-scope item is being offered on top of what it gets. If
    the item already has a type in scope the two can't both be fitted, so the
    offer is an alternative and only the difference is quoted; with nothing
@@ -3193,6 +3245,7 @@ function setVariantScope(p, optionId, variantId, scope, on){
 function propOfferLines(){
   const out=[];
   for(const p of (CONFIG.props||[])){
+    if(propSkipped(p)) continue;               // nothing is offered for it
     if(!p.step || !(p.variants||[]).length) continue;
     for(const c of propContributors(p)){
       if(scopeKind(c.o)!=="in") continue;          // otherwise it rides with its item
@@ -3945,6 +3998,9 @@ function propsLabel(o){
 function propSummaryRows(kind){
   const out=[];
   for(const p of (CONFIG.props||[])){
+    /* keeps it out of the scope of supply and the investment proposal, which
+       both render from here */
+    if(propSkipped(p)) continue;
     const per={};
     const add=(key,name,qty,each,price)=>{
       per[key]=per[key]||{name, qty:0, each, price:0};
@@ -4091,7 +4147,7 @@ function reconcile(){
          answers, so they have no module id to match — skip them or they'd
          be pruned on every render and every pick would snap back to the
          default type */
-      if(key.startsWith("__assign_") || key.startsWith("__sample_") || key===QTY_KEY || key===PRODUCTS_KEY || key===GENERAL_KEY || key===ROLLS_KEY || key===NA_KEY || key===SEED_KEY || key===CUSTOM_KEY || key===SERVICE_KEY || key===SPECOVR_KEY || key===TAKEN_KEY) continue;
+      if(key.startsWith("__assign_") || key.startsWith("__sample_") || key===QTY_KEY || key===PRODUCTS_KEY || key===GENERAL_KEY || key===ROLLS_KEY || key===NA_KEY || key===SEED_KEY || key===CUSTOM_KEY || key===SERVICE_KEY || key===SPECOVR_KEY || key===TAKEN_KEY || key===PROPSKIP_KEY) continue;
       /* out of the quote: forget the answer AND that it was ever seeded, so
          adding the step back starts from the Admin defaults again */
       if(!flatIds.has(key)){ delete state[key]; delete seeded()[key]; changed=true; }
@@ -4125,6 +4181,10 @@ function reconcile(){
   seedDefaults();
   cascadeOptional();
   cascadeAlternatives();
+  /* an option picked after a property was excluded gets the standard type
+     handed to it here, instead of the property step reopening as an
+     unanswered question */
+  applyAllPropSkips();
 }
 /* Decisions are keyed by option id, and an id can come back: delete an
    option in Admin and the next one added may be handed the same key. Then a
@@ -4264,6 +4324,10 @@ const hasAltCur = () => !!activeTemplate().altCur;
 function propStepSummary(propId){
   const p=(CONFIG.props||[]).find(x=>x.id===propId);
   if(!p || !(p.variants||[]).length) return null;
+  /* excluded from this quote: a settled answer, not an open question — this
+     is what stops the step being listed as "still unanswered" every time a
+     new option is picked */
+  if(propSkipped(p)) return "Not included in this quote";
   const rows=propContributors(p);
   if(!rows.length) return null;
   const per={};
@@ -4498,6 +4562,7 @@ function branchProps(node, wantOptional, into){
   const acc=into||{};
   if(scopeKind(node.o)===wantKind(wantOptional) && node.o.props)
     for(const p of (CONFIG.props||[])){
+      if(propSkipped(p)) continue;              // never named on a quote line
       const q=propQtyOf(node.o, p.id);
       if(q) acc[p.id]=(acc[p.id]||0)+q;
     }
@@ -6247,6 +6312,22 @@ function renderConfigure(){
       const allSet=rows.length && rows.every(c=>hasVariantScope(p, c.o.id, vid, sc));
       for(const c of rows) setVariantScope(p, c.o.id, vid, sc, !allSet);
       renderConfigure();
+    };
+  });
+  document.querySelectorAll("#main [data-propexclude]").forEach(btn=>{
+    btn.onclick=()=>{
+      const p=(CONFIG.props||[]).find(x=>x.id===btn.dataset.propexclude); if(!p) return;
+      const lower=(p.plural||p.label||"").toLowerCase();
+      if(!confirm(`Leave ${lower} out of this quote?\n\nEverything that needs them gets the standard type, and nothing about ${lower} is offered or printed. Any choices already made for them are dropped.`)) return;
+      setPropSkipped(p, true);
+      reconcile(); renderConfigure();
+    };
+  });
+  document.querySelectorAll("#main [data-propinclude]").forEach(btn=>{
+    btn.onclick=()=>{
+      const p=(CONFIG.props||[]).find(x=>x.id===btn.dataset.propinclude); if(!p) return;
+      setPropSkipped(p, false);
+      reconcile(); renderConfigure();
     };
   });
   const goFmt=document.getElementById("goFormats");
@@ -8064,7 +8145,23 @@ function assignScreenHtml(m){
   const p=(CONFIG.props||[]).find(x=>x.id===m.propId);
   if(!p) return '<div class="empty">This property no longer exists.</div>';
   const items=propContributors(p);
-  if(!items.length) return `<div class="empty">Nothing in this quote needs ${esc((p.plural||p.label).toLowerCase())} yet.</div>`;
+  const lower=esc((p.plural||p.label||"").toLowerCase());
+  /* Excluded from this quote: no matrix, no offers, nothing to answer. The
+     step stays in the tree so the decision is visible and reversible — the
+     one place to switch it back on. */
+  if(propSkipped(p)){
+    const def=propDefaultVariant(p);
+    return `<div class="propskip on">
+      <div class="pshead">Not included in this quote</div>
+      <div class="psbody">Every item that needs ${lower} gets
+        <b>${esc(def?def.name:"the standard type")}</b>, so the machine is complete and priced —
+        but ${lower} are not offered, not asked about, and appear nowhere in the
+        scope of supply or the investment proposal. Options added later are settled
+        the same way, without asking.</div>
+      <button class="btn sm" data-propinclude="${esc(p.id)}">Include ${lower} in this quote</button>
+    </div>`;
+  }
+  if(!items.length) return `<div class="empty">Nothing in this quote needs ${lower} yet.</div>`;
   const vars=p.variants||[];
   const todo=assignUnanswered(p);
   const allHave=(vid,sc)=>items.length && items.every(c=>hasVariantScope(p, c.o.id, vid, sc));
@@ -8148,6 +8245,11 @@ function assignScreenHtml(m){
     <div class="asgscroll"><table class="asgtable" style="min-width:${260+vars.length*2*74+96}px">${colgroup}${head}${body}</table></div>
     <div class="assigntotals">${pills}<span class="spacer"></span>${
       offered?`<span class="offeredsum">plus ${fmt(offered)} offered</span>`:""}<b>${fmt(inScope)}</b></div>
+    <div class="propskip">
+      <button class="btn sm" data-propexclude="${esc(p.id)}"
+        title="Give everything the standard type and leave ${lower} out of the quote entirely">Don't include ${lower} in this quote</button>
+      <span class="meta">For a simple quote: the standard type is fitted and priced, but nothing about ${lower} is offered or printed.</span>
+    </div>
   </div>`;
 }
 /* Formats as rows, part categories as columns. Duplicating a row is the
@@ -11043,6 +11145,7 @@ function sharePropAltGroups(frac){
   const cut=n=>(+n||0)*(1-(frac||0));
   const out=[];
   for(const p of (CONFIG.props||[])){
+    if(propSkipped(p)) continue;
     if(!p.step || !(p.variants||[]).length) continue;
     /* contributors that actually carry this property, per top-level step */
     const byStep=new Map();
