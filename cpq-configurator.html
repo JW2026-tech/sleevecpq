@@ -847,18 +847,16 @@
   .sharealtspec{font-size:11.5px;color:#888;margin-top:2px}
   .sharealtprice{font-size:15px;font-weight:700;color:#EF7B0B;margin:8px 0 10px}
   .sharealtcard .btn{width:100%;border-radius:8px;margin-top:auto}
-  /* what an alternative's own property positions could become — a preview,
-     so it is visually separated from the card's own price and explicitly
-     labelled as applying only if this machine is chosen */
-  .sharealtprops{margin-top:10px;padding-top:9px;border-top:1px dashed #d8dbe8}
-  .sharealtpropshead{font-size:10px;font-weight:700;text-transform:uppercase;
-    letter-spacing:.4px;color:#28338A;margin-bottom:5px}
-  .sharealtproprow{display:flex;align-items:baseline;justify-content:space-between;gap:8px;
-    font-size:11.5px;color:#555;padding:2px 0}
-  .sharealtproprow b{white-space:nowrap;color:#EF7B0B;font-weight:700}
-  .sharealtproprow.is-std{color:#999}
-  .sharealtproprow.is-std b{color:#999;font-weight:400}
-  .sharealtpropnote{font-size:10px;color:#aaa;margin-top:4px;font-style:italic}
+  /* One line on the card about what this machine would open up. The choices
+     themselves live in the property sections below — three priced panels per
+     card made the alternatives taller than the machines they were comparing
+     and repeated the same feet and doors on every one of them. */
+  .sharealtupg{font-size:11px;color:#666;margin:8px 0 10px;line-height:1.45}
+  .sharealtupg b{color:#EF7B0B;white-space:nowrap}
+  /* the same positions on the machines this step could hold instead */
+  .sharepropmach{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
+    font-size:11px;color:#888;margin-top:9px}
+  .sharepropmach b{color:#28338A}
   .sharealtgroup{margin-top:18px}
   .sharealtgrouplbl{font-size:11.5px;color:#999;margin-bottom:10px}
 
@@ -11272,6 +11270,27 @@ function sharePropAltGroups(frac){
           g.offers.get(v.id).qty += c.qty;
         }
       }
+      /* The same positions on the machines this step could hold instead —
+         "4× with the HSS3000, 8× with the HSS6000W". Without this the page
+         showed 4× here and 8× on the alternative cards with nothing to
+         connect the two, which read as a contradiction. Named per sibling
+         option that carries the property and is not the one in scope. */
+      const others=[];
+      const seenMods=new Set();
+      for(const c of list){
+        if(seenMods.has(c.m)) continue;
+        seenMods.add(c.m);
+        const sel=state[c.m.id];
+        const selIds=(sel===undefined)?[]:(Array.isArray(sel)?sel:[sel]);
+        for(const alt of (c.m.options||[])){
+          if(alt===c.o) continue;
+          const q=propQtyOf(alt, p.id);
+          if(!q) continue;
+          /* only machines the customer could actually end up with here */
+          if(!selIds.includes(alt.id) && !alt.alt) continue;
+          others.push({name:alt.name||"", qty:q});
+        }
+      }
       for(const g of groups.values()){
         if(!g.offers.size) continue;
         const unit=+g.supplied.unitPrice||0;
@@ -11282,6 +11301,7 @@ function sharePropAltGroups(frac){
           targetOpt:null,
           targetPrice:cut(g.qty*unit),
           note:PROP_QTY_NOTE,
+          perMachine:others,
           cols:[...g.offers.values()].map(o=>({
             name:`${o.qty}× ${o.v.name}`,
             vid:o.v.id,
@@ -11511,26 +11531,27 @@ function shareAltGroupHtml(c, frac){
           <div class="sharealtname">${esc(h.name)}</div>
           ${specLine(h)?`<div class="sharealtspec">${esc(specLine(h))}</div>`:""}
           <div class="sharealtprice">${h.total?fmt(h.total):"included"}</div>
+          ${/* One line, not three panels. This page is for comparing machines
+                and picking one, so the upgrades a machine would open up are
+                named and priced as a ceiling; the choices themselves live in
+                the property sections below, once there is a machine to fit
+                them to. Placed before the button so every card's button
+                still lines up on the same row. */""}
+          ${(h.base||!h.opt)?"":(()=>{
+            const prev=shareAltPropPreview(h.opt.id, frac);
+            if(!prev.length) return "";
+            const ceiling=prev.reduce((s,x)=>
+              s+x.levels.reduce((mx,l)=>Math.max(mx,+l.delta||0),0),0);
+            return `<div class="sharealtupg">${prev.length} upgrade option${prev.length>1?"s":""} with this machine${
+              ceiling?` &mdash; up to <b>+ ${fmt(ceiling)}</b>`:""}</div>`;
+          })()}
           ${h.base?"":`<button class="btn sm pbtn cmpswap no-print" data-cmpswap="${esc(c.key)}|${esc(h.vid||(h.opt&&h.opt.id)||h.name)}">${
             /* "Choose this machine" is wrong on a set of feet or a lock
                bracket — those are types fitted to the machine, not a machine */
             String(c.key||"").startsWith("prop:")?"Choose this instead":"Choose this machine"}</button>`}
-          ${/* what this machine's own property positions could become — the
-                figures only apply if this alternative is the one taken, so
-                they are framed as "with this machine", never as included */""}
-          ${(h.base||!h.opt)?"":(()=>{
-            const prev=shareAltPropPreview(h.opt.id, frac);
-            if(!prev.length) return "";
-            return prev.map(x=>`<div class="sharealtprops">
-              <div class="sharealtpropshead">Brings ${x.qty}&times; ${esc(String(x.label).toLowerCase())}</div>
-              ${x.levels.map(l=>`<div class="sharealtproprow ${l.supplied?"is-std":""}">
-                <span class="nm">${esc(l.name)}</span>
-                <b>${l.supplied?"included":(l.delta?`+ ${fmt(l.delta)}`:"no extra cost")}</b>
-              </div>`).join("")}
-              <div class="sharealtpropnote">Choosable once this machine is selected</div>
-            </div>`).join("");
-          })()}
         </div>`).join("")}</div>
+      ${(c.perMachine||[]).length?`<div class="sharepropmach">With another machine in this step:
+        ${c.perMachine.map(x=>`<span><b>${x.qty}&times;</b> ${esc(x.name)}</span>`).join("")}</div>`:""}
       ${c.note?`<div class="secnote">${esc(c.note)}</div>`:""}
     </div>`;
 }
