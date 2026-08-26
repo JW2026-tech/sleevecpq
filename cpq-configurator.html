@@ -708,10 +708,15 @@
      "Investment summary" card (base + upgrades + total, PDF download),
      then upgrade options and machine alternatives as card grids below —
      replaces the old plain price-list-only layout on this one page */
-  .shareherowrap{display:flex;gap:24px;align-items:flex-start;margin-bottom:8px}
-  /* one card per top-level item in the quote, stacked down the left, with
-     the investment summary alongside them */
-  .shareheroes{flex:1;min-width:0;display:flex;flex-direction:column;gap:20px}
+  /* The whole proposal page is the two-column frame, not just the hero row:
+     a sticky element can only travel as far as its own container, so with
+     the summary parked beside the cards alone it slid away the moment the
+     card list ended. Spanning every section keeps it alongside the reader
+     all the way to the bottom. */
+  .shareproposalwrap{display:flex;gap:24px;align-items:flex-start}
+  .shareproposalmain{flex:1;min-width:0}
+  /* one card per top-level item in the quote, stacked down the left */
+  .shareheroes{display:flex;flex-direction:column;gap:20px;margin-bottom:8px}
   .sharehero{flex:0 0 auto;min-width:0;border:1px solid #e3e6f0;border-radius:14px;overflow:hidden;background:#fbfbfd}
   .shareheroimg{width:100%;max-height:300px;object-fit:contain;background:#eef0f7;display:block}
   .shareherobody{padding:22px 24px}
@@ -867,10 +872,12 @@
      for two 300px+ columns down to tablet width, same reasoning as the
      compare grid's separate 1000px cutoff elsewhere in this file */
   @media (max-width:900px){
-    .shareherowrap{flex-direction:column}
-    /* stacked, the summary is a normal block above the cards — sticking it
-       to the viewport would park it over the list it is summarising */
-    .sharesidebar{flex:1 1 auto;width:100%;position:static;max-height:none;overflow:visible}
+    /* the summary goes first when stacked, so the total is the first thing
+       read, and stops being sticky — pinned to a narrow viewport it would
+       park on top of the very list it is summarising */
+    .shareproposalwrap{flex-direction:column}
+    .shareproposalmain{order:2}
+    .sharesidebar{order:1;flex:1 1 auto;width:100%;position:static;max-height:none;overflow:visible}
   }
   @media (max-width:480px){
     .sharespecs{grid-template-columns:1fr}
@@ -10612,7 +10619,7 @@ function shareStepBlocks(frac){
          itself, so the card reads "Steam Tunnel HSS3000", not "Shrinking" */
       const o = chosen.length===1 ? chosen[0]
         : {name:(r.group&&r.group.title)||"", image:stepPicture(r.group), text:"", specs:[]};
-      blocks.push({row:r, o, price:(r.hide?0:(+r.price||0)), taken:[],
+      blocks.push({row:r, step:r.group||null, o, price:(r.hide?0:(+r.price||0)), taken:[],
                    also:(chosen.length>1?chosen:[])});
       continue;
     }
@@ -10620,19 +10627,26 @@ function shareStepBlocks(frac){
     if(depth===0){
       /* days on site and packaging are summarised on their own line, not as
          a product card — they are not a thing with a picture and specs */
-      cur = isServiceRow(r) ? null : {row:r, o:r.node.o, price:0, taken:[], also:[]};
+      cur = isServiceRow(r) ? null
+        : {row:r, step:r.node.root||null, o:r.node.o, price:0, taken:[], also:[]};
       if(cur) blocks.push(cur);
     }
     if(!cur || isServiceRow(r)) continue;
-    /* Something the customer added themselves. Once taken it is genuinely in
-       scope, so these rows carry no `taken` flag any more (that flag lives on
-       the ghost copies buildOptionalRows keeps in the optional list) — the
-       mark left by takeOptional is the only reliable signal here. Its price
-       is already inside this block; naming it just confirms to the customer
-       that their choice landed. */
-    if(depth>0 && isTaken(String(r.node.o.id||""))) cur.taken.push(r);
     if(r.hide || r.taken) continue;                 // matches priceRowsTotal
     cur.price += (+r.price||0);
+  }
+  /* Name what the customer added themselves on the block it landed in.
+     It cannot be read off the rows above: once taken, an item is genuinely
+     in scope so it carries no `taken` flag there, and a rolled-up step has
+     no child rows at all — its whole branch is folded onto one line. The
+     ghost copies buildOptionalRows keeps in the optional list are the one
+     place a taken item is still named, so match those to a block by the
+     top-level step they came out of. Labels only: the price is already
+     inside the block, and counting it again would break the total. */
+  for(const t of buildOptionalRows(false)){
+    if(t.isGroup || t.subtotal || !t.taken) continue;
+    const home=blocks.find(b=>b.step && b.step===(t.node.root||null));
+    if(home) home.taken.push(t);
   }
   return blocks;
 }
@@ -10787,19 +10801,21 @@ function shareProposalHtml(){
     return '<div class="docempty">Nothing configured yet.</div>';
   const subtotal=priceRowsTotal(inScopeRows);
   const frac=discountFraction(subtotal-serviceRowsTotal(inScopeRows));
-  return `<div class="shareherowrap">
-      <div class="shareheroes">
-        ${shareStepBlocks(frac).map((b,i)=>shareHeroCardHtml(b, i===0)).join("")}
+  return `<div class="shareproposalwrap">
+      <div class="shareproposalmain">
+        <div class="shareheroes">
+          ${shareStepBlocks(frac).map((b,i)=>shareHeroCardHtml(b, i===0)).join("")}
+        </div>
+        ${shareUpgradeCardsHtml(frac)}
+        ${shareAltCardsHtml(frac)}
+        <div class="sharesectionhead">
+          <h3>Detailed breakdown</h3>
+          <div class="sharesectionsub">Every item in the scope of this quotation, with its price.</div>
+        </div>
+        ${proposalHtml({skipHeader:true, skipOptional:true, skipAlts:true})}
       </div>
       ${shareSummaryCardHtml(frac)}
-    </div>
-    ${shareUpgradeCardsHtml(frac)}
-    ${shareAltCardsHtml(frac)}
-    <div class="sharesectionhead">
-      <h3>Detailed breakdown</h3>
-      <div class="sharesectionsub">Every item in the scope of this quotation, with its price.</div>
-    </div>
-    ${proposalHtml({skipHeader:true, skipOptional:true, skipAlts:true})}`;
+    </div>`;
 }
 function shareCoverHtml(){
   const t=activeTemplate();
