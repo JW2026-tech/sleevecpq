@@ -818,22 +818,6 @@
   .shareheroalts .sharealtgroup + .sharealtgroup{margin-top:16px}
   .shareheroalts .sharealts{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
   .shareheroalts .secnote{font-size:11px;color:#999;margin-top:6px}
-  /* ---- the Optional items page ---- */
-  .shareoptsbar{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;
-    flex-wrap:wrap;border:1px solid #e3e6f0;border-radius:12px;padding:16px 20px;background:#fbfbfd}
-  .shareoptscount{font-size:16px;font-weight:600;color:#1c2563;margin-top:2px}
-  .shareoptssum{text-align:right}
-  .shareoptsamt{font-size:22px;font-weight:700;color:#EF7B0B;margin-top:2px}
-  .shareoptsintro{margin:14px 0 22px;max-width:78ch}
-  .shareoptmod{margin-bottom:26px}
-  .shareoptmodhead{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;
-    text-transform:uppercase;letter-spacing:.4px;color:#28338A;
-    padding-bottom:9px;margin-bottom:14px;border-bottom:1px solid #e6e8f0}
-  .shareoptmodn{font-size:10.5px;font-weight:700;color:#c15c00;background:#fdefe0;
-    border-radius:20px;padding:2px 8px;letter-spacing:0}
-  /* the pointer left on a machine card once the items moved to their own page */
-  .shareheronote{background:#fbfbfd}
-  .shareheronote .shareupshead{margin-bottom:0}
   .sharesectionhead{margin:34px 0 14px}
   .sharesectionhead h3{margin:0;font-size:14.5px;font-weight:700;color:#222;text-transform:uppercase;letter-spacing:.3px}
   .sharesectionsub{font-size:12.5px;color:#777;margin-top:2px}
@@ -11299,13 +11283,10 @@ function shareHeroCardHtml(block, first){
       </div>
       ${/* the upgrades for THIS machine, inside its own card — so it is never
             a puzzle which item an upgrade bolts onto */""}
-      ${/* Optional items have a page of their own now (shareOptionsPageHtml),
-            so this card carries only what is actually being quoted, plus the
-            alternatives — those change the machine on THIS card and its
-            price, so they belong beside it rather than on the extras page. */""}
-      ${(block.upgrades||[]).length?`<div class="shareheroups shareheronote">
-        <div class="shareupshead">${block.upgrades.length} optional item${block.upgrades.length>1?"s":""} available for this module
-          <i>— see the Optional items page</i></div>
+      ${(block.upgrades||[]).length?`<div class="shareheroups">
+        <div class="shareupshead">Upgrade options for this module
+          <i>— quoted separately, on top of the price above</i></div>
+        <div class="shareupgrades">${block.upgrades.map(shareUpgradeCardHtml).join("")}</div>
       </div>`:""}
       ${(block.alts||[]).length?`<div class="shareheroups shareheroalts">
         <div class="shareupshead">Alternatives for this module
@@ -11375,47 +11356,6 @@ function shareUpgradeCardHtml(r){
       : `<button class="btn sm pbtn takeopt no-print" data-take="${esc(id)}">Add upgrade &nbsp;+</button>`}
   </div>`;
 }
-/* ============================================================
-   THE OPTIONAL ITEMS PAGE
-   A page of its own for everything the customer can add, grouped under the
-   module it belongs to. Keeping it off the investment proposal leaves that
-   page as the price of what is actually being quoted, and gives the choices
-   the room to be read properly.
-   Nothing here is in the total: an optional item only joins it once taken,
-   at which point it becomes part of its module's price on the proposal.
-   ============================================================ */
-function shareOptionsPageHtml(frac){
-  const blocks=shareStepBlocks(frac);
-  const homed=blocks.filter(b=>b.step).map(b=>b.step);
-  const orphans=shareUpgradeRows(frac).filter(r=>!homed.includes(r.node.root||null));
-  const groups=blocks.filter(b=>(b.upgrades||[]).length)
-    .map(b=>({name:b.o.name||"", rows:b.upgrades}))
-    .concat(orphans.length?[{name:"Other items", rows:orphans}]:[]);
-  if(!groups.length) return "";
-
-  const all=groups.reduce((l,g)=>l.concat(g.rows),[]);
-  const taken=all.filter(r=>r.taken);
-  const addedTotal=taken.reduce((s,r)=>s+(+r.price||0),0);
-  return `<div class="shareoptsbar">
-      <div>
-        <div class="sharebaselbl">Selected so far</div>
-        <div class="shareoptscount">${taken.length
-          ? `${taken.length} item${taken.length>1?"s":""} added`
-          : "Nothing added yet"}</div>
-      </div>
-      <div class="shareoptssum">
-        <div class="sharebaselbl">Added to your quote</div>
-        <div class="shareoptsamt">${addedTotal?fmt(addedTotal):"—"}</div>
-      </div>
-    </div>
-    <div class="sharesectionsub shareoptsintro">Everything below is available for this
-      machine and quoted separately — nothing here is in the total investment until you
-      add it. Add or remove as often as you like; your sales contact sees the same page.</div>
-    ${groups.map(g=>`<div class="shareoptmod">
-      <div class="shareoptmodhead">${esc(g.name)}<span class="shareoptmodn">${g.rows.length}</span></div>
-      <div class="shareupgrades">${g.rows.map(shareUpgradeCardHtml).join("")}</div>
-    </div>`).join("")}`;
-}
 /* Only the upgrades that found no home in a product card — normally none.
    An optional item can outlive the step that produced it, and an orphan must
    not vanish silently.
@@ -11477,13 +11417,6 @@ function shareAltGroupHtml(c){
         </div>`).join("")}</div>
       ${c.note?`<div class="secnote">${esc(c.note)}</div>`:""}
     </div>`;
-}
-/* the discount fraction the whole share page prices at — the proposal works
-   it out for itself, the optional-items page needs the same one so a discount
-   shows on both */
-function shareDiscountFraction(){
-  const rows=buildPriceRows(priceDetail==="top");
-  return discountFraction(priceRowsTotal(rows)-serviceRowsTotal(rows));
 }
 function shareProposalHtml(){
   const inScopeRows=buildPriceRows(priceDetail==="top");
@@ -11601,7 +11534,6 @@ function shareDocSections(){
     {id:"specs", nav:"Product & sleeve specs", html: printSpecsHtml()},
     {id:"machinespecs", nav:"Machine specs", html: machineSpecSectionHtml()},
     {id:"proposal", nav:"Investment proposal", html: shareProposalHtml()},
-    {id:"options", nav:"Optional items", html: shareOptionsPageHtml(shareDiscountFraction())},
     {id:"delivery", nav:"Commercial terms", html: deliverySectionHtml()},
     {id:"terms", nav:"Terms & conditions", html: printTermsHtml()}
   ].filter(Boolean)
