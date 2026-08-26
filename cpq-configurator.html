@@ -5409,10 +5409,22 @@ function altCompares(frac){
 function takeAlternative(token){
   const [key, id]=String(token||"").split("|");
   if(key.startsWith("prop:")){
-    const bits=key.split(":");
+    /* The customer's page offers this choice per module (sharePropAltGroups),
+       so its key carries the step it applies to after "@@": hygienic feet on
+       the applicator must not silently re-shoe the tunnel as well. Keys
+       without the suffix — the sales-facing documents — still switch every
+       contributor, as they always did. */
+    let k=key, stepId=null;
+    const at=k.indexOf("@@");
+    if(at>=0){ stepId=k.slice(at+2); k=k.slice(0,at); }
+    const bits=k.split(":");
     const pid=bits[1], sid=bits.slice(2).join(":");
     const p=(CONFIG.props||[]).find(x=>x.id===pid); if(!p) return;
     for(const c of propContributors(p)){
+      if(stepId){
+        const top=topStepOfModule(c.m);
+        if(!top || top.id!==stepId) continue;
+      }
       const e=assignEntry(p,c.o.id);
       if(!e[sid] || !e[id]) continue;
       setVariantScope(p, c.o.id, id, "in", true);
@@ -10958,7 +10970,7 @@ function shareStepBlocks(frac){
     if(home) (home.upgrades||(home.upgrades=[])).push(u);
   }
   /* alternatives likewise sit with the machine they'd replace */
-  for(const c of altCompares(frac)){
+  for(const c of shareAltGroups(frac)){
     const st=shareAltGroupStep(c);
     const home=st?blocks.find(b=>b.step===st):null;
     if(home) (home.alts||(home.alts=[])).push(c);
@@ -11004,18 +11016,83 @@ function topStepOfOption(optId){
    while adjustments — contributed only by steps under the applicator — do
    resolve to a single block. */
 function shareAltGroupStep(c){
+  if(c && c.step) return c.step;            // per-module property group, below
   const key=String((c&&c.key)||"");
-  if(key.startsWith("prop:")){
-    const p=(CONFIG.props||[]).find(x=>x.id===key.split(":")[1]);
-    if(!p) return null;
-    const steps=[];
-    for(const ct of propContributors(p)){
-      const t=topStepOfModule(ct.m);
-      if(t && !steps.includes(t)) steps.push(t);
-    }
-    return steps.length===1 ? steps[0] : null;
-  }
   return topStepOfOption((c&&c.targetOpt&&c.targetOpt.id) || key.replace(/^opt:/,""));
+}
+/* ============================================================
+   PROPERTY ALTERNATIVES, PER MODULE
+   groupOfferLines() deliberately rolls a property offer up across the whole
+   quote — the sales-facing documents want "10× standard feet", once. On the
+   customer's page that is the wrong unit of decision: the applicator carries
+   six feet and the tunnel four, and a customer may well want hygienic feet on
+   one and not the other. So the share page regroups the same numbers per
+   top-level step, and the swap it emits is scoped to that step alone (see the
+   "@@" step suffix that takeAlternative understands).
+   Shaped exactly like an altCompares() entry so shareAltGroupHtml renders it
+   unchanged.
+   ============================================================ */
+function sharePropAltGroups(frac){
+  const cut=n=>(+n||0)*(1-(frac||0));
+  const out=[];
+  for(const p of (CONFIG.props||[])){
+    if(!p.step || !(p.variants||[]).length) continue;
+    /* contributors that actually carry this property, per top-level step */
+    const byStep=new Map();
+    for(const c of propContributors(p)){
+      if(scopeKind(c.o)!=="in") continue;          // otherwise it rides with its item
+      const top=topStepOfModule(c.m);
+      if(!top) continue;
+      if(!byStep.has(top)) byStep.set(top,[]);
+      byStep.get(top).push(c);
+    }
+    for(const [top, list] of byStep){
+      /* one comparison per supplied type in this step: what it costs here,
+         and each type offered instead of it, both counted on this step's own
+         quantity rather than the whole line's */
+      const groups=new Map();
+      for(const c of list){
+        const supplied=assignedVariant(p, c.o.id);
+        if(!supplied) continue;                    // nothing to stand against
+        if(!groups.has(supplied.id))
+          groups.set(supplied.id, {supplied, qty:0, offers:new Map()});
+        const g=groups.get(supplied.id);
+        g.qty += c.qty;
+        const e=assignEntry(p, c.o.id);
+        for(const v of p.variants){
+          if(v.id===supplied.id) continue;
+          if(!(e[v.id]||[]).includes("opt")) continue;
+          if(!g.offers.has(v.id)) g.offers.set(v.id, {v, qty:0});
+          g.offers.get(v.id).qty += c.qty;
+        }
+      }
+      for(const g of groups.values()){
+        if(!g.offers.size) continue;
+        const unit=+g.supplied.unitPrice||0;
+        out.push({
+          key:`prop:${p.id}:${g.supplied.id}@@${top.id}`,
+          step:top,
+          target:`${g.qty}× ${g.supplied.name}`,
+          targetOpt:null,
+          targetPrice:cut(g.qty*unit),
+          note:PROP_QTY_NOTE,
+          cols:[...g.offers.values()].map(o=>({
+            name:`${o.qty}× ${o.v.name}`,
+            vid:o.v.id,
+            opt:null,
+            delta:cut(o.qty*((+o.v.unitPrice||0)-unit))
+          }))
+        });
+      }
+    }
+  }
+  return out;
+}
+/* every comparison the customer's page offers: the option alternatives as
+   altCompares() builds them, plus the property ones regrouped per module */
+function shareAltGroups(frac){
+  return altCompares(frac).filter(c=>!String(c.key||"").startsWith("prop:"))
+    .concat(sharePropAltGroups(frac));
 }
 /* what a step actually holds in scope — the picked options that are neither
    optional extras nor alternatives */
@@ -11158,14 +11235,14 @@ function shareUpgradeCardsHtml(frac, blocks){
    shareAltGroupStep. Anything with a home is drawn inside that card. */
 function shareAltCardsHtml(frac, blocks){
   const homed=(blocks||[]).filter(b=>b.step).map(b=>b.step);
-  const list=altCompares(frac).filter(c=>{
+  const list=shareAltGroups(frac).filter(c=>{
     const st=shareAltGroupStep(c);
     return !(st && homed.includes(st));
   });
   if(!list.length) return "";
   return `<div class="sharesectionhead">
-      <h3>Choices that apply across the line</h3>
-      <div class="sharesectionsub">These are fitted to more than one module, so the choice counts for the whole machine — an alternative replaces the item it stands against, it is not quoted on top of it.</div>
+      <h3>Other alternatives</h3>
+      <div class="sharesectionsub">An alternative replaces the item it stands against, it is not quoted on top of it.</div>
     </div>` + list.map(shareAltGroupHtml).join("");
 }
 function shareAltGroupHtml(c){
