@@ -709,7 +709,10 @@
      then upgrade options and machine alternatives as card grids below —
      replaces the old plain price-list-only layout on this one page */
   .shareherowrap{display:flex;gap:24px;align-items:flex-start;margin-bottom:8px}
-  .sharehero{flex:1;min-width:0;border:1px solid #e3e6f0;border-radius:14px;overflow:hidden;background:#fbfbfd}
+  /* one card per top-level item in the quote, stacked down the left, with
+     the investment summary alongside them */
+  .shareheroes{flex:1;min-width:0;display:flex;flex-direction:column;gap:20px}
+  .sharehero{flex:0 0 auto;min-width:0;border:1px solid #e3e6f0;border-radius:14px;overflow:hidden;background:#fbfbfd}
   .shareheroimg{width:100%;max-height:300px;object-fit:contain;background:#eef0f7;display:block}
   .shareherobody{padding:22px 24px}
   .shareherotitle{font-size:21px;font-weight:700;color:#1c2563;margin:0}
@@ -724,10 +727,18 @@
     border-top:1px solid #e8e8ee;padding-top:16px;flex-wrap:wrap}
   .sharebaselbl{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#888}
   .sharebaseprice{font-size:25px;font-weight:700;color:#EF7B0B}
+  .sharebaseincl{font-size:11px;color:#888;margin-top:2px}
   .sharebadge{background:#1c2563;color:#fff;font-size:12px;font-weight:600;line-height:1.4;
     padding:12px 16px;border-radius:10px;max-width:200px;display:flex;align-items:center;gap:8px}
 
-  .sharesidebar{flex:0 0 300px;display:flex;flex-direction:column;gap:16px}
+  /* the summary follows the reader down the page. sticky (not fixed) keeps
+     it inside its own column, so it never covers the item list, and
+     align-self:flex-start stops the flex row from stretching it to the
+     full height of the cards beside it — a stretched box has nothing left
+     to scroll within, and sticky would do nothing.
+     `top` clears the sticky section nav above it. */
+  .sharesidebar{flex:0 0 300px;display:flex;flex-direction:column;gap:16px;
+    position:sticky;top:96px;align-self:flex-start;max-height:calc(100vh - 112px);overflow-y:auto}
   .sharesummary{border-radius:14px;overflow:hidden;border:1px solid #e3e6f0}
   .sharesummaryhead{background:#1c2563;color:#fff;font-size:12px;font-weight:700;
     letter-spacing:.4px;text-transform:uppercase;padding:12px 18px}
@@ -857,7 +868,9 @@
      compare grid's separate 1000px cutoff elsewhere in this file */
   @media (max-width:900px){
     .shareherowrap{flex-direction:column}
-    .sharesidebar{flex:1 1 auto;width:100%}
+    /* stacked, the summary is a normal block above the cards — sticking it
+       to the viewport would park it over the list it is summarising */
+    .sharesidebar{flex:1 1 auto;width:100%;position:static;max-height:none;overflow:visible}
   }
   @media (max-width:480px){
     .sharespecs{grid-template-columns:1fr}
@@ -10573,48 +10586,48 @@ function shareSpecIconFor(label){
    renders follows underneath, with its own optional/alternatives sections
    left out (the cards above already are those).
    ============================================================ */
-/* the machine the quote is built around: the most expensive top-level item
-   in scope, preferring one that has a picture to show */
-function shareHeroRow(){
-  const tops=buildPriceRows(false).filter(r=>!r.isGroup && !r.subtotal && (r.node.depth||0)===0 && !isServiceRow(r));
-  if(!tops.length) return null;
-  const withPic=tops.filter(r=>rowPicture(r.node.o));
-  const pool=withPic.length?withPic:tops;
-  return pool.reduce((best,r)=>(+r.price||0)>(+best.price||0)?r:best, pool[0]);
+/* The quote's equipment grouped by the top-level item it belongs to: a
+   depth-0 row opens a block, and every deeper row after it belongs to that
+   block until the next depth-0 row (the same walk the Configure nav uses to
+   fold a branch). One block becomes one product card, and one named line in
+   the investment summary.
+   Prices are the discounted ones (scaleRows), and every row priceRowsTotal
+   would skip is skipped here too, so the blocks plus the services line add
+   up to exactly investmentGrandTotal() — a summary whose lines don't sum to
+   its own total is worse than no summary. */
+function shareStepBlocks(frac){
+  const rows=scaleRows(buildPriceRows(false), frac).filter(r=>!r.isGroup && !r.subtotal);
+  const blocks=[];
+  let cur=null;
+  for(const r of rows){
+    const depth=r.node.depth||0;
+    if(depth===0){
+      /* days on site and packaging are summarised on their own line, not as
+         a product card — they are not a thing with a picture and specs */
+      cur = isServiceRow(r) ? null : {row:r, o:r.node.o, price:0, taken:[]};
+      if(cur) blocks.push(cur);
+    }
+    if(!cur || isServiceRow(r)) continue;
+    if(r.taken && depth>0) cur.taken.push(r);
+    if(r.hide || r.taken) continue;                 // matches priceRowsTotal
+    cur.price += (+r.price||0);
+  }
+  return blocks;
 }
-/* What the customer has added themselves. buildOptionalRows() keeps a taken
-   item in the optional list marked `taken`, with its own price — the only
-   place that price is reliably visible, since a rolled-up step folds nested
-   items into their parent's line and they have no row of their own there. */
-function shareTakenRows(){
-  return buildOptionalRows(false).filter(r=>!r.isGroup && !r.subtotal && r.taken);
-}
-/* a taken upgrade nested under the hero item is already inside that item's
-   rolled-up line price, so it has to come off to keep the hero figure and
-   the summary's "selected upgrades" row from counting it twice */
-function shareHeroBasePrice(heroRow){
-  if(!heroRow) return 0;
-  const heroId=String(heroRow.node.o.id||"");
-  const inside=shareTakenRows().filter(r=>{
-    const id=String(r.node.o.id||"");
-    if(id===heroId) return false;
-    if((r.node.root||null)===(heroRow.node.root||null)) return true;
-    return optionAncestors(id).some(a=>String(a.id)===heroId);
-  });
-  return Math.max(0, (+heroRow.price||0) - inside.reduce((s,r)=>s+(+r.price||0),0));
-}
-function shareHeroCardHtml(){
-  const r=shareHeroRow();
-  if(!r) return "";
-  const o=r.node.o, pic=rowPicture(o);
+/* one product card per top-level item in the quote. `first` gets the
+   reassurance badge — repeating it on every card would turn a claim into
+   wallpaper. */
+function shareHeroCardHtml(block, first){
+  const o=block.o, pic=rowPicture(o);
   const specs=(featuresOf(o).length
       ? featuresOf(o).map(f=>({label:f.label, value:f.value||"yes"}))
       : (o.specs||[]).map(sp=>({label:fillSupply(sp.label||""), value:fillSupply(sp.value||"")})))
     .filter(x=>x.label&&x.value).slice(0,4);
+  const qty=+(o.qty||0)||optQty(o);
   return `<div class="sharehero">
     ${pic?`<img class="shareheroimg" src="${pic}" alt="${esc(o.name||"")}">`:""}
     <div class="shareherobody">
-      <h3 class="shareherotitle">${esc(o.name||"")}</h3>
+      <h3 class="shareherotitle">${qty>1?`${qty}&times; `:""}${esc(o.name||"")}</h3>
       ${(o.text||"").trim()?`<div class="shareherodesc">${esc((o.text||"").trim())}</div>`:""}
       ${specs.length?`<div class="sharespecs">${specs.map(x=>`
         <div class="sharespecitem">
@@ -10623,39 +10636,34 @@ function shareHeroCardHtml(){
         </div>`).join("")}</div>`:""}
       <div class="sharebasebar">
         <div>
-          <div class="sharebaselbl">Base machine investment</div>
-          <div class="sharebaseprice">${(()=>{const p=shareHeroBasePrice(r);return p?fmt(p):"—";})()}</div>
+          <div class="sharebaselbl">${esc(o.name||"")} — investment</div>
+          <div class="sharebaseprice">${block.price?fmt(block.price):"—"}</div>
+          ${block.taken.length?`<div class="sharebaseincl">incl. ${
+            block.taken.map(r=>esc(r.node.o.name||"")).join(", ")}</div>`:""}
         </div>
-        <div class="sharebadge">${shareShieldIconSvg()}<span>Proven performance.<br>Built for your future.</span></div>
+        ${first?`<div class="sharebadge">${shareShieldIconSvg()}<span>Proven performance.<br>Built for your future.</span></div>`:""}
       </div>
     </div>
   </div>`;
 }
-/* base machine + what the customer has taken so far + the running total,
-   with the PDF download. Not sticky: the page is one section at a time, so
-   this card sits at the top of it and stays where the reader left it. */
-function shareSummaryCardHtml(){
-  const hero=shareHeroRow();
-  const heroPrice=shareHeroBasePrice(hero);
+/* every item in the quote by name, the services line, and the running
+   total, with the PDF download. Sticky in its column (see .sharesidebar) so
+   the total stays in view while the reader works down the cards. */
+function shareSummaryCardHtml(frac){
+  const blocks=shareStepBlocks(frac);
   const grand=investmentGrandTotal();
   const t=activeTemplate();
-  /* only what the customer added themselves counts as an "upgrade" here —
-     everything the sales rep already put in scope is the base machine */
-  const upgrades=shareTakenRows();
-  const upTotal=upgrades.reduce((s,r)=>s+(+r.price||0),0);
   const svcTotal=serviceRowsTotal(buildPriceRows(priceDetail==="top"));
-  const rest=grand-heroPrice-upTotal-svcTotal;
   return `<div class="sharesidebar">
     <div class="sharesummary">
       <div class="sharesummaryhead">Investment summary</div>
       <div class="sharesummarybody">
-        ${hero?`<div class="sharesummaryrow"><span>Base machine</span><b>${fmt(heroPrice)}</b></div>`:""}
-        ${rest>0.5?`<div class="sharesummaryrow"><span>Further equipment</span><b>${fmt(rest)}</b></div>`:""}
-        <div class="sharesummaryrow">
-          <span>Selected upgrades${upgrades.length?`<span class="sub">${upgrades.map(r=>esc(r.node.o.name||"")).join(", ")}</span>`
-            :`<span class="sub">No upgrades selected</span>`}</span>
-          <b>${fmt(upTotal)}</b>
-        </div>
+        ${blocks.length?blocks.map(b=>`<div class="sharesummaryrow">
+          <span>${esc(b.o.name||"")}${b.taken.length
+            ?`<span class="sub">incl. ${b.taken.map(r=>esc(r.node.o.name||"")).join(", ")}</span>`:""}</span>
+          <b>${b.price?fmt(b.price):"—"}</b>
+        </div>`).join("")
+        :`<div class="sharesummaryrow"><span>Nothing in scope yet<span class="sub">Everything selected so far is optional</span></span><b>—</b></div>`}
         ${svcTotal?`<div class="sharesummaryrow"><span>Installation &amp; services</span><b>${fmt(svcTotal)}</b></div>`:""}
         <div class="sharesummarytotal">
           <div>
@@ -10747,8 +10755,10 @@ function shareProposalHtml(){
   const subtotal=priceRowsTotal(inScopeRows);
   const frac=discountFraction(subtotal-serviceRowsTotal(inScopeRows));
   return `<div class="shareherowrap">
-      ${shareHeroCardHtml()}
-      ${shareSummaryCardHtml()}
+      <div class="shareheroes">
+        ${shareStepBlocks(frac).map((b,i)=>shareHeroCardHtml(b, i===0)).join("")}
+      </div>
+      ${shareSummaryCardHtml(frac)}
     </div>
     ${shareUpgradeCardsHtml(frac)}
     ${shareAltCardsHtml(frac)}
