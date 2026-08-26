@@ -808,6 +808,13 @@
     color:#28338A;margin-bottom:11px}
   .shareupshead i{font-weight:400;font-style:normal;text-transform:none;letter-spacing:0;color:#999}
   .shareheroups .shareupgrades{grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+  /* alternatives inside a card: same frame as the upgrades block, and the
+     comparison groups stack rather than sitting in one wide row */
+  .shareheroalts{background:#fbfbfd}
+  .shareheroalts .sharealtgroup{margin-top:0}
+  .shareheroalts .sharealtgroup + .sharealtgroup{margin-top:16px}
+  .shareheroalts .sharealts{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+  .shareheroalts .secnote{font-size:11px;color:#999;margin-top:6px}
   .sharesectionhead{margin:34px 0 14px}
   .sharesectionhead h3{margin:0;font-size:14.5px;font-weight:700;color:#222;text-transform:uppercase;letter-spacing:.3px}
   .sharesectionsub{font-size:12.5px;color:#777;margin-top:2px}
@@ -10950,6 +10957,12 @@ function shareStepBlocks(frac){
     const home=blocks.find(b=>b.step && b.step===(u.node.root||null));
     if(home) (home.upgrades||(home.upgrades=[])).push(u);
   }
+  /* alternatives likewise sit with the machine they'd replace */
+  for(const c of altCompares(frac)){
+    const st=shareAltGroupStep(c);
+    const home=st?blocks.find(b=>b.step===st):null;
+    if(home) (home.alts||(home.alts=[])).push(c);
+  }
   return blocks;
 }
 /* the optional items a customer can actually add or drop, priced at the same
@@ -10957,6 +10970,52 @@ function shareStepBlocks(frac){
 function shareUpgradeRows(frac){
   return scaleRows(buildOptionalRows(false), frac)
     .filter(r=>!r.isGroup && !r.subtotal && takeableId(r.node.o));
+}
+/* The top-level step a nested step ultimately hangs from. Blocks are keyed on
+   that level, so anything being filed into one has to be resolved to it —
+   "Applicator conveyor options" has to become "Applicator HSSA2000". */
+function topStepOfModule(target){
+  for(const top of (CONFIG.modules||[])){
+    let found=false;
+    (function walk(m){
+      if(found || !m) return;
+      if(m===target){ found=true; return; }
+      for(const o of (m.options||[])){
+        for(const c of (o.children||[])){ walk(c); if(found) return; }
+      }
+    })(top);
+    if(found) return top;
+  }
+  return null;
+}
+function topStepOfOption(optId){
+  if(!optId) return null;
+  for(const m of allModules()){
+    if((m.options||[]).some(o=>o.id===optId)) return topStepOfModule(m);
+  }
+  return null;
+}
+/* Which machine an alternative comparison belongs under, or null when it
+   isn't one machine's choice at all.
+   An option alternative (a tunnel offered instead of another tunnel) belongs
+   to the step its target sits in. A property alternative is different: feet
+   and access doors are fitted to several modules at once, so "instead of 10×
+   standard feet" spans the whole quote and stays in a section of its own,
+   while adjustments — contributed only by steps under the applicator — do
+   resolve to a single block. */
+function shareAltGroupStep(c){
+  const key=String((c&&c.key)||"");
+  if(key.startsWith("prop:")){
+    const p=(CONFIG.props||[]).find(x=>x.id===key.split(":")[1]);
+    if(!p) return null;
+    const steps=[];
+    for(const ct of propContributors(p)){
+      const t=topStepOfModule(ct.m);
+      if(t && !steps.includes(t)) steps.push(t);
+    }
+    return steps.length===1 ? steps[0] : null;
+  }
+  return topStepOfOption((c&&c.targetOpt&&c.targetOpt.id) || key.replace(/^opt:/,""));
 }
 /* what a step actually holds in scope — the picked options that are neither
    optional extras nor alternatives */
@@ -11006,6 +11065,11 @@ function shareHeroCardHtml(block, first){
         <div class="shareupshead">Upgrade options for this module
           <i>— quoted separately, on top of the price above</i></div>
         <div class="shareupgrades">${block.upgrades.map(shareUpgradeCardHtml).join("")}</div>
+      </div>`:""}
+      ${(block.alts||[]).length?`<div class="shareheroups shareheroalts">
+        <div class="shareupshead">Alternatives for this module
+          <i>— offered instead of what is quoted above, not on top of it</i></div>
+        ${block.alts.map(shareAltGroupHtml).join("")}
       </div>`:""}
     </div>
   </div>`;
@@ -11090,13 +11154,21 @@ function shareUpgradeCardsHtml(frac, blocks){
 /* the machines offered instead of the one in scope, side by side as cards.
    The full spec-by-spec comparison table still follows below (altCompareHtml
    in the itemised part), this is the at-a-glance version. */
-function shareAltCardsHtml(frac){
-  const list=altCompares(frac);
+/* only the comparisons that belong to no single machine — see
+   shareAltGroupStep. Anything with a home is drawn inside that card. */
+function shareAltCardsHtml(frac, blocks){
+  const homed=(blocks||[]).filter(b=>b.step).map(b=>b.step);
+  const list=altCompares(frac).filter(c=>{
+    const st=shareAltGroupStep(c);
+    return !(st && homed.includes(st));
+  });
   if(!list.length) return "";
   return `<div class="sharesectionhead">
-      <h3>Other machine alternatives</h3>
-      <div class="sharesectionsub">Compare and choose the best fit for your production — an alternative is offered instead of the item it replaces, not on top of it.</div>
-    </div>` + list.map(c=>{
+      <h3>Choices that apply across the line</h3>
+      <div class="sharesectionsub">These are fitted to more than one module, so the choice counts for the whole machine — an alternative replaces the item it stands against, it is not quoted on top of it.</div>
+    </div>` + list.map(shareAltGroupHtml).join("");
+}
+function shareAltGroupHtml(c){
     const specLine=h=>{
       const f=featuresOf((h&&h.opt)||{}).slice(0,2)
         .map(x=>`${x.label} ${x.value||""}`.trim());
@@ -11116,11 +11188,13 @@ function shareAltCardsHtml(frac){
           <div class="sharealtname">${esc(h.name)}</div>
           ${specLine(h)?`<div class="sharealtspec">${esc(specLine(h))}</div>`:""}
           <div class="sharealtprice">${h.total?fmt(h.total):"included"}</div>
-          ${h.base?"":`<button class="btn sm pbtn cmpswap no-print" data-cmpswap="${esc(c.key)}|${esc(h.vid||(h.opt&&h.opt.id)||h.name)}">Choose this machine</button>`}
+          ${h.base?"":`<button class="btn sm pbtn cmpswap no-print" data-cmpswap="${esc(c.key)}|${esc(h.vid||(h.opt&&h.opt.id)||h.name)}">${
+            /* "Choose this machine" is wrong on a set of feet or a lock
+               bracket — those are types fitted to the machine, not a machine */
+            String(c.key||"").startsWith("prop:")?"Choose this instead":"Choose this machine"}</button>`}
         </div>`).join("")}</div>
       ${c.note?`<div class="secnote">${esc(c.note)}</div>`:""}
     </div>`;
-  }).join("");
 }
 function shareProposalHtml(){
   const inScopeRows=buildPriceRows(priceDetail==="top");
@@ -11138,7 +11212,7 @@ function shareProposalHtml(){
           ${blocks.map((b,i)=>shareHeroCardHtml(b, i===0)).join("")}
         </div>
         ${shareUpgradeCardsHtml(frac, blocks)}
-        ${shareAltCardsHtml(frac)}
+        ${shareAltCardsHtml(frac, blocks)}
         <div class="sharesectionhead">
           <h3>Detailed breakdown</h3>
           <div class="sharesectionsub">Every item in the scope of this quotation, with its price.</div>
