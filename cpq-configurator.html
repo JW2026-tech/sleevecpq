@@ -84,11 +84,14 @@
   .resizer::after{content:"";position:absolute;top:0;bottom:0;left:3px;width:1px;background:var(--line)}
   .resizer:hover::after,.resizer.dragging::after{left:2px;width:3px;background:var(--accent)}
   .nav-label{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--txt-faint);padding:0 10px 10px}
-  .nav-label.foldall{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-  .foldallbtns{display:flex;gap:8px;flex:0 0 auto}
-  .linkbtn{background:none;border:0;padding:0;cursor:pointer;color:var(--accent);
-    font-size:10px;text-transform:none;letter-spacing:0;font-family:inherit}
-  .linkbtn:hover{text-decoration:underline}
+  /* "open/shut everything under this step" — kept out of the way until the
+     row is hovered, since it is a second control on an already busy line */
+  .foldall-btn{flex:0 0 16px;width:16px;height:16px;display:flex;align-items:center;
+    justify-content:center;font-size:13px;line-height:1;border-radius:4px;cursor:pointer;
+    color:var(--txt-faint);opacity:0;transition:opacity .12s}
+  .step:hover .foldall-btn,.mrow:hover .foldall-btn{opacity:1}
+  .foldall-btn:hover{color:var(--txt);background:var(--panel-2)}
+  .mrow .foldall-btn{margin-left:auto}
   .step{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border-radius:8px;cursor:pointer;color:var(--txt-dim);transition:.12s}
   .step:hover{background:var(--panel-2);color:var(--txt)}
   .step.active{background:var(--accent-soft);color:var(--txt)}
@@ -2047,12 +2050,7 @@
     <select id="focusSelect" class="focus-select" title="Add another step to this configuration"></select>
     <div id="addedChips"></div>
     <button class="btn sm wide" id="addCustom" title="A line written for this quote only — a return of the old machine, a special trip">+ Custom line</button>
-    <div class="nav-label foldall" style="margin-top:16px">Steps
-      <span class="foldallbtns">
-        <button type="button" class="linkbtn" id="navExpandAll" title="Open every branch">expand all</button>
-        <button type="button" class="linkbtn" id="navCollapseAll" title="Shut every branch">collapse all</button>
-      </span>
-    </div>
+    <div class="nav-label" style="margin-top:16px">Steps</div>
     <div id="nav"></div>
   </nav>
   <div class="resizer" id="navResizer" title="Drag to resize"></div>
@@ -2097,12 +2095,7 @@
     <div class="mrow section-nav" id="priceNavBtn"><span class="ic">&#128181;</span><div class="n">All prices</div></div>
     <div class="mrow section-nav" id="elecNavBtn"><span class="ic">&#9889;</span><div class="n">Electrical supply</div></div>
     <div class="mrow section-nav" id="svcNavBtn"><span class="ic">&#128736;</span><div class="n">Services</div></div>
-    <div class="nav-label foldall" style="margin-top:16px">Configuration tree
-      <span class="foldallbtns">
-        <button type="button" class="linkbtn" id="admExpandAll" title="Open every branch">expand all</button>
-        <button type="button" class="linkbtn" id="admCollapseAll" title="Shut every branch">collapse all</button>
-      </span>
-    </div>
+    <div class="nav-label" style="margin-top:16px">Configuration tree</div>
     <div id="mlist"></div>
     <button class="btn wide" id="addModule">+ Add top-level step</button>
     <button class="btn wide" id="exportSteps" title="Every step and option with its key, description, cost and price — opens in Excel">Export steps (CSV)</button>
@@ -6053,6 +6046,20 @@ function choose(m, optId, mode){
   reconcile(); renderConfigure();
   if(!m.multi && state[m.id]!==undefined) setTimeout(()=>go(1),130);
 }
+/* Every foldable row at or under visD[i] — the row itself plus each deeper
+   row that has something beneath it. flattenD returns the whole revealed
+   tree regardless of what is folded shut, so this sees the branch even when
+   it is collapsed. */
+function navFoldKeysUnder(visD, i){
+  const out=[];
+  if(!visD[i]) return out;
+  const depth=visD[i].depth;
+  for(let j=i;j<visD.length;j++){
+    if(j>i && visD[j].depth<=depth) break;
+    if(j+1<visD.length && visD[j+1].depth>visD[j].depth) out.push(visD[j].m.id);
+  }
+  return out;
+}
 /* Jump straight to a step, opening every branch it sits in — a sub-step
    only exists once its parent option is selected, so it can easily be
    hiding inside a folded node the moment it appears. */
@@ -6198,9 +6205,15 @@ function renderConfigure(){
     const toggle = hasChildren
       ? `<span class="fold-toggle" data-fold="${esc(mm.id)}" title="${collapsed?"Expand":"Collapse"}">${collapsed?"&#9656;":"&#9662;"}</span>`
       : `<span class="fold-toggle spacer"></span>`;
+    /* per-step "open/shut everything beneath this" — see navFoldKeysUnder */
+    const deepKeys=hasChildren?navFoldKeysUnder(visD,i):[];
+    const allOpenBelow=deepKeys.length && deepKeys.every(k=>expandedNav.has(k));
     return `${branch}<div class="step ${i===cursor?"active":""} ${done?"done":""} ${hasOptSel?"opt-sel":""} ${nd.depth?"nested":""} ${mm.generated?"generated":""}" data-i="${i}">
       <div class="guides">${guides(nd.depth)}</div>
       ${toggle}
+      ${hasChildren?`<span class="foldall-btn" data-foldall="${esc(mm.id)}"
+        title="${allOpenBelow?"Collapse everything under this step":"Expand everything under this step"}">${
+        allOpenBelow?"&#8722;":"&#43;"}</span>`:""}
       <div class="dot">${done?"&#10003;":""}</div>
       <div class="body"><div class="t">${esc(mm.title)}${hiddenOpen?`<span class="openbadge" title="${hiddenOpen} step${hiddenOpen>1?"s":""} under here still unanswered">${hiddenOpen}</span>`:""}${hasOptSel?' <span class="optpill">optional</span>':""}</div></div></div>`;
   }).join("");
@@ -6224,19 +6237,20 @@ function renderConfigure(){
     } else expandedNav.add(id);
     renderConfigure();
   });
-  const wireNavFold=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
-  wireNavFold("navExpandAll", ()=>{
-    /* every row that has something under it, at any depth */
-    visD.forEach((nd,i)=>{
-      if(i+1<visD.length && visD[i+1].depth>nd.depth) expandedNav.add(nd.m.id);
-    });
-    renderConfigure();
-  });
-  wireNavFold("navCollapseAll", ()=>{
-    expandedNav.clear();
-    /* the cursor has to end up on a top-level row, or the "keep the cursor
-       reachable" pass would re-open the branch it was sitting in */
-    for(let i=cursor;i>=0;i--) if((visD[i]&&visD[i].depth)===0){ cursor=i; break; }
+  document.querySelectorAll("#nav [data-foldall]").forEach(b=>b.onclick=(e)=>{
+    e.stopPropagation();
+    const i=visD.findIndex(x=>x.m.id===b.dataset.foldall);
+    if(i<0) return;
+    const keys=navFoldKeysUnder(visD,i);
+    if(!keys.length) return;
+    if(keys.every(k=>expandedNav.has(k))){
+      keys.forEach(k=>expandedNav.delete(k));
+      /* a cursor inside the branch would be re-opened by the next render */
+      const depth=visD[i].depth;
+      let end=i+1;
+      while(end<visD.length && visD[end].depth>depth) end++;
+      if(cursor>i && cursor<end) cursor=i;
+    } else keys.forEach(k=>expandedNav.add(k));
     renderConfigure();
   });
 
@@ -6574,19 +6588,25 @@ function countModules(list){
   return n;
 }
 
-/* Every foldable key in the Admin tree: one per step that has branches
-   (keyed on the step's path) and one per option that has sub-steps (the
-   step's path plus the option id) — the two shapes treeHtml emits. */
-function adminFoldKeys(list=CONFIG.modules, path=[], acc=[]){
-  list.forEach((m,i)=>{
-    const p=path.concat(i);
-    const branches=(m.options||[]).filter(o=>o.children&&o.children.length);
+/* Every foldable key at or under one step in the Admin tree — the step's own
+   path, each option below it that has sub-steps, and the same again for each
+   of those sub-steps. This is what "open/shut everything under HSSA2000"
+   works on; folding the whole tree at once was never the useful unit.
+   The two key shapes match what treeHtml emits: a step path
+   [ …, moduleIndex ] and an option branch [ …, moduleIndex, optionId ]. */
+function adminFoldKeysUnder(path){
+  const acc=[];
+  let root=null;
+  try{ root=moduleAt(path); }catch(err){ return acc; }
+  if(!root) return acc;
+  (function walk(mod, p){
+    const branches=(mod.options||[]).filter(o=>o.children&&o.children.length);
     if(branches.length) acc.push(JSON.stringify(p));
-    branches.forEach(o=>{
+    for(const o of branches){
       acc.push(JSON.stringify(p.concat(o.id)));
-      adminFoldKeys(o.children, p.concat(o.id), acc);
-    });
-  });
+      (o.children||[]).forEach((child,i)=>walk(child, p.concat(o.id, i)));
+    }
+  })(root, path.slice());
   return acc;
 }
 /* Toggling a branch shut used to be undone immediately: renderAdmin() re-opens
@@ -6615,6 +6635,10 @@ function treeHtml(list,path,depth){
     const branches=(m.options||[]).filter(o=>o.children&&o.children.length);
     const mCollapsed=!expandedAdmin.has(mkey);
     const hidden=branches.reduce((n,o)=>n+countModules(o.children),0);
+    /* one control per step for everything beneath it: open it all, or shut
+       it all. Which way it goes depends on what is already open below. */
+    const deepKeys=branches.length?adminFoldKeysUnder(p):[];
+    const allOpenBelow=deepKeys.length && deepKeys.every(k=>expandedAdmin.has(k));
     let html=`<div class="mrow ${on?"on":""}" style="padding-left:${depth*14+8}px" data-path='${JSON.stringify(p)}'>
       ${branches.length
         ? `<span class="fold-toggle" data-mfold='${mkey}' title="${mCollapsed?"Expand":"Collapse"} this step">${mCollapsed?"&#9656;":"&#9662;"}</span>`
@@ -6622,6 +6646,9 @@ function treeHtml(list,path,depth){
       <span class="ic">${depth?"&#8618;":"&#9679;"}</span>
       <div class="n">${esc(m.title||"Untitled")}</div>
       ${mCollapsed&&hidden?`<span class="foldcount">${hidden}</span>`:""}
+      ${branches.length?`<span class="foldall-btn" data-foldall='${JSON.stringify(p)}'
+        title="${allOpenBelow?"Collapse everything under this step":"Expand everything under this step"}">${
+        allOpenBelow?"&#8722;":"&#43;"}</span>`:""}
       <div class="c">${(m.options||[]).length}</div>
     </div>`;
     if(!mCollapsed) (m.options||[]).forEach(o=>{
@@ -6674,13 +6701,17 @@ function renderAdmin(){
   document.querySelectorAll("#mlist .branch-lbl.foldable").forEach(el=>el.onclick=()=>{
     adminFoldToggle(el.dataset.foldkey);
   });
-  const wireFold=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
-  wireFold("admExpandAll", ()=>{ adminFoldKeys().forEach(k=>expandedAdmin.add(k)); renderAdmin(); });
-  wireFold("admCollapseAll", ()=>{
-    expandedAdmin.clear();
-    /* keep a visible row selected, or renderAdmin() would re-open the branch
-       it sits in on the very next line */
-    if(sel.length>1) sel=[sel[0]];
+  document.querySelectorAll("#mlist [data-foldall]").forEach(el=>el.onclick=(e)=>{
+    e.stopPropagation();
+    let path; try{ path=JSON.parse(el.dataset.foldall); }catch(err){ return; }
+    const keys=adminFoldKeysUnder(path);
+    if(!keys.length) return;
+    if(keys.every(k=>expandedAdmin.has(k))){
+      keys.forEach(k=>expandedAdmin.delete(k));
+      /* same trap as a single collapse: a selection inside the branch would
+         be re-opened by renderAdmin(), so it rides up to this step */
+      if(sel.length>path.length && samePath(sel.slice(0,path.length), path)) sel=path.slice();
+    } else keys.forEach(k=>expandedAdmin.add(k));
     renderAdmin();
   });
 
