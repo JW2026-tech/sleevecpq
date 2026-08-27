@@ -2252,6 +2252,7 @@ let quoteStatus = "draft";
 let quoteShare = null;          // {id, token, expires_at, pushed_at, customer_changed_at, catalogue_version}
 let quoteBarPanel = null;       // null | "log" | "versions"
 let quoteEvents = [], quoteVersions = [];
+let quoteUpdatedAt = null;      // quotes.updated_at — compared against the share's pushed_at
 
 /* ============================================================================
    1. CONFIGURATION MODEL — cascading tree, no conditions.
@@ -10522,7 +10523,8 @@ async function loadQuoteMeta(){
   try{
     const {data:q}=await supa.from("quotes").select("*").eq("id",cloudQuoteId).maybeSingle();
     quoteStatus=(q&&q.status)||"draft";
-  }catch(err){}
+    quoteUpdatedAt=(q&&q.updated_at)||null;
+  }catch(err){ quoteUpdatedAt=null; }
   try{
     const {data:sh}=await supa.from("quote_shares").select("*").eq("quote_id",cloudQuoteId)
       .is("revoked_at",null).order("created_at",{ascending:false}).limit(1).maybeSingle();
@@ -10544,15 +10546,16 @@ async function logQuoteEvent(kind, detail){
   try{ await supa.rpc("log_quote_event",{p_quote_id:cloudQuoteId, p_kind:kind, p_detail:detail||null}); }
   catch(err){}
 }
-/* Is the customer looking at something older than what is on screen? The
-   share carries its own copy now, so this is the difference that matters —
-   without it you cannot tell whether a change has actually gone out. */
+/* Is the customer looking at something older than the quote as it stands?
+   Compare when the quote row last changed against when the link was last
+   pushed — a time-since-push test would light the button up permanently,
+   and a button that is always lit is one you stop reading.
+   Before the migration there is no pushed_at and the link is live anyway,
+   so there is nothing to push and this stays false. */
 function shareIsBehind(){
-  if(!quoteShare || !quoteShare.pushed_at) return false;
-  const pushed=new Date(quoteShare.pushed_at).getTime();
-  /* saveNow() writes on every edit, so the row's own updated_at is the
-     closest thing to "when the quote last changed" */
-  return Date.now() - pushed > 1500 && !!cloudQuoteRev;
+  if(!quoteShare || !quoteShare.pushed_at || !quoteUpdatedAt) return false;
+  /* a second of slack: the push itself touches the row */
+  return new Date(quoteUpdatedAt).getTime() > new Date(quoteShare.pushed_at).getTime() + 1000;
 }
 function renderQuoteBar(){
   const bar=document.getElementById("quoteBar");
@@ -10854,6 +10857,12 @@ async function cloudSaveQuote(){
   if(error) throw error;
   if(!data){ cloudConflictPaused=true; renderCloudConflictBanner(); return null; }
   cloudQuoteRev=data.rev;
+  /* the row has just moved on, so the customer's link may now be behind.
+     Only repaint the bar when that actually flips — this runs on every
+     debounced save and a re-render per keystroke would be wasteful. */
+  const wasBehind=shareIsBehind();
+  quoteUpdatedAt=new Date().toISOString();
+  if(shareIsBehind()!==wasBehind) renderQuoteBar();
   return cloudQuoteId;
 }
 async function cloudForceSaveQuote(){
