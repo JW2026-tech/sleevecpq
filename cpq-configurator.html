@@ -8433,8 +8433,12 @@ function propMachineMatrix(){
 function propMatrixHtml(){
   const mx=propMachineMatrix();
   if(!mx) return "";
-  const sel=(p, val, mixed, attr)=>`<select class="in pmsel" ${attr}>
-    ${mixed?`<option value="" selected>— mixed —</option>`:`<option value=""${val?"":" selected"}>— not set —</option>`}
+  /* the top row is an action, not a state, so its placeholder says what
+     picking something there will do rather than reporting "mixed" */
+  const sel=(p, val, mixed, attr, all)=>`<select class="in pmsel" ${attr}>
+    ${all?`<option value="" selected>— set every machine —</option>`
+      :(mixed?`<option value="" selected>— mixed —</option>`
+             :`<option value=""${val?"":" selected"}>— not set —</option>`)}
     ${p.variants.map(v=>`<option value="${esc(v.id)}" ${(!mixed&&val===v.id)?"selected":""}>${esc(v.name)}${
       +v.unitPrice?` (${fmt(+v.unitPrice)} ea.)`:""}</option>`).join("")}
   </select>`;
@@ -8450,7 +8454,7 @@ function propMatrixHtml(){
       <tbody>
         <tr class="pmall">
           <td class="pmmach">All machines</td>
-          ${mx.props.map(p=>`<td>${sel(p, "", true, `data-pmall="${esc(p.id)}"`)}</td>`).join("")}
+          ${mx.props.map(p=>`<td>${sel(p, "", false, `data-pmall="${esc(p.id)}"`, true)}</td>`).join("")}
         </tr>
         ${mx.rows.map(row=>`<tr>
           <td class="pmmach">${esc(row.m.title||"")}</td>
