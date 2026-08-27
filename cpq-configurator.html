@@ -11530,8 +11530,16 @@ function sharePropTables(frac){
           return st.some(s=>s==="opt"||s==="alt") || (mixed && st.includes("in"));
         })
       }));
-      const row={machine:e.label||e.top.title||"", via:e.via, qty:e.qty, stepId:e.top.id,
-                 suppliedId, mixed, cells};
+      /* name the machine when the positions come from one item — the tunnel
+         that actually carries them, which is what the reader recognises and
+         what the greyed rows below are named after. Fall back to the step
+         when several items contribute (the applicator's adjustments come
+         from the feedscrew, the brushes and the photocell together), because
+         then no single machine name would be true. */
+      const single = e.kind==="in" && e.optIds.length===1
+        ? (optionById(e.optIds[0])||{}).name : "";
+      const row={machine:single||e.label||e.top.title||"", via:e.via, qty:e.qty,
+                 stepId:e.top.id, suppliedId, mixed, cells};
       (e.kind==="in"?rows:locked).push(row);
     }
     if(!rows.length && !locked.length) continue;
