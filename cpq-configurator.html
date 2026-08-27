@@ -5855,7 +5855,12 @@ function wirePriceToggles(container){
     };
   });
   container.querySelectorAll(".pbtn").forEach(btn=>{
-    if(btn.dataset.cmpswap||btn.dataset.take||btn.dataset.untake||btn.dataset.cmpopttake) return;
+    /* every button wired above has to be listed here: this generic handler
+       runs last and would otherwise replace their onclick with one that
+       looks for data-oid/data-mid, finds neither, and silently does nothing
+       — which is exactly what happened to the type table's "Set all". */
+    if(btn.dataset.cmpswap||btn.dataset.take||btn.dataset.untake
+       ||btn.dataset.cmpopttake||btn.dataset.propall) return;
     btn.onclick=()=>{
       /* item-level buttons carry data-oid, the step-group heading data-mid */
       const act=btn.dataset.act;
