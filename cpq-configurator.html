@@ -1640,6 +1640,25 @@
   .asg-row.is-alt td.asgitem{border-left:2px solid #8b5cf6;padding-left:8px}
   /* "not included in this quote" for a property — the escape hatch for a
      simple quote, and the panel that replaces the type matrix once taken */
+  /* Types per machine — the one table above the format parts */
+  .pmwrap{border:1px solid var(--line);border-radius:11px;background:var(--panel);
+    padding:14px 16px 6px;margin:0 0 18px}
+  .pmhead{font-size:13px;font-weight:600;color:var(--txt);margin-bottom:4px}
+  .pmhead .meta{display:block;font-size:11.5px;font-weight:400;color:var(--txt-faint);
+    margin-top:3px;line-height:1.5;max-width:80ch}
+  .pmscroll{overflow-x:auto;margin-top:10px}
+  .pmtable{border-collapse:collapse;width:100%;min-width:520px}
+  .pmtable th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;
+    color:var(--txt-faint);font-weight:700;padding:0 10px 7px 0;white-space:nowrap}
+  .pmtable td{padding:5px 10px 5px 0;border-top:1px solid var(--line-soft);vertical-align:middle}
+  .pmtable td.pmmach,.pmtable th.pmmach{font-size:12.5px;color:var(--txt);font-weight:500;
+    padding-right:18px;white-space:nowrap}
+  .pmtable tr.pmall td{border-top:0;padding-bottom:8px}
+  .pmtable tr.pmall td.pmmach{color:var(--accent);font-weight:600}
+  .pmqty{display:inline-block;min-width:26px;font-size:11.5px;color:var(--txt-faint);
+    font-variant-numeric:tabular-nums}
+  .pmsel{font-size:12px;padding:4px 7px;max-width:230px}
+  .pmtable td.pmnone{color:var(--txt-faint);font-size:12px}
   .propskip{margin-top:16px;padding-top:14px;border-top:1px solid var(--line-soft);
     display:flex;align-items:center;gap:12px;flex-wrap:wrap}
   .propskip .meta{font-size:11.5px;color:var(--txt-faint);flex:1;min-width:220px}
@@ -8367,6 +8386,113 @@ function formatScreenHtml(){
     <div style="margin-top:10px"><button class="btn primary" id="goFormats">Open the Format parts tab</button></div>
   </div>`;
 }
+/* ============================================================
+   TYPES PER MACHINE — one table instead of three separate steps
+   Which feet, which counters, whether the access doors get a lock bracket:
+   one set of decisions that was spread over a step per property, each one
+   listing every contributing item separately. Here they sit side by side,
+   a row per machine, with a top row that sets them all at once.
+   The type is still stored per contributing option, which is what lets the
+   customer choose hygienic feet on the applicator and standard on the
+   tunnel — the table just stops that flexibility from costing you three
+   screens when you don't need it.
+   Only what is SUPPLIED is set here. Offering a type to the customer as an
+   alternative stays on the property step; the "an alternative carries types
+   nobody has offered" warning catches it if that is forgotten.
+   ============================================================ */
+function propMachineMatrix(){
+  const props=(CONFIG.props||[]).filter(p=>!propSkipped(p) && (p.variants||[]).length);
+  if(!props.length) return null;
+  const byStep=new Map();
+  for(const p of props){
+    for(const c of propContributors(p)){
+      const top=topStepOfModule(c.m);
+      if(!top) continue;
+      if(!byStep.has(top)) byStep.set(top, {m:top, cells:{}});
+      const row=byStep.get(top);
+      const cell=row.cells[p.id] || (row.cells[p.id]={qty:0, optIds:[]});
+      cell.qty+=c.qty;
+      cell.optIds.push(c.o.id);
+    }
+  }
+  const rows=[...byStep.values()];
+  if(!rows.length) return null;
+  /* one type across the whole cell, or several? a mixed cell must not read
+     as though everything is set to whichever one happened to be first */
+  for(const row of rows){
+    for(const p of props){
+      const cell=row.cells[p.id];
+      if(!cell) continue;
+      const ids=[...new Set(cell.optIds.map(id=>assignedVariantId(p,id)||""))];
+      cell.vid = ids.length===1 ? ids[0] : "";
+      cell.mixed = ids.length>1;
+    }
+  }
+  return {props, rows};
+}
+function propMatrixHtml(){
+  const mx=propMachineMatrix();
+  if(!mx) return "";
+  const sel=(p, val, mixed, attr)=>`<select class="in pmsel" ${attr}>
+    ${mixed?`<option value="" selected>— mixed —</option>`:`<option value=""${val?"":" selected"}>— not set —</option>`}
+    ${p.variants.map(v=>`<option value="${esc(v.id)}" ${(!mixed&&val===v.id)?"selected":""}>${esc(v.name)}${
+      +v.unitPrice?` (${fmt(+v.unitPrice)} ea.)`:""}</option>`).join("")}
+  </select>`;
+  return `<div class="pmwrap">
+    <div class="pmhead">Types per machine
+      <span class="meta">Which feet, which counters, which access doors. Set the top row to give every machine the same type; change a single row to let one machine differ.</span>
+    </div>
+    <div class="pmscroll"><table class="pmtable">
+      <thead><tr>
+        <th class="pmmach">Machine</th>
+        ${mx.props.map(p=>`<th>${esc(p.plural||p.label||"")}</th>`).join("")}
+      </tr></thead>
+      <tbody>
+        <tr class="pmall">
+          <td class="pmmach">All machines</td>
+          ${mx.props.map(p=>`<td>${sel(p, "", true, `data-pmall="${esc(p.id)}"`)}</td>`).join("")}
+        </tr>
+        ${mx.rows.map(row=>`<tr>
+          <td class="pmmach">${esc(row.m.title||"")}</td>
+          ${mx.props.map(p=>{
+            const cell=row.cells[p.id];
+            if(!cell) return `<td class="pmnone">&mdash;</td>`;
+            return `<td><span class="pmqty">${cell.qty}&times;</span>
+              ${sel(p, cell.vid, cell.mixed, `data-pmset="${esc(p.id)}|${esc(row.m.id)}"`)}</td>`;
+          }).join("")}
+        </tr>`).join("")}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+/* the contributing options of one property within one top-level step */
+function propOptsInStep(p, stepId){
+  const out=[];
+  for(const c of propContributors(p)){
+    const top=topStepOfModule(c.m);
+    if(top && top.id===stepId) out.push(c.o.id);
+  }
+  return out;
+}
+function wirePropMatrix(el){
+  el.querySelectorAll("[data-pmall]").forEach(s=>{
+    s.onchange=()=>{
+      const p=(CONFIG.props||[]).find(x=>x.id===s.dataset.pmall);
+      if(!p || !s.value) return;
+      for(const c of propContributors(p)) setVariantScope(p, c.o.id, s.value, "in", true);
+      reconcile(); renderFormatsView();
+    };
+  });
+  el.querySelectorAll("[data-pmset]").forEach(s=>{
+    s.onchange=()=>{
+      const [pid, stepId]=String(s.dataset.pmset||"").split("|");
+      const p=(CONFIG.props||[]).find(x=>x.id===pid);
+      if(!p || !s.value) return;
+      for(const oid of propOptsInStep(p, stepId)) setVariantScope(p, oid, s.value, "in", true);
+      reconcile(); renderFormatsView();
+    };
+  });
+}
 function renderFormatsView(){
   ensureParts();
   const el=document.getElementById("fmtBody");
@@ -8505,6 +8631,7 @@ function renderFormatsView(){
 
   const cost=prods.filter(p2=>!p2.optional).reduce((t,p2)=>t+productCost(p2),0)+generalCost();
   el.innerHTML=`<h2>Format parts</h2>
+    ${propMatrixHtml()}
     <div class="docsub">One column per product. Answer the questions and the parts come from the catalogue's dependencies — set those up in Admin.</div>
     ${grid}
     ${(hiddenQs.length||showAllFormatQs)?`<div class="qtoggle">
@@ -8519,6 +8646,7 @@ function renderFormatsView(){
     </div>
     ${optParts?`<div class="fxopt">plus ${fmt(optParts)} quoted as optional — not in the total</div>`:""}`;
 
+  wirePropMatrix(el);
   const list=formatProducts();
   const save=l=>{ setFormatProducts(l); renderFormatsView(); };
   const tq=document.getElementById("fmtToggleQs");
