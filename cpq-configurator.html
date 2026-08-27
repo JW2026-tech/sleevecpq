@@ -863,13 +863,15 @@
   .shareproptname{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
     color:#28338A;margin-bottom:10px}
   .shareproptscroll{overflow-x:auto}
-  .shareprotable{border-collapse:collapse;width:100%;min-width:420px}
+  .shareprotable{border-collapse:collapse;width:100%;min-width:460px;table-layout:fixed}
+  .shareprotable col.pmachcol{width:36%}
   .shareprotable th{text-align:left;padding:0 12px 8px 0;vertical-align:bottom}
-  .shareprotable th .tname{display:block;font-size:12px;font-weight:600;color:#222}
+  .shareprotable th .tname{display:block;font-size:12px;font-weight:600;color:#222;
+    white-space:normal;line-height:1.3}
   .shareprotable th .trate{display:block;font-size:10.5px;color:#999;font-weight:400;margin-top:1px}
   .shareprotable td{padding:7px 12px 7px 0;border-top:1px solid #f0f1f6;font-size:12px;vertical-align:middle}
   .shareprotable td.pmach,.shareprotable th.pmach{font-size:12.5px;color:#222;padding-right:20px;
-    white-space:nowrap;min-width:150px}
+    white-space:normal;line-height:1.35}
   .shareprotable .pqty{color:#999;font-size:11px;margin-left:7px;font-variant-numeric:tabular-nums}
   .shareprotable tr.pall td{border-top:0;padding-bottom:9px}
   .shareprotable tr.pall td.pmach{color:#28338A;font-weight:600}
@@ -11556,7 +11558,17 @@ function sharePropTablesHtml(frac){
     </div>
     ${list.map(t=>`<div class="sharepropt">
       <div class="shareproptname">${esc(t.p.plural||t.p.label||"")}</div>
+      ${/* Fixed columns, sized the same in every one of these tables: left to
+            itself each table sized its machine column to its own longest
+            name, so the type columns started at a different place in each
+            one and the three read as three unrelated blocks. A property with
+            three types divides the remainder into three, with two into two,
+            but they all start at the same edge. */""}
       <div class="shareproptscroll"><table class="shareprotable">
+        <colgroup>
+          <col class="pmachcol">
+          ${t.types.map(()=>`<col style="width:${(64/t.types.length).toFixed(3)}%">`).join("")}
+        </colgroup>
         <thead><tr><th class="pmach"></th>
           ${t.types.map(v=>`<th><span class="tname">${esc(v.name)}</span>${
             +v.unitPrice?`<span class="trate">${fmt(+v.unitPrice)} each</span>`:`<span class="trate">included</span>`}</th>`).join("")}
