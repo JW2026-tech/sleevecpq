@@ -10645,8 +10645,11 @@ async function cloudActiveShares(){
      the version that was live when it was made (supabase-schema-pin-catalogue.sql),
      so publishing new prices leaves sent quotes alone — worth showing, because
      otherwise there is no way to tell what the customer is looking at. */
-  const {data, error} = await supa.from("quote_shares")
-    .select("id,quote_id,token,expires_at,catalogue_version")
+  /* select * rather than naming catalogue_version: Postgres rejects the whole
+     query for an unknown column, so naming it would make this fail — and the
+     quotes list would report every shared quote as "not shared" — on any
+     project where supabase-schema-pin-catalogue.sql has not been run yet */
+  const {data, error} = await supa.from("quote_shares").select("*")
     .is("revoked_at", null).gt("expires_at", new Date().toISOString()).order("created_at",{ascending:false});
   const byQuote=new Map();
   if(!error) for(const s of (data||[])) if(!byQuote.has(s.quote_id)) byQuote.set(s.quote_id, s);
