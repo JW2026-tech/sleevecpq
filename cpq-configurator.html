@@ -879,6 +879,7 @@
   .shareprotable tr.plocked td{color:#aaa;background:#fafafc}
   .shareprotable tr.plocked td.pmach{color:#888}
   .plockwhy{display:block;font-size:10px;color:#bbb;font-style:italic;white-space:nowrap}
+  .pmixed{display:block;font-size:10px;color:#c15c00;font-style:italic;white-space:nowrap}
   /* a property only an alternative would bring: shown, but plainly not yet
      available — dashed and faded, with no button to press */
   .sharealtcard.is-locked{background:#f7f7fa;border-style:dashed;border-color:#d8dbe8;opacity:.7}
@@ -11490,18 +11491,35 @@ function sharePropTables(frac){
     if(types.length<2) continue;                 // nothing to choose between
     const rows=[], locked=[];
     for(const e of byMachine.values()){
-      const ids=[...new Set(e.optIds.map(id=>assignedVariantId(p,id)||""))];
-      const suppliedId=ids.length===1?ids[0]:"";
+      /* Items inside one machine may carry different types — a perforation
+         unit with a digital counter while the frame keeps standard ones, or
+         simply one item nobody has assigned yet. Take the most common as the
+         row's type instead of showing nothing: a bare dash read as though
+         the machine had no type at all, when it had more than one. Clicking
+         a type sets the whole machine to it, which settles the mix. */
+      const tally={};
+      for(const id of e.optIds){
+        const vid=assignedVariantId(p,id)||"";
+        tally[vid]=(tally[vid]||0)+1;
+      }
+      const assigned=Object.keys(tally).filter(Boolean).sort((a,b)=>tally[b]-tally[a]);
+      const suppliedId=assigned[0]||"";
       const supplied=suppliedId?p.variants.find(v=>v.id===suppliedId):null;
       const base=supplied?(+supplied.unitPrice||0):0;
+      const mixed=assigned.length>1 || !!tally[""];
       const cells=types.map(v=>({
         vid:v.id,
         current: !!supplied && supplied.id===v.id,
         delta: cut(e.qty*((+v.unitPrice||0)-base)),
-        offered: e.optIds.some(oid=>(assignEntry(p,oid)[v.id]||[]).some(s=>s==="opt"||s==="alt"))
+        /* in a mixed row a type some items already carry has to be clickable
+           too, otherwise there is no way to bring the machine onto one type */
+        offered: e.optIds.some(oid=>{
+          const st=assignEntry(p,oid)[v.id]||[];
+          return st.some(s=>s==="opt"||s==="alt") || (mixed && st.includes("in"));
+        })
       }));
       const row={machine:e.top.title||"", via:e.via, qty:e.qty, stepId:e.top.id,
-                 suppliedId, mixed:ids.length>1, cells};
+                 suppliedId, mixed, cells};
       (e.kind==="in"?rows:locked).push(row);
     }
     if(!rows.length && !locked.length) continue;
@@ -11531,7 +11549,8 @@ function sharePropTablesHtml(frac){
               : `<button class="btn sm pbtn no-print" data-propall="${esc(t.p.id)}|${esc(v.id)}">Set all</button>`}</td>`).join("")}
           </tr>`:""}
           ${t.rows.map(r=>`<tr>
-            <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span></td>
+            <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>${
+              r.mixed?`<span class="pmixed">not all the same &mdash; pick one to align them</span>`:""}</td>
             ${r.cells.map(x=>`<td>${x.current
               ? `<span class="pcur">&#10003; ${x.delta?fmt(x.delta):"included"}</span>`
               : (x.offered
