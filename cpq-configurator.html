@@ -647,7 +647,35 @@
      it — only #viewShare, never the mode header or any other screen (those
      default to visible until setMode() hides them, which share-mode never
      calls) */
-  body.share-mode > header, body.share-mode > #viewLogin,
+  /* ---- the quote bar: one place for the quote as a document ---- */
+  .quotebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:8px 16px;border-bottom:1px solid var(--line);background:var(--rail);font-size:12.5px}
+  .qbnum{font-weight:600;color:var(--txt)}
+  .qbcust{color:var(--txt-dim)}
+  .qbsep{width:1px;height:18px;background:var(--line);flex:0 0 auto}
+  .qbstatus{font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;
+    border:1px solid var(--line-strong);color:var(--txt-dim);background:var(--panel);cursor:pointer}
+  .qbstatus.is-draft{color:var(--txt-dim)}
+  .qbstatus.is-sent{color:#28338A;border-color:#28338A;background:var(--accent-soft)}
+  .qbstatus.is-accepted{color:var(--ok);border-color:var(--ok);background:var(--ok-soft)}
+  .qbstatus.is-rejected{color:var(--bad);border-color:var(--bad)}
+  .qbwarn{font-size:11.5px;color:var(--warn);display:flex;align-items:center;gap:6px}
+  .qbwarn b{color:var(--txt)}
+  .quotebar .btn{white-space:nowrap}
+  .quotebar .spacer{flex:1}
+  .qbmeta{font-size:11px;color:var(--txt-faint)}
+  /* the log and version panels drop out of the bar */
+  .qbpanel{border-bottom:1px solid var(--line);background:var(--panel);
+    padding:12px 16px;max-height:320px;overflow-y:auto}
+  .qbpanel h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-faint)}
+  .qbrow{display:flex;align-items:baseline;gap:12px;padding:5px 0;border-top:1px solid var(--line-soft);font-size:12px}
+  .qbrow:first-of-type{border-top:0}
+  .qbrow .when{flex:0 0 130px;color:var(--txt-faint);font-size:11px;font-variant-numeric:tabular-nums}
+  .qbrow .who{flex:0 0 150px;color:var(--txt-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .qbrow .what{flex:1;color:var(--txt)}
+  .qbrow.is-customer .what{color:#28338A;font-weight:500}
+  .qbempty{color:var(--txt-faint);font-size:12px;font-style:italic}
+  body.share-mode > header, body.share-mode > #quoteBar, body.share-mode > #viewLogin,
   body.share-mode > #viewConfigure, body.share-mode > #viewFormats,
   body.share-mode > #viewService, body.share-mode > #viewAdmin,
   body.share-mode > #viewDocs, body.share-mode > #viewQuotes{display:none!important}
@@ -2084,6 +2112,14 @@
   <button class="btn" id="btnReset">Reset</button>
 </header>
 
+<!-- ===== the quote bar =====
+     Everything about the quote as a document — which one it is, how far
+     along it is, and every way it leaves the building. It used to be spread
+     across two tabs: sharing, PDF and email sat in Documents while "save as
+     new quote" sat in Quotes, so sending a quote meant navigating first.
+     Filled by renderQuoteBar(); hidden in share mode like the header. -->
+<div class="quotebar hidden" id="quoteBar"></div>
+
 <!-- ===== sign in =====
      Email+password for now — zero extra setup beyond the Supabase project
      itself, so this can be tested before the Microsoft/Azure app
@@ -2210,6 +2246,12 @@ const supa = (window.supabase && window.supabase.createClient)
 let cloudQuoteId = null;      // set once the open quote has a row in `quotes`
 let cloudQuoteRev = null;     // the rev we last read/wrote — used to spot a colleague's save
 let cloudConflictPaused = false;  // true while a rev conflict banner is waiting on a choice
+/* the quote bar's own state: the row's status, the active share (if any) and
+   which panel is open under the bar. Refreshed by loadQuoteMeta(). */
+let quoteStatus = "draft";
+let quoteShare = null;          // {id, token, expires_at, pushed_at, customer_changed_at, catalogue_version}
+let quoteBarPanel = null;       // null | "log" | "versions"
+let quoteEvents = [], quoteVersions = [];
 
 /* ============================================================================
    1. CONFIGURATION MODEL — cascading tree, no conditions.
@@ -10236,6 +10278,9 @@ document.getElementById("btnPrintAll").onclick=()=>{
   document.getElementById("allDocsBody").innerHTML=buildAllDocsHtml();
   document.body.classList.add("print-all");
   window.print();
+  /* the log is about what left the building, and a printed PDF is one of
+     the ways it does — recorded here rather than only for the emailed one */
+  logQuoteEvent("pdf_created",{via:"browser print"});
 };
 window.addEventListener("afterprint",()=>{
   document.body.classList.remove("print-all");
@@ -10314,6 +10359,7 @@ function renderCurrent(){
 function setMode(next){
   mode=next;
   saveSoon();
+  renderQuoteBar();          // the bar rides along on every screen
   document.getElementById("mConfig").classList.toggle("on",mode==="configure");
   document.getElementById("mFormats").classList.toggle("on",mode==="formats");
   document.getElementById("viewFormats").classList.toggle("hidden",mode!=="formats");
@@ -10443,6 +10489,211 @@ function catalogueChanged(){ return !!publishedSig && catalogueSig()!==published
    team catalogue over them. Holds the version it did not load, so the bar can
    offer to take it after publishing (or instead of it). */
 let heldCloudCatalogue=null;
+/* ============================================================
+   THE QUOTE BAR
+   The quote as a document: which one, how far along, and every route out
+   (link, PDF, email). Those routes used to be spread over two tabs, so
+   sending a quote meant navigating first.
+   Everything here degrades: without the schema from
+   supabase-schema-quoteflow.sql the bar still shows the number and the
+   buttons, and says plainly what is not available yet.
+   ============================================================ */
+const QUOTE_STATUSES=[
+  {id:"draft",    label:"Draft"},
+  {id:"sent",     label:"Sent"},
+  {id:"accepted", label:"Accepted"},
+  {id:"rejected", label:"Rejected"}
+];
+const EVENT_WORDS={
+  link_created:"Customer link created",
+  link_updated:"Customer link updated",
+  link_revoked:"Customer link revoked",
+  pdf_created:"PDF created",
+  email_sent:"PDF emailed",
+  customer_opened:"Customer opened the link",
+  customer_changed:"Customer changed their selection",
+  customer_changes_taken:"Customer's changes taken into the quote",
+  status_changed:"Status changed",
+  version_restored:"Earlier version restored"
+};
+/* one round trip for everything the bar needs to say */
+async function loadQuoteMeta(){
+  if(!supa || !cloudQuoteId){ quoteShare=null; quoteEvents=[]; quoteVersions=[]; return; }
+  try{
+    const {data:q}=await supa.from("quotes").select("*").eq("id",cloudQuoteId).maybeSingle();
+    quoteStatus=(q&&q.status)||"draft";
+  }catch(err){}
+  try{
+    const {data:sh}=await supa.from("quote_shares").select("*").eq("quote_id",cloudQuoteId)
+      .is("revoked_at",null).order("created_at",{ascending:false}).limit(1).maybeSingle();
+    quoteShare=sh||null;
+  }catch(err){ quoteShare=null; }
+  try{
+    const {data:ev}=await supa.from("quote_events").select("*").eq("quote_id",cloudQuoteId)
+      .order("at",{ascending:false}).limit(60);
+    quoteEvents=ev||[];
+  }catch(err){ quoteEvents=[]; }
+  try{
+    const {data:vs}=await supa.from("quote_versions").select("id,created_at,created_by")
+      .eq("quote_id",cloudQuoteId).order("created_at",{ascending:false}).limit(40);
+    quoteVersions=vs||[];
+  }catch(err){ quoteVersions=[]; }
+}
+async function logQuoteEvent(kind, detail){
+  if(!supa || !cloudQuoteId) return;
+  try{ await supa.rpc("log_quote_event",{p_quote_id:cloudQuoteId, p_kind:kind, p_detail:detail||null}); }
+  catch(err){}
+}
+/* Is the customer looking at something older than what is on screen? The
+   share carries its own copy now, so this is the difference that matters —
+   without it you cannot tell whether a change has actually gone out. */
+function shareIsBehind(){
+  if(!quoteShare || !quoteShare.pushed_at) return false;
+  const pushed=new Date(quoteShare.pushed_at).getTime();
+  /* saveNow() writes on every edit, so the row's own updated_at is the
+     closest thing to "when the quote last changed" */
+  return Date.now() - pushed > 1500 && !!cloudQuoteRev;
+}
+function renderQuoteBar(){
+  const bar=document.getElementById("quoteBar");
+  if(!bar) return;
+  if(document.body.classList.contains("share-mode")){ bar.classList.add("hidden"); return; }
+  bar.classList.remove("hidden");
+  const num=CONFIG.quoteNumber||"(no number yet)";
+  const cust=(CONFIG.customer||(CONFIG.customerInfo&&CONFIG.customerInfo.company)||"").trim();
+  const st=QUOTE_STATUSES.find(s=>s.id===quoteStatus)||QUOTE_STATUSES[0];
+  const custChanged=quoteShare&&quoteShare.customer_changed_at;
+  bar.innerHTML=`
+    <span class="qbnum">${esc(num)}</span>
+    ${cust?`<span class="qbcust">${esc(cust)}</span>`:""}
+    <span class="qbsep"></span>
+    <select class="qbstatus is-${esc(st.id)}" id="qbStatus" title="Where this quote stands">
+      ${QUOTE_STATUSES.map(s=>`<option value="${s.id}" ${s.id===st.id?"selected":""}>${s.label}</option>`).join("")}
+    </select>
+    <span class="qbsep"></span>
+    ${!cloudQuoteId
+      ? `<span class="qbmeta">Not saved to the cloud yet</span>
+         <button class="btn sm primary" id="qbSaveNew">Save as new quote</button>`
+      : `<span class="qbmeta" id="qbSaved"></span>`}
+    ${quoteShare
+      ? `<span class="qbsep"></span>
+         <button class="btn sm" id="qbCopyLink">Copy customer link</button>
+         ${shareIsBehind()
+           ? `<button class="btn sm primary" id="qbPush" title="Send the current version of this quote to the customer's link">Update the link</button>`
+           : `<span class="qbmeta">Link is up to date</span>`}
+         <button class="btn sm" id="qbRevoke" title="Stop the link from working">Revoke</button>
+         ${custChanged?`<span class="qbwarn">${shareLockIconSvg()}<b>The customer changed something</b>
+            <button class="btn sm" id="qbPull">Take their changes</button></span>`:""}`
+      : `<span class="qbsep"></span><button class="btn sm" id="qbShare">Share with customer</button>`}
+    <span class="spacer"></span>
+    <button class="btn sm" id="qbPdf">PDF</button>
+    <button class="btn sm" id="qbEmail">Email</button>
+    <span class="qbsep"></span>
+    <button class="btn sm ${quoteBarPanel==="log"?"primary":""}" id="qbLog">History${
+      quoteEvents.length?` (${quoteEvents.length})`:""}</button>
+    <button class="btn sm ${quoteBarPanel==="versions"?"primary":""}" id="qbVers">Versions${
+      quoteVersions.length?` (${quoteVersions.length})`:""}</button>`;
+  wireQuoteBar();
+  renderQuoteBarPanel();
+}
+function renderQuoteBarPanel(){
+  const old=document.getElementById("qbPanel");
+  if(old) old.remove();
+  if(!quoteBarPanel) return;
+  const bar=document.getElementById("quoteBar");
+  const el=document.createElement("div");
+  el.id="qbPanel"; el.className="qbpanel";
+  const when=t=>{ try{ return new Date(t).toLocaleString(); }catch(e){ return ""; } };
+  if(quoteBarPanel==="log"){
+    el.innerHTML=`<h4>What has happened to this quote</h4>${
+      quoteEvents.length
+        ? quoteEvents.map(e=>`<div class="qbrow ${e.actor==="customer"?"is-customer":""}">
+            <span class="when">${when(e.at)}</span>
+            <span class="who">${esc(e.actor||"")}</span>
+            <span class="what">${esc(EVENT_WORDS[e.kind]||e.kind)}</span>
+          </div>`).join("")
+        : `<div class="qbempty">Nothing recorded yet. Sharing, emailing and the customer's own actions appear here once supabase-schema-quoteflow.sql has been run.</div>`}`;
+  } else {
+    el.innerHTML=`<h4>Earlier versions &mdash; restoring one is itself undoable</h4>${
+      quoteVersions.length
+        ? quoteVersions.map(v=>`<div class="qbrow">
+            <span class="when">${when(v.created_at)}</span>
+            <span class="who">${esc(v.created_by||"")}</span>
+            <span class="what"><button class="btn sm" data-restorever="${esc(v.id)}">Restore this version</button></span>
+          </div>`).join("")
+        : `<div class="qbempty">No earlier versions recorded for this quote yet.</div>`}`;
+  }
+  bar.insertAdjacentElement("afterend", el);
+  el.querySelectorAll("[data-restorever]").forEach(b=>{
+    b.onclick=async ()=>{
+      if(!confirm("Restore this version? The current state is kept in the history, so this can be undone.")) return;
+      try{
+        await supa.rpc("restore_quote_version",{p_version_id:b.dataset.restorever});
+        await cloudOpenQuote(cloudQuoteId);
+        await loadQuoteMeta();
+        flagSaved("Version restored");
+        renderQuoteBar(); refreshView();
+      }catch(err){ alert("Could not restore: "+(err&&err.message||err)); }
+    };
+  });
+}
+function wireQuoteBar(){
+  const on=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
+  const stSel=document.getElementById("qbStatus");
+  if(stSel) stSel.onchange=async ()=>{
+    const was=quoteStatus;
+    quoteStatus=stSel.value;
+    if(!supa||!cloudQuoteId){ renderQuoteBar(); return; }
+    try{
+      await supa.from("quotes").update({status:quoteStatus}).eq("id",cloudQuoteId);
+      await logQuoteEvent("status_changed",{from:was,to:quoteStatus});
+      await loadQuoteMeta();
+    }catch(err){ alert("Could not set the status: "+(err&&err.message||err)+"\n\nHas supabase-schema-quoteflow.sql been run?"); quoteStatus=was; }
+    renderQuoteBar();
+  };
+  on("qbSaveNew", async ()=>{
+    try{ await cloudCreateQuote(); await loadQuoteMeta(); flagSaved("Saved as new quote"); renderQuoteBar(); }
+    catch(err){ alert("Could not save: "+(err&&err.message||err)); }
+  });
+  on("qbShare", ()=>{ setMode("docs"); const b=document.getElementById("btnShareLink"); if(b) b.click(); });
+  on("qbCopyLink", ()=>{
+    const url=`${location.origin}${location.pathname}?share=${quoteShare.token}`;
+    navigator.clipboard.writeText(url).then(()=>flagSaved("Link copied"));
+  });
+  on("qbPush", async ()=>{
+    if(quoteShare.customer_changed_at &&
+       !confirm("The customer has changed their own selection in this link.\n\nUpdating the link replaces their copy with yours and their changes are lost. Take their changes first if you want to keep them.\n\nUpdate anyway?")) return;
+    try{
+      clearTimeout(saveTimer); saveNow();
+      await supa.rpc("push_quote_share",{p_share_id:quoteShare.id});
+      await loadQuoteMeta();
+      flagSaved("Customer link updated");
+      renderQuoteBar();
+    }catch(err){ alert("Could not update the link: "+(err&&err.message||err)+"\n\nHas supabase-schema-quoteflow.sql been run?"); }
+  });
+  on("qbPull", async ()=>{
+    if(!confirm("Take the customer's selection into this quote? Your current version is kept in the history.")) return;
+    try{
+      await supa.rpc("pull_share_changes",{p_share_id:quoteShare.id});
+      await cloudOpenQuote(cloudQuoteId);
+      await loadQuoteMeta();
+      flagSaved("Customer's changes taken");
+      renderQuoteBar(); refreshView();
+    }catch(err){ alert("Could not take the changes: "+(err&&err.message||err)); }
+  });
+  on("qbRevoke", async ()=>{
+    if(!confirm("Revoke this link? The customer can no longer open it.")) return;
+    try{
+      await supa.from("quote_shares").update({revoked_at:new Date().toISOString()}).eq("id",quoteShare.id);
+      await logQuoteEvent("link_revoked");
+      await loadQuoteMeta(); flagSaved("Link revoked"); renderQuoteBar();
+    }catch(err){ alert("Could not revoke: "+(err&&err.message||err)); }
+  });
+  on("qbPdf", ()=>{ setMode("docs"); const b=document.getElementById("btnPrintAll"); if(b) b.click(); });
+  on("qbEmail", ()=>{ setMode("docs"); const b=document.getElementById("btnEmailPdf"); if(b) b.click(); });
+  on("qbLog", ()=>{ quoteBarPanel=quoteBarPanel==="log"?null:"log"; renderQuoteBar(); });
+  on("qbVers", ()=>{ quoteBarPanel=quoteBarPanel==="versions"?null:"versions"; renderQuoteBar(); });
+}
 function renderCatalogueBar(){
   const bar=document.getElementById("catBar");
   if(!bar) return;
@@ -10587,6 +10838,8 @@ async function cloudCreateQuote(){
   const {data:ins, error} = await supa.from("quotes").insert(quoteRowPayload()).select("id,rev").single();
   if(error) throw error;
   cloudQuoteId=ins.id; cloudQuoteRev=ins.rev;
+  quoteStatus="draft"; quoteShare=null;
+  loadQuoteMeta().then(()=>renderQuoteBar());
   return cloudQuoteId;
 }
 /* updates the already-open quote, guarding on the rev we last saw so a
@@ -10662,6 +10915,8 @@ async function cloudOpenQuote(id){
   if(!applyAnyFile(data.data)) return false;
   cloudQuoteId=id; cloudQuoteRev=data.rev; cloudConflictPaused=false;
   removeCloudConflictBanner();
+  /* the bar speaks for whichever quote is open, so it has to be told */
+  loadQuoteMeta().then(()=>renderQuoteBar());
   return true;
 }
 async function cloudDuplicateQuote(id){
@@ -12125,8 +12380,12 @@ document.getElementById("btnShareLink").onclick=async ()=>{
   if(!supa) return alert("Cloud sign-in is required to share a quote.");
   try{
     await ensureCloudQuote();
+    /* flush first: the link takes a copy of the quote as it stands, so an
+       edit still sitting in the 400ms debounce would be left out of it */
+    clearTimeout(saveTimer); saveNow();
     const {data, error}=await supa.rpc("create_quote_share", {p_quote_id: cloudQuoteId, p_days: 14});
     if(error || !data) throw error||new Error("no data");
+    loadQuoteMeta().then(()=>renderQuoteBar());
     const url=`${location.origin}${location.pathname}?share=${data.token}`;
     const panel=document.getElementById("sharePanel");
     panel.classList.remove("hidden");
@@ -12209,6 +12468,8 @@ document.getElementById("btnEmailPdf").onclick=async ()=>{
          render step itself is still testable before Azure is set up */
       downloadBase64Pdf(out.pdfBase64, out.filename);
       flagSaved("PDF downloaded (sign in with Microsoft to email it)");
+      logQuoteEvent("pdf_created",{via:"server render", filename:out.filename});
+      loadQuoteMeta().then(()=>renderQuoteBar());
       return;
     }
     const contacts=((CONFIG.customerInfo&&CONFIG.customerInfo.contacts)||[]).filter(c=>c.email);
@@ -12235,6 +12496,9 @@ document.getElementById("btnEmailPdf").onclick=async ()=>{
     }
     if(g.status!==202) throw new Error("Microsoft Graph responded "+g.status);
     flagSaved("Emailed");
+    /* who it went to, so the log answers "did we send this, and to whom" */
+    await logQuoteEvent("email_sent",{to:contacts.map(c=>c.email), filename:out.filename});
+    loadQuoteMeta().then(()=>renderQuoteBar());
   }catch(err){ alert("Could not send: "+(err&&err.message||err)); flagSaved("Not sent", true); }
 };
 
@@ -12293,6 +12557,8 @@ async function boot(){
     }
   }catch(err){}
   renderCatalogueBar();
+  await loadQuoteMeta();
+  renderQuoteBar();
   const {data:{session}}=await supa.auth.getSession();
   if(session){
     document.getElementById("whoAmI").textContent=session.user.email||"";
