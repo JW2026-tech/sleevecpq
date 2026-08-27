@@ -11471,18 +11471,25 @@ function sharePropTables(frac){
   const out=[];
   for(const p of (CONFIG.props||[])){
     if(propSkipped(p) || !(p.variants||[]).length) continue;
-    /* group the contributors per machine, keeping in-scope and
-       alternative-only machines apart — the second kind can be shown but
-       not chosen until that machine is */
+    /* What is in scope is grouped per step, so the row reads as one machine
+       ("Applicator HSSA2000, 6×") rather than as the parts inside it.
+       What only an ALTERNATIVE would bring is grouped per option instead,
+       and named after that option: those rows were keyed per step too, which
+       merged the HSS6000's eight feet with the HSS6000W's eight into a
+       single "Shrinking 16×" row and then blamed it all on the HSS6000 —
+       and calling the row "Shrinking" made it look greyed out despite
+       Shrinking being in the quote. The row is about the tunnel, so it is
+       named after the tunnel. */
     const byMachine=new Map();
     for(const c of propContributors(p)){
       const top=topStepOfModule(c.m);
       if(!top) continue;
       const kind=scopeKind(c.o);
       if(kind!=="in" && kind!=="alt") continue;
-      const key=top.id+"|"+kind;
+      const key = kind==="in" ? top.id+"|in" : "alt|"+c.o.id;
       if(!byMachine.has(key))
-        byMachine.set(key, {top, kind, qty:0, optIds:[], via:c.o.name||""});
+        byMachine.set(key, {top, kind, qty:0, optIds:[], via:c.o.name||"",
+                            label: kind==="in" ? (top.title||"") : (c.o.name||"")});
       const e=byMachine.get(key);
       e.qty+=c.qty; e.optIds.push(c.o.id);
     }
@@ -11523,7 +11530,7 @@ function sharePropTables(frac){
           return st.some(s=>s==="opt"||s==="alt") || (mixed && st.includes("in"));
         })
       }));
-      const row={machine:e.top.title||"", via:e.via, qty:e.qty, stepId:e.top.id,
+      const row={machine:e.label||e.top.title||"", via:e.via, qty:e.qty, stepId:e.top.id,
                  suppliedId, mixed, cells};
       (e.kind==="in"?rows:locked).push(row);
     }
@@ -11565,12 +11572,12 @@ function sharePropTablesHtml(frac){
           </tr>`).join("")}
           ${t.locked.map(r=>`<tr class="plocked">
             <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>
-              <span class="plockwhy">only with ${esc(r.via)}</span></td>
+              <span class="plockwhy">this machine is not selected</span></td>
             ${r.cells.map(x=>`<td>${x.current?`included`:(x.delta?`+ ${fmt(x.delta)}`:"&mdash;")}</td>`).join("")}
           </tr>`).join("")}
         </tbody>
       </table></div>
-      ${t.locked.length?`<div class="sharelockednote">${shareLockIconSvg()}<span>The greyed row comes with a machine that is not selected — choose that machine above and these become available.</span></div>`:""}
+      ${t.locked.length?`<div class="sharelockednote">${shareLockIconSvg()}<span>Greyed rows are machines you have not selected. Choose one of them above and its positions become choosable here.</span></div>`:""}
     </div>`).join("")}`;
 }
 /* what a step actually holds in scope — the picked options that are neither
