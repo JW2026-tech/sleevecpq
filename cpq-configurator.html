@@ -857,6 +857,28 @@
   .sharepropmach{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
     font-size:11px;color:#888;margin-top:9px}
   .sharepropmach b{color:#28338A}
+  .shareheroes-after{margin-top:26px}
+  /* ---- one type table for the whole line ---- */
+  .sharepropt{border:1px solid #e3e6f0;border-radius:12px;padding:14px 16px 12px;margin-bottom:14px;background:#fff}
+  .shareproptname{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+    color:#28338A;margin-bottom:10px}
+  .shareproptscroll{overflow-x:auto}
+  .shareprotable{border-collapse:collapse;width:100%;min-width:420px}
+  .shareprotable th{text-align:left;padding:0 12px 8px 0;vertical-align:bottom}
+  .shareprotable th .tname{display:block;font-size:12px;font-weight:600;color:#222}
+  .shareprotable th .trate{display:block;font-size:10.5px;color:#999;font-weight:400;margin-top:1px}
+  .shareprotable td{padding:7px 12px 7px 0;border-top:1px solid #f0f1f6;font-size:12px;vertical-align:middle}
+  .shareprotable td.pmach,.shareprotable th.pmach{font-size:12.5px;color:#222;padding-right:20px;
+    white-space:nowrap;min-width:150px}
+  .shareprotable .pqty{color:#999;font-size:11px;margin-left:7px;font-variant-numeric:tabular-nums}
+  .shareprotable tr.pall td{border-top:0;padding-bottom:9px}
+  .shareprotable tr.pall td.pmach{color:#28338A;font-weight:600}
+  .shareprotable .pcur{color:#EF7B0B;font-weight:700;white-space:nowrap}
+  .shareprotable .pna{color:#ccc}
+  .shareprotable .btn.sm{white-space:nowrap;padding:4px 10px;font-size:11.5px}
+  .shareprotable tr.plocked td{color:#aaa;background:#fafafc}
+  .shareprotable tr.plocked td.pmach{color:#888}
+  .plockwhy{display:block;font-size:10px;color:#bbb;font-style:italic;white-space:nowrap}
   /* a property only an alternative would bring: shown, but plainly not yet
      available — dashed and faded, with no button to press */
   .sharealtcard.is-locked{background:#f7f7fa;border-style:dashed;border-color:#d8dbe8;opacity:.7}
@@ -5561,7 +5583,7 @@ function altCompares(frac){
 function takeAlternative(token){
   const [key, id]=String(token||"").split("|");
   if(key.startsWith("prop:")){
-    /* The customer's page offers this choice per module (sharePropAltGroups),
+    /* The customer page offers this choice per machine (sharePropTables),
        so its key carries the step it applies to after "@@": hygienic feet on
        the applicator must not silently re-shoe the tunnel as well. Keys
        without the suffix — the sales-facing documents — still switch every
@@ -5801,6 +5823,26 @@ function wirePriceToggles(container){
   });
   container.querySelectorAll("[data-cmpswap]").forEach(b=>{
     b.onclick=()=>{ takeAlternative(b.dataset.cmpswap); };
+  });
+  /* "Set all" on the customer's type table: one type across every machine
+     that carries this property, so the choice is made once. Mirrors the
+     prop branch of takeAlternative, but for every in-scope contributor at
+     once instead of one step's worth. */
+  container.querySelectorAll("[data-propall]").forEach(b=>{
+    b.onclick=()=>{
+      const [pid,vid]=String(b.dataset.propall||"").split("|");
+      const p=(CONFIG.props||[]).find(x=>x.id===pid);
+      if(!p || !vid) return;
+      for(const c of propContributors(p)){
+        if(scopeKind(c.o)!=="in") continue;
+        const cur=assignedVariant(p, c.o.id);
+        if(cur && cur.id===vid) continue;
+        setVariantScope(p, c.o.id, vid, "in", true);
+        /* what it replaces stays on offer, so the customer can go back */
+        if(cur) setVariantScope(p, c.o.id, cur.id, "opt", true);
+      }
+      reconcile(); refreshView();
+    };
   });
   container.querySelectorAll("[data-cmpopttake]").forEach(b=>{
     b.onclick=()=>{
@@ -11366,128 +11408,6 @@ function shareAltGroupStep(c){
   return topStepOfOption((c&&c.targetOpt&&c.targetOpt.id) || key.replace(/^opt:/,""));
 }
 /* ============================================================
-   PROPERTY ALTERNATIVES, PER MODULE
-   groupOfferLines() deliberately rolls a property offer up across the whole
-   quote — the sales-facing documents want "10× standard feet", once. On the
-   customer's page that is the wrong unit of decision: the applicator carries
-   six feet and the tunnel four, and a customer may well want hygienic feet on
-   one and not the other. So the share page regroups the same numbers per
-   top-level step, and the swap it emits is scoped to that step alone (see the
-   "@@" step suffix that takeAlternative understands).
-   Shaped exactly like an altCompares() entry so shareAltGroupHtml renders it
-   unchanged.
-   ============================================================ */
-function sharePropAltGroups(frac){
-  const cut=n=>(+n||0)*(1-(frac||0));
-  const out=[];
-  for(const p of (CONFIG.props||[])){
-    if(propSkipped(p)) continue;
-    if(!p.step || !(p.variants||[]).length) continue;
-    /* contributors that actually carry this property, per top-level step —
-       split by scope, because the two produce different sections: what is in
-       scope is choosable now, what only an alternative brings is shown but
-       locked (see below) */
-    const byStep=new Map(), altByStep=new Map();
-    for(const c of propContributors(p)){
-      const top=topStepOfModule(c.m);
-      if(!top) continue;
-      const kind=scopeKind(c.o);
-      const map = kind==="in" ? byStep : (kind==="alt" ? altByStep : null);
-      if(!map) continue;
-      if(!map.has(top)) map.set(top,[]);
-      map.get(top).push(c);
-    }
-    /* A property no machine in scope carries, but an alternative would — the
-       twelve adjustments on the HSS6000W. Showing nothing at all hid the
-       possibility completely; showing it greyed out, named with the machine
-       that unlocks it, tells the customer it exists and what it depends on.
-       Only when nothing in this step already offers the property, otherwise
-       the live section above is the place for it. */
-    for(const [top, list] of altByStep){
-      if(byStep.has(top)) continue;
-      for(const c of list){
-        const supplied=assignedVariant(p, c.o.id);
-        const e=assignEntry(p, c.o.id);
-        const base=supplied?(+supplied.unitPrice||0):0;
-        const levels=[];
-        for(const v of p.variants){
-          const isSup=!!supplied && supplied.id===v.id;
-          const offered=(e[v.id]||[]).some(s=>s==="opt"||s==="alt");
-          if(!isSup && !offered) continue;
-          levels.push({name:`${c.qty}× ${v.name}`, vid:v.id, opt:null,
-                       supplied:isSup, delta:cut(c.qty*((+v.unitPrice||0)-base))});
-        }
-        if(!levels.some(l=>!l.supplied)) continue;     // nothing to show off
-        out.push({key:`lockedprop:${p.id}:${c.o.id}`, step:top, locked:true,
-                  lockedBy:c.o.name||"", target:`${c.qty}× ${propName(p,c.qty)}`,
-                  targetOpt:null, targetPrice:0, cols:levels});
-      }
-    }
-    for(const [top, list] of byStep){
-      /* one comparison per supplied type in this step: what it costs here,
-         and each type offered instead of it, both counted on this step's own
-         quantity rather than the whole line's */
-      const groups=new Map();
-      for(const c of list){
-        const supplied=assignedVariant(p, c.o.id);
-        if(!supplied) continue;                    // nothing to stand against
-        if(!groups.has(supplied.id))
-          groups.set(supplied.id, {supplied, qty:0, offers:new Map()});
-        const g=groups.get(supplied.id);
-        g.qty += c.qty;
-        const e=assignEntry(p, c.o.id);
-        for(const v of p.variants){
-          if(v.id===supplied.id) continue;
-          if(!(e[v.id]||[]).includes("opt")) continue;
-          if(!g.offers.has(v.id)) g.offers.set(v.id, {v, qty:0});
-          g.offers.get(v.id).qty += c.qty;
-        }
-      }
-      /* The same positions on the machines this step could hold instead —
-         "4× with the HSS3000, 8× with the HSS6000W". Without this the page
-         showed 4× here and 8× on the alternative cards with nothing to
-         connect the two, which read as a contradiction. Named per sibling
-         option that carries the property and is not the one in scope. */
-      const others=[];
-      const seenMods=new Set();
-      for(const c of list){
-        if(seenMods.has(c.m)) continue;
-        seenMods.add(c.m);
-        const sel=state[c.m.id];
-        const selIds=(sel===undefined)?[]:(Array.isArray(sel)?sel:[sel]);
-        for(const alt of (c.m.options||[])){
-          if(alt===c.o) continue;
-          const q=propQtyOf(alt, p.id);
-          if(!q) continue;
-          /* only machines the customer could actually end up with here */
-          if(!selIds.includes(alt.id) && !alt.alt) continue;
-          others.push({name:alt.name||"", qty:q});
-        }
-      }
-      for(const g of groups.values()){
-        if(!g.offers.size) continue;
-        const unit=+g.supplied.unitPrice||0;
-        out.push({
-          key:`prop:${p.id}:${g.supplied.id}@@${top.id}`,
-          step:top,
-          target:`${g.qty}× ${g.supplied.name}`,
-          targetOpt:null,
-          targetPrice:cut(g.qty*unit),
-          note:PROP_QTY_NOTE,
-          perMachine:others,
-          cols:[...g.offers.values()].map(o=>({
-            name:`${o.qty}× ${o.v.name}`,
-            vid:o.v.id,
-            opt:null,
-            delta:cut(o.qty*((+o.v.unitPrice||0)-unit))
-          }))
-        });
-      }
-    }
-  }
-  return out;
-}
-/* ============================================================
    WHAT AN ALTERNATIVE'S OWN PROPERTY POSITIONS COULD BECOME
    An alternative brings its own property positions with it — the HSS6000W
    carries twelve adjustments where the tunnel in scope carries none. Types
@@ -11527,11 +11447,107 @@ function shareAltPropPreview(altOptId, frac){
   }
   return out;
 }
-/* every comparison the customer's page offers: the option alternatives as
-   altCompares() builds them, plus the property ones regrouped per module */
+/* The machine alternatives only. Property types used to be regrouped per
+   module and shown inside each machine card, which meant the customer
+   answered "which feet" once for the applicator and again for the tunnel —
+   one decision asked twice. They now live in a single table above the format
+   parts (sharePropTablesHtml). */
 function shareAltGroups(frac){
-  return altCompares(frac).filter(c=>!String(c.key||"").startsWith("prop:"))
-    .concat(sharePropAltGroups(frac));
+  return altCompares(frac).filter(c=>!String(c.key||"").startsWith("prop:"));
+}
+/* ============================================================
+   TYPES FOR THE WHOLE LINE — one table for the customer
+   A row per machine that carries the property, a column per type, and a top
+   row that sets every machine at once. Same data as before, asked once.
+   ============================================================ */
+function sharePropTables(frac){
+  const cut=n=>(+n||0)*(1-(frac||0));
+  const out=[];
+  for(const p of (CONFIG.props||[])){
+    if(propSkipped(p) || !(p.variants||[]).length) continue;
+    /* group the contributors per machine, keeping in-scope and
+       alternative-only machines apart — the second kind can be shown but
+       not chosen until that machine is */
+    const byMachine=new Map();
+    for(const c of propContributors(p)){
+      const top=topStepOfModule(c.m);
+      if(!top) continue;
+      const kind=scopeKind(c.o);
+      if(kind!=="in" && kind!=="alt") continue;
+      const key=top.id+"|"+kind;
+      if(!byMachine.has(key))
+        byMachine.set(key, {top, kind, qty:0, optIds:[], via:c.o.name||""});
+      const e=byMachine.get(key);
+      e.qty+=c.qty; e.optIds.push(c.o.id);
+    }
+    if(!byMachine.size) continue;
+    /* only types that are actually in play — supplied or offered somewhere */
+    const live=new Set();
+    for(const e of byMachine.values())
+      for(const oid of e.optIds)
+        for(const v of p.variants) if((assignEntry(p,oid)[v.id]||[]).length) live.add(v.id);
+    const types=p.variants.filter(v=>live.has(v.id));
+    if(types.length<2) continue;                 // nothing to choose between
+    const rows=[], locked=[];
+    for(const e of byMachine.values()){
+      const ids=[...new Set(e.optIds.map(id=>assignedVariantId(p,id)||""))];
+      const suppliedId=ids.length===1?ids[0]:"";
+      const supplied=suppliedId?p.variants.find(v=>v.id===suppliedId):null;
+      const base=supplied?(+supplied.unitPrice||0):0;
+      const cells=types.map(v=>({
+        vid:v.id,
+        current: !!supplied && supplied.id===v.id,
+        delta: cut(e.qty*((+v.unitPrice||0)-base)),
+        offered: e.optIds.some(oid=>(assignEntry(p,oid)[v.id]||[]).some(s=>s==="opt"||s==="alt"))
+      }));
+      const row={machine:e.top.title||"", via:e.via, qty:e.qty, stepId:e.top.id,
+                 suppliedId, mixed:ids.length>1, cells};
+      (e.kind==="in"?rows:locked).push(row);
+    }
+    if(!rows.length && !locked.length) continue;
+    out.push({p, types, rows, locked});
+  }
+  return out;
+}
+function sharePropTablesHtml(frac){
+  const list=sharePropTables(frac);
+  if(!list.length) return "";
+  return `<div class="sharesectionhead">
+      <h3>Types for this line</h3>
+      <div class="sharesectionsub">Feet, counters and access doors are fitted throughout the line. Choose once for every machine, or set a machine on its own.</div>
+    </div>
+    ${list.map(t=>`<div class="sharepropt">
+      <div class="shareproptname">${esc(t.p.plural||t.p.label||"")}</div>
+      <div class="shareproptscroll"><table class="shareprotable">
+        <thead><tr><th class="pmach"></th>
+          ${t.types.map(v=>`<th><span class="tname">${esc(v.name)}</span>${
+            +v.unitPrice?`<span class="trate">${fmt(+v.unitPrice)} each</span>`:`<span class="trate">included</span>`}</th>`).join("")}
+        </tr></thead>
+        <tbody>
+          ${t.rows.length>1?`<tr class="pall">
+            <td class="pmach">All machines</td>
+            ${t.types.map(v=>`<td>${t.rows.every(r=>r.suppliedId===v.id)
+              ? `<span class="pcur">&#10003; all</span>`
+              : `<button class="btn sm pbtn no-print" data-propall="${esc(t.p.id)}|${esc(v.id)}">Set all</button>`}</td>`).join("")}
+          </tr>`:""}
+          ${t.rows.map(r=>`<tr>
+            <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span></td>
+            ${r.cells.map(x=>`<td>${x.current
+              ? `<span class="pcur">&#10003; ${x.delta?fmt(x.delta):"included"}</span>`
+              : (x.offered
+                 ? `<button class="btn sm pbtn no-print" data-cmpswap="prop:${esc(t.p.id)}:${esc(r.suppliedId)}@@${esc(r.stepId)}|${esc(x.vid)}">${
+                     x.delta>0?`+ ${fmt(x.delta)}`:(x.delta<0?`&minus; ${fmt(-x.delta)}`:"no extra cost")}</button>`
+                 : `<span class="pna">&mdash;</span>`)}</td>`).join("")}
+          </tr>`).join("")}
+          ${t.locked.map(r=>`<tr class="plocked">
+            <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>
+              <span class="plockwhy">only with ${esc(r.via)}</span></td>
+            ${r.cells.map(x=>`<td>${x.current?`included`:(x.delta?`+ ${fmt(x.delta)}`:"&mdash;")}</td>`).join("")}
+          </tr>`).join("")}
+        </tbody>
+      </table></div>
+      ${t.locked.length?`<div class="sharelockednote">${shareLockIconSvg()}<span>The greyed row comes with a machine that is not selected — choose that machine above and these become available.</span></div>`:""}
+    </div>`).join("")}`;
 }
 /* what a step actually holds in scope — the picked options that are neither
    optional extras nor alternatives */
@@ -11777,11 +11793,19 @@ function shareProposalHtml(){
   /* one set of blocks for the cards and for working out which upgrades still
      need a home, so the two can't disagree about what was already shown */
   const blocks=shareStepBlocks(frac);
+  /* the machines first, then the one type table, then the format parts —
+     "boven de formaat delen", so the line-wide choices are settled before
+     the per-product tooling */
+  const fmtIdx=blocks.findIndex(b=>b.step && b.step===formatStep());
+  const beforeFmt=fmtIdx<0?blocks:blocks.slice(0,fmtIdx);
+  const fromFmt=fmtIdx<0?[]:blocks.slice(fmtIdx);
+  let n=0;
+  const card=b=>shareHeroCardHtml(b, n++===0, frac);
   return `<div class="shareproposalwrap">
       <div class="shareproposalmain">
-        <div class="shareheroes">
-          ${blocks.map((b,i)=>shareHeroCardHtml(b, i===0, frac)).join("")}
-        </div>
+        <div class="shareheroes">${beforeFmt.map(card).join("")}</div>
+        ${sharePropTablesHtml(frac)}
+        ${fromFmt.length?`<div class="shareheroes shareheroes-after">${fromFmt.map(card).join("")}</div>`:""}
         ${shareUpgradeCardsHtml(frac, blocks)}
         ${shareAltCardsHtml(frac, blocks)}
         <div class="sharesectionhead">
