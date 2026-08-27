@@ -857,6 +857,15 @@
   .sharepropmach{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
     font-size:11px;color:#888;margin-top:9px}
   .sharepropmach b{color:#28338A}
+  /* a property only an alternative would bring: shown, but plainly not yet
+     available — dashed and faded, with no button to press */
+  .sharealtcard.is-locked{background:#f7f7fa;border-style:dashed;border-color:#d8dbe8;opacity:.7}
+  .sharealtcard.is-locked .sharealtname{color:#666}
+  .sharealtcard.is-locked .sharealtprice{color:#999}
+  .sharelockednote{display:flex;align-items:flex-start;gap:7px;font-size:11px;color:#888;
+    margin-top:9px;line-height:1.45}
+  .sharelockednote svg{flex:0 0 auto;margin-top:1px;color:#aaa}
+  .sharelockednote b{color:#28338A}
   .sharealtgroup{margin-top:18px}
   .sharealtgrouplbl{font-size:11.5px;color:#999;margin-bottom:10px}
 
@@ -11032,6 +11041,7 @@ const sharePhoneIconSvg    = () => SHARE_ICON('<path d="M22 16.9v3a2 2 0 0 1-2.2
 const shareShieldIconSvg   = () => SHARE_ICON('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>', 18);
 const shareSparkIconSvg    = () => SHARE_ICON('<path d="M12 3v3M12 18v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M3 12h3M18 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/><circle cx="12" cy="12" r="3"/>');
 const shareCheckIconSvg    = () => SHARE_ICON('<path d="m20 6-11 11-5-5"/>', 14);
+const shareLockIconSvg     = () => SHARE_ICON('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', 13);
 /* The figures sleevetechnology.com publishes in its own "Our clients" block,
    and the assurances from its hero section. Kept here as one list so the
    quotation and the website always say the same thing — and because this is
@@ -11241,14 +11251,45 @@ function sharePropAltGroups(frac){
   for(const p of (CONFIG.props||[])){
     if(propSkipped(p)) continue;
     if(!p.step || !(p.variants||[]).length) continue;
-    /* contributors that actually carry this property, per top-level step */
-    const byStep=new Map();
+    /* contributors that actually carry this property, per top-level step —
+       split by scope, because the two produce different sections: what is in
+       scope is choosable now, what only an alternative brings is shown but
+       locked (see below) */
+    const byStep=new Map(), altByStep=new Map();
     for(const c of propContributors(p)){
-      if(scopeKind(c.o)!=="in") continue;          // otherwise it rides with its item
       const top=topStepOfModule(c.m);
       if(!top) continue;
-      if(!byStep.has(top)) byStep.set(top,[]);
-      byStep.get(top).push(c);
+      const kind=scopeKind(c.o);
+      const map = kind==="in" ? byStep : (kind==="alt" ? altByStep : null);
+      if(!map) continue;
+      if(!map.has(top)) map.set(top,[]);
+      map.get(top).push(c);
+    }
+    /* A property no machine in scope carries, but an alternative would — the
+       twelve adjustments on the HSS6000W. Showing nothing at all hid the
+       possibility completely; showing it greyed out, named with the machine
+       that unlocks it, tells the customer it exists and what it depends on.
+       Only when nothing in this step already offers the property, otherwise
+       the live section above is the place for it. */
+    for(const [top, list] of altByStep){
+      if(byStep.has(top)) continue;
+      for(const c of list){
+        const supplied=assignedVariant(p, c.o.id);
+        const e=assignEntry(p, c.o.id);
+        const base=supplied?(+supplied.unitPrice||0):0;
+        const levels=[];
+        for(const v of p.variants){
+          const isSup=!!supplied && supplied.id===v.id;
+          const offered=(e[v.id]||[]).some(s=>s==="opt"||s==="alt");
+          if(!isSup && !offered) continue;
+          levels.push({name:`${c.qty}× ${v.name}`, vid:v.id, opt:null,
+                       supplied:isSup, delta:cut(c.qty*((+v.unitPrice||0)-base))});
+        }
+        if(!levels.some(l=>!l.supplied)) continue;     // nothing to show off
+        out.push({key:`lockedprop:${p.id}:${c.o.id}`, step:top, locked:true,
+                  lockedBy:c.o.name||"", target:`${c.qty}× ${propName(p,c.qty)}`,
+                  targetOpt:null, targetPrice:0, cols:levels});
+      }
     }
     for(const [top, list] of byStep){
       /* one comparison per supplied type in this step: what it costs here,
@@ -11512,6 +11553,20 @@ function shareAltCardsHtml(frac, blocks){
     </div>` + list.map(c=>shareAltGroupHtml(c, frac)).join("");
 }
 function shareAltGroupHtml(c, frac){
+    /* a property only an alternative would bring: visible so the customer
+       knows it exists, greyed and buttonless because there is nothing to
+       choose until the machine that carries it is chosen */
+    if(c.locked) return `<div class="sharealtgroup">
+      <div class="sharealtgrouplbl">${esc(c.target)} &mdash; only with ${esc(c.lockedBy)}</div>
+      <div class="sharealts">${(c.cols||[]).map(x=>`
+        <div class="sharealtcard is-locked">
+          <div class="sharealtname">${esc(x.name)}</div>
+          <div class="sharealtprice">${x.supplied?"included"
+            :(x.delta?`+ ${fmt(x.delta)}`:"no extra cost")}</div>
+        </div>`).join("")}</div>
+      <div class="sharelockednote">${shareLockIconSvg()}<span>Choosable once
+        <b>${esc(c.lockedBy)}</b> is selected above &mdash; these positions come with that machine.</span></div>
+    </div>`;
     const specLine=h=>{
       const f=featuresOf((h&&h.opt)||{}).slice(0,2)
         .map(x=>`${x.label} ${x.value||""}`.trim());
