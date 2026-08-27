@@ -10641,7 +10641,12 @@ async function cloudListQuotes(){
 }
 async function cloudActiveShares(){
   if(!supa) return new Map();
-  const {data, error} = await supa.from("quote_shares").select("id,quote_id,token,expires_at")
+  /* catalogue_version: which price list this link shows. A share is pinned to
+     the version that was live when it was made (supabase-schema-pin-catalogue.sql),
+     so publishing new prices leaves sent quotes alone — worth showing, because
+     otherwise there is no way to tell what the customer is looking at. */
+  const {data, error} = await supa.from("quote_shares")
+    .select("id,quote_id,token,expires_at,catalogue_version")
     .is("revoked_at", null).gt("expires_at", new Date().toISOString()).order("created_at",{ascending:false});
   const byQuote=new Map();
   if(!error) for(const s of (data||[])) if(!byQuote.has(s.quote_id)) byQuote.set(s.quote_id, s);
@@ -10937,6 +10942,9 @@ function renderQuotes(){
           <td class="when">${q.updated_at?new Date(q.updated_at).toLocaleString():""}</td>
           <td class="qshare">${share
             ? `<span class="curpill">Shared &middot; until ${new Date(share.expires_at).toLocaleDateString()}</span>
+               ${share.catalogue_version
+                 ? `<span class="meta" title="This link keeps showing catalogue version ${share.catalogue_version} — publishing new prices does not change it">on catalogue v${share.catalogue_version}</span>`
+                 : ""}
                <button class="pbtn" data-copyshare="${esc(share.token)}">Copy link</button>
                <button class="x" data-revokeshare="${esc(share.id)}" title="Revoke">&times;</button>`
             : `<span class="meta">Not shared</span>`}</td>
@@ -12124,7 +12132,12 @@ document.getElementById("btnShareLink").onclick=async ()=>{
         <button class="btn" id="btnCopyShare">Copy link</button>
         <span class="snote">Expires ${new Date(data.expires_at).toLocaleDateString()}</span>
         <button class="btn" id="btnRevokeShare">Revoke</button>
-      </div>`;
+      </div>
+      ${/* the link is pinned to the catalogue that is live right now — say so,
+            because the whole point is that it will not move afterwards */""}
+      <div class="snote" style="margin-top:6px">${data.catalogue_version
+        ? `Frozen on catalogue version <b>${data.catalogue_version}</b> — publishing new prices or pictures will not change what this customer sees. Revoke and share again to move them to a newer catalogue.`
+        : `Note: this link is not pinned to a catalogue version yet — run supabase-schema-pin-catalogue.sql, or publishing new prices will change what the customer sees.`}</div>`;
     document.getElementById("btnCopyShare").onclick=()=>navigator.clipboard.writeText(url).then(()=>flagSaved("Link copied"));
     document.getElementById("btnRevokeShare").onclick=async ()=>{
       await supa.from("quote_shares").update({revoked_at:new Date().toISOString()}).eq("id", data.id);
