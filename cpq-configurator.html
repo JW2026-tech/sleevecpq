@@ -47,8 +47,10 @@
     -webkit-font-smoothing:antialiased;
   }
   .stmark{display:block;width:100%;height:auto}
-  /* Everything sticky below the header measures from here. The sub-tab row
-     only exists in the three Configure modes, hence the body class. */
+  /* Everything sticky below the header measures from here. syncTopbar()
+     keeps it equal to the real height of the header plus the sub-tab row,
+     because the header holds the quote bar now and grows with it. The
+     values here are only the starting point before the first measurement. */
   body{--topbar:53px}
   body.has-subtabs{--topbar:87px}
   .hdrlogo{display:flex;align-items:center}
@@ -58,7 +60,7 @@
     display:flex;align-items:center;gap:12px;padding:12px 20px;
     border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:20;
   }
-  header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px;white-space:nowrap}
+  header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px;white-space:nowrap;display:none}
   header .sub{color:var(--txt-faint);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .spacer{flex:1}
   button,input,select,textarea{font:inherit}
@@ -419,6 +421,9 @@
     header{flex-wrap:wrap;row-gap:8px;padding:10px 12px;position:static}
     header h1{font-size:15px}
     header .sub{display:none}
+    /* on a phone the header wraps anyway, so the title costs nothing and
+       there is no tab row visible above the fold to name the screen */
+    header h1{display:block}
     .toggle{order:5;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
     .toggle button{white-space:nowrap}
     .navtoggle{display:inline-flex}
@@ -10408,6 +10413,30 @@ function renderCurrent(){
   else renderConfigure();
 }
 const CONFIG_SUBMODES=["configure","formats","service"];
+/* How much chrome is stuck to the top right now. Everything below it (the
+   step list, the summary, the document bar, the drop-down panel) hangs off
+   --topbar, so this is the one place that has to be right. Below 900px the
+   header scrolls away with the page and the stylesheet sets it to 0. */
+function syncTopbar(){
+  const hd=document.querySelector("header"), sb=document.getElementById("subtabs");
+  if(!hd) return;
+  if(window.innerWidth<=900){
+    document.body.style.removeProperty("--topbar");
+    if(sb) sb.style.removeProperty("top");
+    return;
+  }
+  const hh=Math.round(hd.getBoundingClientRect().height);
+  const sh=(sb && !sb.classList.contains("hidden")) ? Math.round(sb.getBoundingClientRect().height) : 0;
+  document.body.style.setProperty("--topbar",(hh+sh)+"px");
+  if(sb) sb.style.top=hh+"px";
+}
+window.addEventListener("resize",syncTopbar);
+if(window.ResizeObserver){
+  const ro=new ResizeObserver(()=>syncTopbar());
+  addEventListener("DOMContentLoaded",()=>{
+    const hd=document.querySelector("header"); if(hd) ro.observe(hd);
+  });
+}
 function setMode(next){
   mode=next;
   saveSoon();
@@ -10435,6 +10464,7 @@ function setMode(next){
   /* after the sub-tab row is settled, because its drop-down panel anchors
      itself underneath whichever bar is actually there */
   renderQuoteBar();
+  syncTopbar();
   sb.querySelectorAll(".subtab").forEach(b=>b.classList.toggle("on",b.dataset.sub===mode));
   renderCurrent();
 }
@@ -10668,6 +10698,7 @@ function renderQuoteBar(){
       quoteVersions.length?` <b>${quoteVersions.length}</b>`:""}</button>`;
   wireQuoteBar();
   renderQuoteBarPanel();
+  syncTopbar();
 }
 function renderQuoteBarPanel(){
   const old=document.getElementById("qbPanel");
