@@ -10432,10 +10432,8 @@ function syncTopbar(){
 }
 window.addEventListener("resize",syncTopbar);
 if(window.ResizeObserver){
-  const ro=new ResizeObserver(()=>syncTopbar());
-  addEventListener("DOMContentLoaded",()=>{
-    const hd=document.querySelector("header"); if(hd) ro.observe(hd);
-  });
+  const hd0=document.querySelector("header");
+  if(hd0) new ResizeObserver(()=>syncTopbar()).observe(hd0);
 }
 function setMode(next){
   mode=next;
@@ -10467,6 +10465,7 @@ function setMode(next){
   syncTopbar();
   sb.querySelectorAll(".subtab").forEach(b=>b.classList.toggle("on",b.dataset.sub===mode));
   renderCurrent();
+  syncTopbar();
 }
 /* clicking Configure while already inside it keeps the sub-tab you were on,
    so it never throws away where you were */
@@ -10674,8 +10673,7 @@ function renderQuoteBar(){
     </select>
     <span class="qbsep"></span>
     ${!cloudQuoteId
-      ? `<span class="qbmeta">Not saved to the cloud yet</span>
-         <button class="btn sm primary" id="qbSaveNew">Save as new quote</button>`
+      ? `<button class="btn sm primary" id="qbSaveNew" title="This quote only exists in this browser so far">Save as new quote</button>`
       : `<span class="qbmeta" id="qbSaved"></span>`}
     ${quoteShare
       ? `<span class="qbsep"></span>
