@@ -2259,6 +2259,8 @@ let quoteUpdatedAt = null;      // quotes.updated_at — compared against the sh
    conflict check the quotes use. Publishing turns it into a fixed version. */
 let draftRev = null;            // null = no draft loaded / feature not installed
 let draftSavedSig = null;       // signature of the catalogue as last written
+let draftBase = null;           // the catalogue as last stored, to diff against
+let draftPatchesOff = false;    // true once the patch RPC turns out to be absent
 let draftConflict = null;       // {rev, updated_by, updated_at} while a clash waits
 let draftTimer = null, draftSaving = false;
 
@@ -10845,6 +10847,9 @@ async function cloudLoadCatalogueDraft(){
     if(!applyCatalogue({catalogue:data.data})) return false;
     draftRev=data.rev;
     draftSavedSig=catalogueSig();
+    /* what the database holds right now — every later save is expressed as
+       the difference against this */
+    draftBase=clone(cataloguePayload().catalogue);
     /* the draft IS the shared truth, so what is on screen matches it — the
        "unpublished changes" bar measures against the published version */
     return true;
@@ -10859,14 +10864,79 @@ function draftSaveSoon(){
   clearTimeout(draftTimer);
   draftTimer=setTimeout(()=>{ cloudSaveCatalogueDraft().catch(()=>{}); }, 1500);
 }
+/* Express the difference between the catalogue as last stored and what is on
+   screen as id-addressed patches.
+   Arrays of objects are matched on id (or code for templates) and NEVER on
+   position: a colleague deleting an earlier item would otherwise make your
+   patch land on the wrong one, which is silent corruption.
+   Anything that changes WHICH items exist, or their order, is structural —
+   patches cannot express that, so the caller writes the whole document with
+   the rev check instead, and a genuine clash is reported. */
+function catalogueDiff(base, cur){
+  const patches=[]; let structural=false;
+  const idOf=o=>(o&&typeof o==="object"&&!Array.isArray(o))?(o.id||o.code||null):null;
+  const idArray=a=>Array.isArray(a) && a.length>0 && a.every(x=>idOf(x));
+  const walk=(b,c,path)=>{
+    if(structural) return;
+    if(Array.isArray(b)||Array.isArray(c)){
+      if(!Array.isArray(b)||!Array.isArray(c)){ structural=true; return; }
+      if(idArray(b)&&idArray(c)){
+        const bi=b.map(idOf), ci=c.map(idOf);
+        if(bi.length!==ci.length || bi.some((id,i)=>id!==ci[i])){ structural=true; return; }
+        b.forEach((el,i)=>walk(el, c[i], path.concat(bi[i])));
+        return;
+      }
+      /* a list without ids — phone numbers, bank lines, address — is a leaf:
+         send the whole array when it changed */
+      if(JSON.stringify(b)!==JSON.stringify(c)) patches.push({op:"set", path, value:c});
+      return;
+    }
+    if(b&&c&&typeof b==="object"&&typeof c==="object"){
+      for(const k of new Set([...Object.keys(b),...Object.keys(c)])){
+        if(!(k in c)){ patches.push({op:"del", path:path.concat(k)}); continue; }
+        if(!(k in b)){ patches.push({op:"set", path:path.concat(k), value:c[k]}); continue; }
+        walk(b[k], c[k], path.concat(k));
+      }
+      return;
+    }
+    if(b!==c) patches.push({op:"set", path, value:c});
+  };
+  walk(base, cur, []);
+  return {patches, structural};
+}
 async function cloudSaveCatalogueDraft(){
   if(!supa || draftRev===null || draftConflict || draftSaving) return null;
   const sig=catalogueSig();
   if(sig===draftSavedSig) return null;          // nothing changed
   draftSaving=true;
   try{
+    const cur=cataloguePayload().catalogue;
+    const diff = draftBase ? catalogueDiff(draftBase, cur) : {structural:true, patches:[]};
+    /* A field change goes as a patch, so it cannot collide with a colleague
+       editing something else — that is the whole point. A very large batch
+       is not worth resolving path by path, and structural edits can't be
+       expressed this way, so both take the whole-document route. */
+    if(!draftPatchesOff && !diff.structural && diff.patches.length && diff.patches.length<=200){
+      try{
+        const {data, error}=await supa.rpc("apply_catalogue_patches",{p_patches:diff.patches});
+        if(error) throw error;
+        if(data && data.ok){
+          draftRev=data.rev;
+          draftBase=clone(cur);
+          draftSavedSig=sig;
+          renderCatalogueBar();
+          return draftRev;
+        }
+        /* ok:false means the draft row is gone or the payload was rejected —
+           fall through to the whole-document write, which reports properly */
+      }catch(err){
+        /* the RPC isn't installed on this project: stop trying it, and let
+           the whole-document path (which has always worked) take over */
+        draftPatchesOff=true;
+      }
+    }
     const {data, error}=await supa.rpc("save_catalogue_draft",
-      {p_data: cataloguePayload().catalogue, p_rev: draftRev});
+      {p_data: cur, p_rev: draftRev});
     if(error) throw error;
     if(data && data.ok===false){
       /* a colleague saved in between — stop writing and say so rather than
@@ -10876,6 +10946,7 @@ async function cloudSaveCatalogueDraft(){
       return null;
     }
     draftRev=(data&&data.rev)||draftRev;
+    draftBase=clone(cur);
     draftSavedSig=sig;
     renderCatalogueBar();
     return draftRev;
@@ -10896,6 +10967,7 @@ async function draftKeepMine(){
     draftRev=(data&&data.rev)||draftRev;
     draftConflict=null;
     draftSavedSig=null;                          // force the next save through
+    draftBase=null;                              // and send the whole document
     await cloudSaveCatalogueDraft();
     flagSaved("Your catalogue kept");
     renderCatalogueBar();
