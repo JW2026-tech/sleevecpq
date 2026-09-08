@@ -10757,10 +10757,13 @@ function renderCatalogueBar(){
   const pub=document.getElementById("catPublish");
   if(pub) pub.onclick=async ()=>{
     pub.disabled=true;
-    const label=prompt("Label for this catalogue version (optional):", new Date().toISOString().slice(0,10).replace(/-/g,""));
-    if(label===null){ pub.disabled=false; return; }
+    /* No label prompt. It was prefilled with today's date, which the row
+       already records in created_at, so the quickest route — pressing OK —
+       produced four versions labelled "20260827" and no way to tell them
+       apart. The version number and the timestamp already identify a
+       version; a dialog in the way of publishing bought nothing. */
     try{
-      const v=await cloudPublishCatalogue(label);
+      const v=await cloudPublishCatalogue(null);
       heldCloudCatalogue=null;
       flagSaved("Published version "+v);
       renderCatalogueBar();
@@ -11363,8 +11366,8 @@ function renderQuotes(){
     catch(err){ alert("Could not save: "+(err&&err.message||err)); }
   });
   wire("qPublishCat", async ()=>{
-    const label=prompt("Label for this catalogue version (optional):","");
-    try{ const v=await cloudPublishCatalogue(label); flagSaved("Published version "+v); renderQuotes(); }
+    /* no label prompt here either — see the Admin bar's publish button */
+    try{ const v=await cloudPublishCatalogue(null); flagSaved("Published version "+v); renderQuotes(); }
     catch(err){ alert("Could not publish: "+(err&&err.message||err)); }
   });
   wire("qLoadCat", async ()=>{
@@ -11384,8 +11387,14 @@ function renderQuotes(){
   supa.from("catalogue_versions").select("version,label,created_at")
     .order("version",{ascending:false}).limit(1).maybeSingle().then(({data})=>{
       const span=document.getElementById("qCatInfo"); if(!span) return;
+      /* The thirteen versions published before the label prompt was removed
+         all carry the publish date as their label, so showing it would read
+         "Version 13 — 20260831, published 31-8-2026". A label that only
+         repeats the date it sits next to is not worth the words. */
+      const dateish = data && data.label
+        && data.label.replace(/\D/g,"")===data.created_at.slice(0,10).replace(/-/g,"");
       span.textContent = data
-        ? `Version ${data.version}${data.label?" — "+data.label:""}, published ${new Date(data.created_at).toLocaleString()}`
+        ? `Version ${data.version}${(data.label&&!dateish)?" — "+data.label:""}, published ${new Date(data.created_at).toLocaleString()}`
         : "No catalogue published yet.";
     }).catch(()=>{});
 
