@@ -47,6 +47,10 @@
     -webkit-font-smoothing:antialiased;
   }
   .stmark{display:block;width:100%;height:auto}
+  /* Everything sticky below the header measures from here. The sub-tab row
+     only exists in the three Configure modes, hence the body class. */
+  body{--topbar:53px}
+  body.has-subtabs{--topbar:87px}
   .hdrlogo{display:flex;align-items:center}
   .hdrlogo .stmark{width:30px}
   .stlogo .stword{font-weight:700;font-style:italic;color:#EF7B0B}
@@ -72,9 +76,27 @@
   .toggle{display:flex;background:var(--track);border:1px solid var(--line);border-radius:8px;padding:2px}
   .toggle button{background:none;border:0;color:var(--txt-dim);padding:5px 14px;border-radius:6px;cursor:pointer;font-size:13px}
   .toggle button.on{background:var(--track-on);color:var(--txt);box-shadow:0 1px 2px var(--shadow)}
+  /* The quote as a document, in the header rather than in a bar of its own:
+     it is about the quote you have open, which is true on every screen, so
+     it belongs where the screen switcher already is. It wraps to its own
+     line on a narrow window instead of pushing Reset off the edge. */
+  .hdrquote{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;
+    padding-left:12px;border-left:1px solid var(--line)}
+  .hdrquote:empty{display:none}
+  .hdrquote .btn{white-space:nowrap}
+  .hdrquote b{font-variant-numeric:tabular-nums}
+  /* Configure's own sub-tabs: format parts and services are steps in the
+     configuration, so they sit under Configure instead of taking two more
+     slots in a top row that was already overflowing. */
+  .subtabs{display:flex;align-items:stretch;gap:2px;padding:0 20px;height:34px;box-sizing:border-box;
+    border-bottom:1px solid var(--line);background:var(--rail);position:sticky;top:53px;z-index:19}
+  .subtab{background:none;border:0;border-bottom:2px solid transparent;border-radius:0;
+    color:var(--txt-dim);padding:0 10px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+  .subtab:hover{color:var(--txt)}
+  .subtab.on{color:var(--txt);border-bottom-color:var(--accent);font-weight:500}
 
   /* ================= CONFIGURE VIEW ================= */
-  .layout{display:grid;grid-template-columns:var(--nav-w,250px) 7px 1fr 320px;min-height:calc(100vh - 53px)}
+  .layout{display:grid;grid-template-columns:var(--nav-w,250px) 7px 1fr 320px;min-height:calc(100vh - var(--topbar))}
   @media(max-width:1100px) and (min-width:901px){
     .layout{grid-template-columns:1fr}
     nav.steps,aside,.resizer{display:none}
@@ -173,7 +195,7 @@
   .empty{padding:20px;border:1px dashed var(--line);border-radius:var(--radius);color:var(--txt-faint)}
   .actions{display:flex;gap:10px;margin-top:26px;align-items:center}
   .hint{color:var(--warn);font-size:12.5px}
-  aside{border-left:1px solid var(--line);background:var(--rail);padding:20px 18px;position:sticky;top:53px;height:calc(100vh - 53px);overflow:auto}
+  aside{border-left:1px solid var(--line);background:var(--rail);padding:20px 18px;position:sticky;top:var(--topbar);height:calc(100vh - var(--topbar));overflow:auto}
   aside h3{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--txt-faint);margin:0}
   .aside-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
   .detail-toggle{display:flex;background:var(--track);border:1px solid var(--line);border-radius:7px;padding:2px}
@@ -412,6 +434,9 @@
     .fmtsheet{padding:16px 12px 60px}
     .docsheet{padding:18px 14px 48px}
     .docs-bar{position:static;flex-wrap:wrap;gap:8px;padding:8px 12px}
+    .subtabs{position:static;padding:0 12px}
+    .hdrquote{padding-left:0;border-left:0;width:100%;order:6}
+    body,body.has-subtabs{--topbar:0px}
     .doctabs{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap}
 
     /* an option card reads top to bottom instead of across */
@@ -441,7 +466,7 @@
 
   /* ==================== ADMIN VIEW (feature-tree style) ==================== */
   .admin{display:grid;grid-template-columns:290px 1fr;grid-template-rows:auto 1fr;
-    min-height:calc(100vh - 53px)}
+    min-height:calc(100vh - var(--topbar))}
   /* the publish bar spans both Admin columns, above the tree and the editor */
   .catbar{grid-column:1 / -1;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
     padding:9px 16px;border-bottom:1px solid var(--line);background:var(--rail);font-size:12.5px}
@@ -475,7 +500,7 @@
   .crumbtrail{font-size:11.5px;color:var(--txt-faint);margin-bottom:8px}
   .crumbtrail b{color:var(--txt-dim);font-weight:500}
   .ed-head{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:12px;
-    border-bottom:1px solid var(--line);position:sticky;top:53px;z-index:4;background:var(--bg)}
+    border-bottom:1px solid var(--line);position:sticky;top:var(--topbar);z-index:4;background:var(--bg)}
   .ed-head .btn.sm{white-space:nowrap}
   .ed-head input.big{
     background:none;border:0;border-bottom:1px solid transparent;color:var(--txt);
@@ -676,7 +701,8 @@
   .qbrow .what{flex:1;color:var(--txt)}
   .qbrow.is-customer .what{color:#28338A;font-weight:500}
   .qbempty{color:var(--txt-faint);font-size:12px;font-style:italic}
-  body.share-mode > header, body.share-mode > #quoteBar, body.share-mode > #viewLogin,
+  body.share-mode > header, body.share-mode > #subtabs, body.share-mode > #qbPanel,
+  body.share-mode > #viewLogin,
   body.share-mode > #viewConfigure, body.share-mode > #viewFormats,
   body.share-mode > #viewService, body.share-mode > #viewAdmin,
   body.share-mode > #viewDocs, body.share-mode > #viewQuotes{display:none!important}
@@ -1737,7 +1763,7 @@
   .asg-item .optpill{margin-right:4px}
 
   /* ============ FORMAT PARTS TAB ============ */
-  .fmtview{min-height:calc(100vh - 53px)}
+  .fmtview{min-height:calc(100vh - var(--topbar))}
   .fmtsheet{max-width:none;margin:0;padding:32px 40px 80px}
   .fmtsheet h2{font-size:24px;margin:0 0 4px}
   .fmtgrid{border-collapse:collapse;margin:20px 0 26px}
@@ -2096,15 +2122,23 @@
   <span id="hdrLogo" class="hdrlogo"></span>
   <button class="btn icon navtoggle" id="btnNav" title="Show or hide the step list">&#9776;</button>
   <h1>Machine Configurator</h1>
+  <!-- Four tabs, not six: format parts and services are configuration
+       steps, so they live under Configure as sub-tabs (see #subtabs) rather
+       than competing with it up here. mFormats/mService still exist as
+       hidden buttons so every setMode() call and click handler keeps
+       working, they are just no longer part of the top row. -->
   <div class="toggle">
     <button id="mConfig" class="on">Configure</button>
-    <button id="mFormats">Format parts</button>
-    <button id="mService">Services</button>
-    <button id="mAdmin">Admin</button>
     <button id="mDocs">Documents</button>
     <button id="mQuotes">Quotes</button>
+    <button id="mAdmin">Admin</button>
   </div>
+  <button id="mFormats" class="hidden"></button>
+  <button id="mService" class="hidden"></button>
   <span class="sub" id="modelName"></span>
+  <!-- the quote as a document, merged into the header: it used to be its own
+       bar, which meant three stacked bars before any content began -->
+  <span class="hdrquote" id="quoteBar"></span>
   <span class="spacer"></span>
   <span class="savestate" id="saveState"></span>
   <span class="whoami" id="whoAmI"></span>
@@ -2113,13 +2147,14 @@
   <button class="btn" id="btnReset">Reset</button>
 </header>
 
-<!-- ===== the quote bar =====
-     Everything about the quote as a document — which one it is, how far
-     along it is, and every way it leaves the building. It used to be spread
-     across two tabs: sharing, PDF and email sat in Documents while "save as
-     new quote" sat in Quotes, so sending a quote meant navigating first.
-     Filled by renderQuoteBar(); hidden in share mode like the header. -->
-<div class="quotebar hidden" id="quoteBar"></div>
+<!-- Configure's own sub-tabs: the steps themselves, plus the two screens
+     that used to be top-level tabs. Shown for all three of those modes so
+     there is always a way back. -->
+<div class="subtabs hidden" id="subtabs">
+  <button class="subtab" data-sub="configure">Steps</button>
+  <button class="subtab" data-sub="formats">Format parts</button>
+  <button class="subtab" data-sub="service">Services</button>
+</div>
 
 <!-- ===== sign in =====
      Email+password for now — zero extra setup beyond the Supabase project
@@ -2221,10 +2256,15 @@
       <button data-v="full" class="on">Full</button>
       <button data-v="top">Top-level only</button>
     </div>
-    <button class="btn" id="btnPrint">Print / save as PDF</button>
-    <button class="btn primary" id="btnPrintAll" title="Combine every document tab into one PDF, in the order shown above">Create complete PDF</button>
-    <button class="btn" id="btnShareLink" title="Generate a link the customer can open to take or put back optional items">Share with customer</button>
-    <button class="btn" id="btnEmailPdf" title="Render the complete PDF and email it from your own mailbox">Send PDF by email</button>
+    <!-- Sharing, PDF and email used to sit here as well as in the quote bar
+         — the same three actions twice on one screen. They now live only in
+         the header, where they are reachable from every tab. These two stay
+         as hidden buttons so the header's actions can keep calling them and
+         their handlers do not have to move. -->
+    <button class="btn hidden" id="btnShareLink"></button>
+    <button class="btn hidden" id="btnEmailPdf"></button>
+    <button class="btn hidden" id="btnPrint"></button>
+    <button class="btn hidden" id="btnPrintAll"></button>
   </div>
   <div class="sharepanel hidden" id="sharePanel"></div>
   <div class="docsheet" id="docBody"></div>
@@ -10367,11 +10407,10 @@ function renderCurrent(){
   else if(mode==="quotes") renderQuotes();
   else renderConfigure();
 }
+const CONFIG_SUBMODES=["configure","formats","service"];
 function setMode(next){
   mode=next;
   saveSoon();
-  renderQuoteBar();          // the bar rides along on every screen
-  document.getElementById("mConfig").classList.toggle("on",mode==="configure");
   document.getElementById("mFormats").classList.toggle("on",mode==="formats");
   document.getElementById("viewFormats").classList.toggle("hidden",mode!=="formats");
   document.getElementById("mService").classList.toggle("on",mode==="service");
@@ -10383,11 +10422,31 @@ function setMode(next){
   document.getElementById("viewConfigure").classList.toggle("hidden",mode!=="configure");
   document.getElementById("viewAdmin").classList.toggle("hidden",mode!=="admin");
   document.getElementById("viewDocs").classList.toggle("hidden",mode!=="docs");
+  /* Format parts and services are steps in the configuration, not separate
+     destinations, so Configure stays lit for all three of them and the
+     sub-tab row appears underneath instead of two more tabs up top. */
+  const sub=CONFIG_SUBMODES.includes(mode);
+  document.getElementById("mConfig").classList.toggle("on",sub);
+  const sb=document.getElementById("subtabs");
+  sb.classList.toggle("hidden",!sub);
+  /* everything sticky underneath measures from --topbar, which grows by the
+     height of this row exactly when the row is there */
+  document.body.classList.toggle("has-subtabs",sub);
+  /* after the sub-tab row is settled, because its drop-down panel anchors
+     itself underneath whichever bar is actually there */
+  renderQuoteBar();
+  sb.querySelectorAll(".subtab").forEach(b=>b.classList.toggle("on",b.dataset.sub===mode));
   renderCurrent();
 }
-document.getElementById("mConfig").onclick=()=>setMode("configure");
+/* clicking Configure while already inside it keeps the sub-tab you were on,
+   so it never throws away where you were */
+document.getElementById("mConfig").onclick=()=>setMode(
+  CONFIG_SUBMODES.includes(mode)?mode:"configure");
 document.getElementById("mFormats").onclick=()=>setMode("formats");
 document.getElementById("mService").onclick=()=>setMode("service");
+document.querySelectorAll("#subtabs .subtab").forEach(b=>{
+  b.onclick=()=>setMode(b.dataset.sub);
+});
 document.getElementById("mAdmin").onclick=()=>setMode("admin");
 document.getElementById("mDocs").onclick=()=>setMode("docs");
 document.getElementById("mQuotes").onclick=()=>setMode("quotes");
@@ -10598,14 +10657,15 @@ function renderQuoteBar(){
          ${custChanged?`<span class="qbwarn">${shareLockIconSvg()}<b>The customer changed something</b>
             <button class="btn sm" id="qbPull">Take their changes</button></span>`:""}`
       : `<span class="qbsep"></span><button class="btn sm" id="qbShare">Share with customer</button>`}
-    <span class="spacer"></span>
-    <button class="btn sm" id="qbPdf">PDF</button>
-    <button class="btn sm" id="qbEmail">Email</button>
-    <span class="qbsep"></span>
-    <button class="btn sm ${quoteBarPanel==="log"?"primary":""}" id="qbLog">History${
-      quoteEvents.length?` (${quoteEvents.length})`:""}</button>
-    <button class="btn sm ${quoteBarPanel==="versions"?"primary":""}" id="qbVers">Versions${
-      quoteVersions.length?` (${quoteVersions.length})`:""}</button>`;
+    ${/* No PDF button: the customer makes their own from the link, and the
+          Email button renders one too (it downloads it while Microsoft
+          sign-in is still unconfigured), so there is nothing this would add
+          that is not already reachable. */""}
+    <button class="btn sm" id="qbEmail" title="Render the complete PDF and email it from your own mailbox">Email</button>
+    <button class="btn sm ${quoteBarPanel==="log"?"primary":""}" id="qbLog" title="What has happened to this quote">History${
+      quoteEvents.length?` <b>${quoteEvents.length}</b>`:""}</button>
+    <button class="btn sm ${quoteBarPanel==="versions"?"primary":""}" id="qbVers" title="Earlier versions of this quote">Versions${
+      quoteVersions.length?` <b>${quoteVersions.length}</b>`:""}</button>`;
   wireQuoteBar();
   renderQuoteBarPanel();
 }
@@ -10613,7 +10673,6 @@ function renderQuoteBarPanel(){
   const old=document.getElementById("qbPanel");
   if(old) old.remove();
   if(!quoteBarPanel) return;
-  const bar=document.getElementById("quoteBar");
   const el=document.createElement("div");
   el.id="qbPanel"; el.className="qbpanel";
   const when=t=>{ try{ return new Date(t).toLocaleString(); }catch(e){ return ""; } };
@@ -10636,7 +10695,10 @@ function renderQuoteBarPanel(){
           </div>`).join("")
         : `<div class="qbempty">No earlier versions recorded for this quote yet.</div>`}`;
   }
-  bar.insertAdjacentElement("afterend", el);
+  /* below the header, and below the sub-tab row when that is showing */
+  const sb=document.getElementById("subtabs");
+  const anchor=(sb && !sb.classList.contains("hidden")) ? sb : document.querySelector("header");
+  anchor.insertAdjacentElement("afterend", el);
   el.querySelectorAll("[data-restorever]").forEach(b=>{
     b.onclick=async ()=>{
       if(!confirm("Restore this version? The current state is kept in the history, so this can be undone.")) return;
@@ -10702,8 +10764,10 @@ function wireQuoteBar(){
       await loadQuoteMeta(); flagSaved("Link revoked"); renderQuoteBar();
     }catch(err){ alert("Could not revoke: "+(err&&err.message||err)); }
   });
-  on("qbPdf", ()=>{ setMode("docs"); const b=document.getElementById("btnPrintAll"); if(b) b.click(); });
-  on("qbEmail", ()=>{ setMode("docs"); const b=document.getElementById("btnEmailPdf"); if(b) b.click(); });
+  /* no setMode here: the email handler renders server-side and does not need
+     the Documents screen to be showing. qbShare does, because it writes its
+     result into that screen's share panel. */
+  on("qbEmail", ()=>{ const b=document.getElementById("btnEmailPdf"); if(b) b.click(); });
   on("qbLog", ()=>{ quoteBarPanel=quoteBarPanel==="log"?null:"log"; renderQuoteBar(); });
   on("qbVers", ()=>{ quoteBarPanel=quoteBarPanel==="versions"?null:"versions"; renderQuoteBar(); });
 }
