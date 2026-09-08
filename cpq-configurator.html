@@ -452,6 +452,7 @@
   .catbar .catdot{flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:var(--ok)}
   .catbar.dirty .catdot{background:var(--warn)}
   .catbar .btn{white-space:nowrap}
+  .catbar .catmeta{font-size:11px;color:var(--txt-faint);white-space:nowrap}
   .mlist{border-right:1px solid var(--line);background:var(--rail);padding:18px 12px;overflow-y:auto}
   .mrow{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;cursor:pointer;color:var(--txt-dim);white-space:nowrap}
   .mrow:hover{background:var(--panel-2);color:var(--txt)}
@@ -2253,6 +2254,13 @@ let quoteShare = null;          // {id, token, expires_at, pushed_at, customer_c
 let quoteBarPanel = null;       // null | "log" | "versions"
 let quoteEvents = [], quoteVersions = [];
 let quoteUpdatedAt = null;      // quotes.updated_at — compared against the share's pushed_at
+/* the shared catalogue draft (supabase-schema-catalogue-draft.sql): one
+   working copy everyone edits, saved continuously, with the same rev-based
+   conflict check the quotes use. Publishing turns it into a fixed version. */
+let draftRev = null;            // null = no draft loaded / feature not installed
+let draftSavedSig = null;       // signature of the catalogue as last written
+let draftConflict = null;       // {rev, updated_by, updated_at} while a clash waits
+let draftTimer = null, draftSaving = false;
 
 /* ============================================================================
    1. CONFIGURATION MODEL — cascading tree, no conditions.
@@ -10705,13 +10713,37 @@ function renderCatalogueBar(){
   const held=heldCloudCatalogue
     ? ` The team's version ${heldCloudCatalogue.version?`(${heldCloudCatalogue.version}) `:""}was <b>not</b> loaded, so it can't overwrite them.`
     : "";
+  /* A colleague saved the shared draft while you were editing. Nothing is
+     written until this is answered, so neither version is lost. */
+  if(draftConflict){
+    bar.classList.add("dirty");
+    bar.innerHTML=`
+      <span class="catdot"></span>
+      <span class="catmsg"><b>${esc(draftConflict.updated_by||"A colleague")} changed the catalogue
+        while you were editing.</b> Nothing of yours has been saved since, so pick one — the other is lost.</span>
+      <button class="btn primary sm" id="catKeepMine">Keep mine</button>
+      <button class="btn sm" id="catTakeTheirs">Take theirs</button>`;
+    const km=document.getElementById("catKeepMine");
+    if(km) km.onclick=()=>draftKeepMine();
+    const tt=document.getElementById("catTakeTheirs");
+    if(tt) tt.onclick=()=>draftTakeTheirs();
+    return;
+  }
+  /* on the shared draft the edits are never only local, so the wording
+     changes: the question is no longer "is my work safe" but "have the
+     customers been given this yet" */
+  const shared=draftRev!==null;
   bar.innerHTML=`
     <span class="catdot"></span>
     <span class="catmsg">${dirty
-      ? `<b>Unpublished catalogue changes.</b> They are saved on this computer, but colleagues, new PDFs and customer links still see the old prices until you publish.${held}`
+      ? (shared
+         ? `<b>Not published yet.</b> Saved for the whole team, so colleagues see it and can keep editing — but new PDFs and customer links keep showing the last published version until you publish.`
+         : `<b>Unpublished catalogue changes.</b> They are saved on this computer, but colleagues, new PDFs and customer links still see the old prices until you publish.${held}`)
       : `Catalogue is up to date with the published version.`}</span>
+    ${shared?`<span class="catmeta">shared draft &middot; saved${
+        draftSavedSig===catalogueSig()?"":"…"}</span>`:""}
     ${dirty?`<button class="btn primary sm" id="catPublish">Publish catalogue</button>`:""}
-    ${dirty?`<button class="btn sm" id="catDiscard" title="Throw away your unpublished edits and load the published catalogue">Discard my changes</button>`:""}
+    ${(dirty&&!shared)?`<button class="btn sm" id="catDiscard" title="Throw away your unpublished edits and load the published catalogue">Discard my changes</button>`:""}
     ${(!dirty&&heldCloudCatalogue)?`<button class="btn sm" id="catTake">Load the team's latest</button>`:""}`;
   const pub=document.getElementById("catPublish");
   if(pub) pub.onclick=async ()=>{
@@ -10794,6 +10826,82 @@ function applyAnyFile(d){
    auto-save above which stays the offline safety net. Every call guards on
    `supa` so a failed CDN load or a signed-out session just skips the cloud
    half and behaves exactly like the app did before this existed. */
+/* ============================================================
+   THE SHARED CATALOGUE DRAFT
+   Admin edits used to live in one person's browser until somebody
+   published, so two people could not work on the catalogue together and
+   whoever published last quietly overwrote the other. The draft is one
+   shared working copy that saves itself; publishing still exists and is
+   what customer links pin to, so a sent quote does not move.
+   Every call degrades: with the table absent the app behaves exactly as it
+   did before, on a local-until-published catalogue.
+   ============================================================ */
+async function cloudLoadCatalogueDraft(){
+  if(!supa) return false;
+  try{
+    const {data, error}=await supa.from("catalogue_draft").select("data,rev,updated_at,updated_by")
+      .eq("id",1).maybeSingle();
+    if(error || !data) return false;            // not installed, or no draft yet
+    if(!applyCatalogue({catalogue:data.data})) return false;
+    draftRev=data.rev;
+    draftSavedSig=catalogueSig();
+    /* the draft IS the shared truth, so what is on screen matches it — the
+       "unpublished changes" bar measures against the published version */
+    return true;
+  }catch(err){ return false; }
+}
+/* Debounced well behind the local autosave: the catalogue carries base64
+   pictures, so this is a much heavier write than a quote and there is no
+   point sending one per keystroke. Only writes when the catalogue actually
+   differs from what we last stored. */
+function draftSaveSoon(){
+  if(!supa || draftRev===null || draftConflict) return;
+  clearTimeout(draftTimer);
+  draftTimer=setTimeout(()=>{ cloudSaveCatalogueDraft().catch(()=>{}); }, 1500);
+}
+async function cloudSaveCatalogueDraft(){
+  if(!supa || draftRev===null || draftConflict || draftSaving) return null;
+  const sig=catalogueSig();
+  if(sig===draftSavedSig) return null;          // nothing changed
+  draftSaving=true;
+  try{
+    const {data, error}=await supa.rpc("save_catalogue_draft",
+      {p_data: cataloguePayload().catalogue, p_rev: draftRev});
+    if(error) throw error;
+    if(data && data.ok===false){
+      /* a colleague saved in between — stop writing and say so rather than
+         overwriting their work, same contract as the quote conflict */
+      draftConflict={rev:data.rev, updated_by:data.updated_by, updated_at:data.updated_at};
+      renderCatalogueBar();
+      return null;
+    }
+    draftRev=(data&&data.rev)||draftRev;
+    draftSavedSig=sig;
+    renderCatalogueBar();
+    return draftRev;
+  } finally { draftSaving=false; }
+}
+/* take the colleague's version, losing what is on screen */
+async function draftTakeTheirs(){
+  draftConflict=null;
+  const ok=await cloudLoadCatalogueDraft();
+  if(ok){ flagSaved("Loaded the team's catalogue"); renderAdmin(); renderCatalogueBar(); refreshView(); }
+  return ok;
+}
+/* keep what is on screen, on top of their version */
+async function draftKeepMine(){
+  if(!supa) return false;
+  try{
+    const {data}=await supa.from("catalogue_draft").select("rev").eq("id",1).maybeSingle();
+    draftRev=(data&&data.rev)||draftRev;
+    draftConflict=null;
+    draftSavedSig=null;                          // force the next save through
+    await cloudSaveCatalogueDraft();
+    flagSaved("Your catalogue kept");
+    renderCatalogueBar();
+    return true;
+  }catch(err){ return false; }
+}
 async function cloudLoadLatestCatalogue(){
   if(!supa) return false;
   const {data, error} = await supa.from("catalogue_versions").select("data")
@@ -10814,6 +10922,9 @@ async function cloudLoadLatestCatalogue(){
    sign-in and roles are restored. */
 async function cloudPublishCatalogue(label){
   if(!supa) return null;
+  /* publish what is actually stored, not what is halfway through a debounce:
+     flush the shared draft first so the version and the draft agree */
+  if(draftRev!==null){ clearTimeout(draftTimer); await cloudSaveCatalogueDraft(); }
   const {data:last} = await supa.from("catalogue_versions").select("version").order("version",{ascending:false}).limit(1).maybeSingle();
   const version = (last&&last.version||0)+1;
   const {data, error} = await supa.from("catalogue_versions")
@@ -10973,6 +11084,9 @@ function saveNow(){
     flagSaved("Not saved — use Download config", true);
   }
   if(supa) cloudSaveQuote().catch(()=>flagSaved("Not synced — retrying", true));
+  /* catalogue edits go to the shared draft as well, on their own slower
+     timer — see draftSaveSoon */
+  draftSaveSoon();
 }
 window.addEventListener("online", ()=>{ if(supa) cloudSaveQuote().catch(()=>{}); });
 function saveSoon(){
@@ -12332,10 +12446,18 @@ window.addEventListener("beforeunload", (e)=>{
      only on this computer — a colleague, a fresh PDF or a customer link
      won't see them. Worth one prompt before walking away. Browsers show
      their own wording; returnValue just has to be non-empty. */
-  if(catalogueChanged()){
+  /* Only when the work really is only here. On the shared draft it is
+     already saved for the whole team, so stopping you at the door would be
+     crying wolf — not published is not the same as not saved. */
+  if(draftRev===null && catalogueChanged()){
     e.preventDefault();
     e.returnValue="You have unpublished catalogue changes.";
     return e.returnValue;
+  }
+  /* but a draft edit still inside its 1.5s debounce would be lost */
+  if(draftRev!==null && !draftConflict && catalogueSig()!==draftSavedSig){
+    clearTimeout(draftTimer);
+    cloudSaveCatalogueDraft().catch(()=>{});
   }
 });
 document.addEventListener("visibilitychange", ()=>{ if(document.hidden){ clearTimeout(saveTimer); saveNow(); } });
@@ -12556,7 +12678,14 @@ async function boot(){
      hasn't seen, the cloud copy is held back and the Admin bar offers the
      choice instead. */
   try{
-    if(catalogueChanged()){
+    /* Prefer the shared draft: it is the one working copy the whole team
+       edits and it saves itself, so there is nothing local to protect and
+       no reason to hold anything back — you simply pick up where everyone
+       left off. Only when that table isn't there do we fall back to the
+       old local-until-published behaviour, protection included. */
+    if(await cloudLoadCatalogueDraft()){
+      heldCloudCatalogue=null;
+    } else if(catalogueChanged()){
       const {data} = await supa.from("catalogue_versions").select("version")
         .order("version",{ascending:false}).limit(1).maybeSingle();
       heldCloudCatalogue={version:(data&&data.version)||null};
