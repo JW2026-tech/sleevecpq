@@ -10634,8 +10634,11 @@ async function loadQuoteMeta(){
     quoteEvents=ev||[];
   }catch(err){ quoteEvents=[]; }
   try{
-    const {data:vs}=await supa.from("quote_versions").select("id,created_at,created_by")
-      .eq("quote_id",cloudQuoteId).order("created_at",{ascending:false}).limit(40);
+    const {data:vs,error}=await supa.from("quote_versions").select("id,saved_at,saved_by")
+      .eq("quote_id",cloudQuoteId).order("saved_at",{ascending:false}).limit(40);
+    /* a query that fails resolves with an error instead of throwing, so
+       without this the panel silently claims there is no history */
+    if(error) console.warn("quote_versions:",error.message);
     quoteVersions=vs||[];
   }catch(err){ quoteVersions=[]; }
 }
@@ -10718,8 +10721,8 @@ function renderQuoteBarPanel(){
     el.innerHTML=`<h4>Earlier versions &mdash; restoring one is itself undoable</h4>${
       quoteVersions.length
         ? quoteVersions.map(v=>`<div class="qbrow">
-            <span class="when">${when(v.created_at)}</span>
-            <span class="who">${esc(v.created_by||"")}</span>
+            <span class="when">${when(v.saved_at)}</span>
+            <span class="who">${esc(v.saved_by||"")}</span>
             <span class="what"><button class="btn sm" data-restorever="${esc(v.id)}">Restore this version</button></span>
           </div>`).join("")
         : `<div class="qbempty">No earlier versions recorded for this quote yet.</div>`}`;
@@ -10732,7 +10735,7 @@ function renderQuoteBarPanel(){
     b.onclick=async ()=>{
       if(!confirm("Restore this version? The current state is kept in the history, so this can be undone.")) return;
       try{
-        await supa.rpc("restore_quote_version",{p_version_id:b.dataset.restorever});
+        await supa.rpc("restore_quote_version",{p_version_id:Number(b.dataset.restorever)});
         await cloudOpenQuote(cloudQuoteId);
         await loadQuoteMeta();
         flagSaved("Version restored");
