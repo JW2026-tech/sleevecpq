@@ -10501,6 +10501,11 @@ const EVENT_WORDS={
 async function loadQuoteMeta(){
   if(!supa || !cloudQuoteId){ quoteShare=null; quoteEvents=[]; quoteVersions=[]; return; }
   try{
+    const {data:lv}=await supa.from("catalogue_versions").select("version")
+      .order("version",{ascending:false}).limit(1).maybeSingle();
+    publishedVersion=(lv&&lv.version)||null;
+  }catch(err){ publishedVersion=null; }
+  try{
     const {data:q}=await supa.from("quotes").select("*").eq("id",cloudQuoteId).maybeSingle();
     quoteStatus=(q&&q.status)||"draft";
     quoteUpdatedAt=(q&&q.updated_at)||null;
@@ -10528,6 +10533,16 @@ async function logQuoteEvent(kind, detail){
   if(!supa || !cloudQuoteId) return;
   try{ await supa.rpc("log_quote_event",{p_quote_id:cloudQuoteId, p_kind:kind, p_detail:detail||null}); }
   catch(err){}
+}
+let publishedVersion=null;      // newest published catalogue version
+/* Is the customer's link pinned to an older price list than the one that is
+   published now? Publishing deliberately leaves live links alone — that is
+   the whole point of pinning them — so this is the only thing that says a
+   link is on version 5 while the shelf is at 13. Without it the bar reported
+   "Link is up to date" for a link showing prices from ten versions ago. */
+function shareCatalogueBehind(){
+  if(!quoteShare || !publishedVersion || !quoteShare.catalogue_version) return false;
+  return quoteShare.catalogue_version < publishedVersion;
 }
 /* Is the customer looking at something older than the quote as it stands?
    Compare when the quote row last changed against when the link was last
@@ -10563,9 +10578,19 @@ function renderQuoteBar(){
     ${quoteShare
       ? `<span class="qbsep"></span>
          <button class="btn sm" id="qbCopyLink">Copy customer link</button>
-         ${shareIsBehind()
-           ? `<button class="btn sm primary" id="qbPush" title="Send the current version of this quote to the customer's link">Update the link</button>`
-           : `<span class="qbmeta">Link is up to date</span>`}
+         ${(()=>{
+             const qBehind=shareIsBehind(), cBehind=shareCatalogueBehind();
+             const v=quoteShare.catalogue_version;
+             if(!qBehind && !cBehind)
+               return `<span class="qbmeta" title="${v?`Showing catalogue version ${v}`:"Not pinned to a catalogue version"}">Link is up to date${v?` &middot; v${v}`:""}</span>`;
+             const why = (qBehind&&cBehind)
+               ? `the quote has changed and the catalogue is now at version ${publishedVersion} while the link still shows ${v}`
+               : (qBehind
+                  ? "the quote has changed since you last updated the link"
+                  : `the catalogue is now at version ${publishedVersion}, the link still shows version ${v}`);
+             return `<button class="btn sm primary" id="qbPush" title="Send the quote as it stands, at the prices published now, to the customer's link — ${why}">Update the link${
+               cBehind&&!qBehind?" (new prices)":""}</button>`;
+           })()}
          <button class="btn sm" id="qbRevoke" title="Stop the link from working">Revoke</button>
          ${custChanged?`<span class="qbwarn">${shareLockIconSvg()}<b>The customer changed something</b>
             <button class="btn sm" id="qbPull">Take their changes</button></span>`:""}`
@@ -10650,6 +10675,10 @@ function wireQuoteBar(){
     navigator.clipboard.writeText(url).then(()=>flagSaved("Link copied"));
   });
   on("qbPush", async ()=>{
+    if(shareCatalogueBehind() &&
+       !confirm("This link shows catalogue version "+quoteShare.catalogue_version+
+                ". Updating it moves the customer to version "+publishedVersion+
+                ", so the prices and pictures they see change to the ones published now.\n\nUpdate the link?")) return;
     if(quoteShare.customer_changed_at &&
        !confirm("The customer has changed their own selection in this link.\n\nUpdating the link replaces their copy with yours and their changes are lost. Take their changes first if you want to keep them.\n\nUpdate anyway?")) return;
     try{
