@@ -500,8 +500,8 @@
   /* the catalogue notice is about your own tools, the link notice about
      something a customer can see — the second is the louder of the two */
   .notice.is-cat .catdot{background:var(--txt-faint)}
-  #catDiffPanel .qbrow.is-gone .what{color:var(--bad)}
-  #catDiffPanel .qbrow .who{flex:0 0 190px}
+  #catDiffPanel .qbrow.is-gone .what,#shareDiffPanel .qbrow.is-gone .what{color:var(--bad)}
+  #catDiffPanel .qbrow .who,#shareDiffPanel .qbrow .who{flex:0 0 190px}
   .mlist{border-right:1px solid var(--line);background:var(--rail);padding:18px 12px;overflow-y:auto}
   .mrow{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;cursor:pointer;color:var(--txt-dim);white-space:nowrap}
   .mrow:hover{background:var(--panel-2);color:var(--txt)}
@@ -726,7 +726,8 @@
   .qbrow.is-customer .what{color:#28338A;font-weight:500}
   .qbempty{color:var(--txt-faint);font-size:12px;font-style:italic}
   body.share-mode > header, body.share-mode > #subtabs, body.share-mode > #qbPanel,
-  body.share-mode > #notices, body.share-mode > #catDiffPanel, body.share-mode > #viewLogin,
+  body.share-mode > #notices, body.share-mode > #catDiffPanel,
+  body.share-mode > #shareDiffPanel, body.share-mode > #viewLogin,
   body.share-mode > #viewConfigure, body.share-mode > #viewFormats,
   body.share-mode > #viewService, body.share-mode > #viewAdmin,
   body.share-mode > #viewDocs, body.share-mode > #viewQuotes{display:none!important}
@@ -10621,6 +10622,7 @@ async function pushShareNow(){
     clearTimeout(saveTimer); saveNow();
     await supa.rpc("push_quote_share",{p_share_id:quoteShare.id});
     await loadQuoteMeta();
+    const p=document.getElementById("shareDiffPanel"); if(p) p.remove();
     flagSaved("Customer link updated");
     renderQuoteBar();
   }catch(err){ alert("Could not update the link: "+(err&&err.message||err)+"\n\nHas supabase-migratie-alles.sql been run?"); }
@@ -10687,6 +10689,7 @@ function renderNotices(){
         ${what} &mdash; ${esc(who||"the customer")} sees what you sent, not what is on your screen.</span>
       ${quoteShare.customer_changed_at
         ? `<span class="catmeta">they changed something themselves</span>`:""}
+      <button class="btn sm" id="lbDiff">See what changed</button>
       <button class="btn primary sm" id="lbPush">Update the link</button>
       <button class="btn sm" id="lbDismiss" title="Leave the customer on the version they have">Later</button>
     </div>`);
@@ -10694,12 +10697,18 @@ function renderNotices(){
 
   box.classList.toggle("hidden", !rows.length);
   box.innerHTML=rows.join("");
+  if(!rows.length){
+    for(const id of ["catDiffPanel","shareDiffPanel"]){
+      const p=document.getElementById(id); if(p) p.remove();
+    }
+  }
   const on=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
   on("ntDiff", showCatalogueDiff);
   on("ntTake", takeUpstreamCatalogue);
   /* Later on the catalogue means "not this change": remember which rev was
      waved away, so the notice comes back when the next one arrives. */
   on("ntLater", ()=>{ catUpstreamSnoozed=catUpstreamKey(catUpstream); catUpstream=null; renderNotices(); });
+  on("lbDiff", showShareDiff);
   on("lbPush", pushShareNow);
   /* Later on the link lasts until this quote is edited again: "I know, not
      now", not "never tell me again". */
@@ -10865,6 +10874,117 @@ async function showCatalogueDiff(){
   const box=document.getElementById("notices");
   box.insertAdjacentElement("afterend", panel);
   catDiffPanelOpen=true;
+}
+/* ============================================================
+   WHAT WILL CHANGE FOR THE CUSTOMER
+   The mirror image of "See what changed" on the catalogue: before you push,
+   see what the person on the other end will actually notice.
+
+   The comparison is exact rather than approximate, because both sides are
+   measured with the same code the proposal itself uses. The customer's side
+   is his frozen copy of the quote read against the catalogue VERSION his
+   link is pinned to; yours is what is on screen. Doing that means putting
+   his state and his catalogue into the globals for the length of one
+   measurement and putting yours back afterwards — hence the try/finally,
+   and hence nothing in here renders or saves.
+   ============================================================ */
+function quoteFiguresNow(){
+  const items=new Map();
+  for(const n of scopeNodes()){
+    items.set(n.o.id, {name:n.o.name||n.o.id, step:(n.root&&n.root.title)||"",
+                       price:+n.o.price||0, optional:!!n.o.optional, alt:!!n.o.alt});
+  }
+  return {total:priceRowsTotal(buildPriceRows(false)), items};
+}
+async function shareDiffSummary(){
+  if(!quoteShare || !quoteShare.data) return null;
+  const theirQuote=quoteShare.data;
+  let theirCat=null;
+  if(quoteShare.catalogue_version && supa){
+    try{
+      const {data}=await supa.from("catalogue_versions").select("data")
+        .eq("version",quoteShare.catalogue_version).maybeSingle();
+      theirCat=data&&data.data;
+    }catch(err){}
+  }
+  const mine=quoteFiguresNow();
+  /* keep everything the measurement is allowed to touch */
+  const keepState=state, keepLang=docLang, keepCfg={};
+  for(const k of CATALOGUE_KEYS.concat(QUOTE_KEYS)) keepCfg[k]=CONFIG[k];
+  let theirs;
+  try{
+    if(theirCat) for(const k of CATALOGUE_KEYS) if(theirCat[k]!==undefined) CONFIG[k]=clone(theirCat[k]);
+    const q=theirQuote.quote||{};
+    for(const k of QUOTE_KEYS) if(q[k]!==undefined) CONFIG[k]=clone(q[k]);
+    state=clone(theirQuote.state||{});
+    if(theirQuote.docLang) docLang=theirQuote.docLang;
+    theirs=quoteFiguresNow();
+  } finally {
+    state=keepState; docLang=keepLang;
+    for(const k of CATALOGUE_KEYS.concat(QUOTE_KEYS)) CONFIG[k]=keepCfg[k];
+  }
+  const added=[], removed=[], priced=[], scoped=[];
+  for(const [id,m] of mine.items){
+    const t=theirs.items.get(id);
+    if(!t){ added.push(m); continue; }
+    if(t.price!==m.price) priced.push({step:m.step, name:m.name, from:t.price, to:m.price});
+    if(t.optional!==m.optional)
+      scoped.push({step:m.step, name:m.name, to:m.optional?"optional":"in scope"});
+  }
+  for(const [id,t] of theirs.items) if(!mine.items.has(id)) removed.push(t);
+  return {added, removed, priced, scoped,
+          totalFrom:theirs.total, totalTo:mine.total,
+          theirVersion:quoteShare.catalogue_version||null,
+          catalogueMissing:!!(quoteShare.catalogue_version && !theirCat),
+          nothing:!added.length && !removed.length && !priced.length && !scoped.length
+                  && theirs.total===mine.total};
+}
+async function showShareDiff(){
+  const btn=document.getElementById("lbDiff");
+  if(btn){ btn.disabled=true; btn.textContent="Comparing…"; }
+  const old=document.getElementById("shareDiffPanel"); if(old) old.remove();
+  let s=null;
+  try{ s=await shareDiffSummary(); }catch(err){ }
+  if(btn){ btn.disabled=false; btn.textContent="See what changed"; }
+  if(!s){ alert("Could not compare — this link has no frozen copy of the quote yet."); return; }
+  const who=(CONFIG.customer||"the customer").trim()||"the customer";
+  const money=n=>fmt(+n||0);
+  const panel=document.createElement("div");
+  panel.id="shareDiffPanel"; panel.className="qbpanel";
+  const delta=s.totalTo-s.totalFrom;
+  panel.innerHTML=`<h4>What ${esc(who)} will see change</h4>${
+    s.catalogueMissing
+      ? `<div class="qbrow"><span class="what"><i>Catalogue version ${s.theirVersion} is no longer on the shelf, so his side is read against the catalogue you have. Names and prices of items he can no longer be shown may be off.</i></span></div>`:""}${
+    s.nothing
+      ? `<div class="qbempty">Nothing. His page already says the same as your screen — the link is only marked behind because the quote row was touched.</div>`
+      : `
+    <div class="qbrow"><span class="who">total</span><span class="what">${
+      money(s.totalFrom)} &rarr; <b>${money(s.totalTo)}</b>${
+      delta?` <b style="color:var(--${delta>0?"warn":"ok"})">${delta>0?"+":"&minus;"} ${money(Math.abs(delta))}</b>`:" (unchanged)"}</span></div>
+    ${s.removed.length?`<div class="qbrow"><span class="who">he loses</span><span class="what">${
+        s.removed.length} item${s.removed.length===1?"":"s"}</span></div>`+
+        catDiffRows(s.removed, o=>`<div class="qbrow is-gone"><span class="when"></span>
+          <span class="who">${esc(o.step)}</span>
+          <span class="what">${esc(o.name)} <b>${money(o.price)}</b>${o.optional?" (was optional)":""}</span></div>`):""}
+    ${s.added.length?`<div class="qbrow"><span class="who">he gains</span><span class="what">${
+        s.added.length} item${s.added.length===1?"":"s"}</span></div>`+
+        catDiffRows(s.added, o=>`<div class="qbrow"><span class="when"></span>
+          <span class="who">${esc(o.step)}</span>
+          <span class="what">${esc(o.name)} <b>${money(o.price)}</b>${o.optional?" (optional)":""}</span></div>`):""}
+    ${s.priced.length?`<div class="qbrow"><span class="who">price changes</span><span class="what">${
+        s.priced.length}</span></div>`+
+        catDiffRows(s.priced, p=>`<div class="qbrow"><span class="when"></span>
+          <span class="who">${esc(p.step)}</span>
+          <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b></span></div>`):""}
+    ${s.scoped.length?`<div class="qbrow"><span class="who">in or out of scope</span><span class="what">${
+        s.scoped.length} changed</span></div>`+
+        catDiffRows(s.scoped, c=>`<div class="qbrow"><span class="when"></span>
+          <span class="who">${esc(c.step)}</span>
+          <span class="what">${esc(c.name)} becomes <b>${esc(c.to)}</b></span></div>`):""}
+    ${quoteShare.customer_changed_at?`<div class="qbrow is-gone"><span class="who">careful</span>
+        <span class="what">${esc(who)} changed his own selection in this link. Updating replaces his copy and those changes are lost — take them first if you want to keep them.</span></div>`:""}`}`;
+  const box=document.getElementById("notices");
+  box.insertAdjacentElement("afterend", panel);
 }
 async function takeUpstreamCatalogue(){
   if(!catUpstream) return;
