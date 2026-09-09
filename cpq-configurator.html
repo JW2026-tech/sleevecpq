@@ -502,6 +502,18 @@
   .notice.is-cat .catdot{background:var(--txt-faint)}
   #catDiffPanel .qbrow.is-gone .what,#shareDiffPanel .qbrow.is-gone .what{color:var(--bad)}
   #catDiffPanel .qbrow .who,#shareDiffPanel .qbrow .who{flex:0 0 190px}
+  /* A comparison is read once. It must not take the screen hostage: a third
+     of the window at most, each part folded shut unless it is short enough
+     to take in at a glance, and a way out that is always in the same place. */
+  .diffpanel{max-height:min(34vh,300px);padding-top:0}
+  .diffbar{display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:1;
+    background:var(--panel);padding:10px 0 8px;margin-bottom:2px}
+  .diffbar h4{margin:0}
+  .diffhead{cursor:pointer;user-select:none}
+  .diffhead:hover{background:var(--panel-2)}
+  .diffhead .who{font-weight:600;color:var(--txt)}
+  .diffhead .caret{color:var(--txt-faint);font-size:10px;margin-left:auto;padding-left:8px}
+  .diffsec + .diffsec{margin-top:2px}
   .mlist{border-right:1px solid var(--line);background:var(--rail);padding:18px 12px;overflow-y:auto}
   .mrow{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;cursor:pointer;color:var(--txt-dim);white-space:nowrap}
   .mrow:hover{background:var(--panel-2);color:var(--txt)}
@@ -10736,7 +10748,6 @@ let catKnownRev=null;            // draft rev this screen is based on
 let loadedCatalogueVersion=null; // set when working from a published version
 let catUpstream=null;            // {kind, rev|version, updated_by, at}
 let catUpstreamSnoozed=null;
-let catDiffPanelOpen=false;
 const catUpstreamKey=u=>u?(u.kind+":"+(u.rev||u.version)):null;
 function noteUpstream(u){
   if(!u || catUpstreamKey(u)===catUpstreamSnoozed) return;
@@ -10828,52 +10839,87 @@ function catDiffRows(list, fmtRow, cap){
   const rest=list.length-(cap||12);
   return shown + (rest>0?`<div class="qbrow"><span class="what">and ${rest} more</span></div>`:"");
 }
+/* A comparison is something you read once and then want out of the way, so
+   each part folds shut. Anything longer than a glance starts folded: the
+   panel opens as a handful of headline rows you can take in without
+   scrolling, and you unfold only the part you care about. */
+function diffSection(label, count, rowsHtml, open){
+  return `<div class="diffsec">
+    <div class="qbrow diffhead" data-sec>
+      <span class="who">${label}</span>
+      <span class="what">${count}</span>
+      <span class="caret">${open?"&#9662;":"&#9656;"}</span>
+    </div>
+    <div class="diffbody"${open?"":" hidden"}>${rowsHtml}</div>
+  </div>`;
+}
+/* the frame both comparisons sit in: a title, a way out, and folding */
+function diffPanel(id, title, bodyHtml){
+  const old=document.getElementById(id); if(old) old.remove();
+  const el=document.createElement("div");
+  el.id=id; el.className="qbpanel diffpanel";
+  el.innerHTML=`<div class="diffbar"><h4>${title}</h4>
+      <span class="spacer"></span>
+      <button class="btn sm" data-diffclose title="Close this comparison">Close</button>
+    </div>${bodyHtml}`;
+  el.querySelectorAll("[data-sec]").forEach(h=>{
+    h.onclick=()=>{
+      const body=h.nextElementSibling, caret=h.querySelector(".caret");
+      const openNow=body.hidden;
+      body.hidden=!openNow;
+      if(caret) caret.innerHTML=openNow?"&#9662;":"&#9656;";
+    };
+  });
+  const x=el.querySelector("[data-diffclose]");
+  if(x) x.onclick=()=>el.remove();
+  document.getElementById("notices").insertAdjacentElement("afterend", el);
+  return el;
+}
 async function showCatalogueDiff(){
+  /* second press closes it again — the button is the way in and the way out */
+  const existing=document.getElementById("catDiffPanel");
+  if(existing){ existing.remove(); return; }
   const btn=document.getElementById("ntDiff");
   if(btn){ btn.disabled=true; btn.textContent="Comparing…"; }
-  let panel=document.getElementById("catDiffPanel");
-  if(panel) panel.remove();
   const upstream=await fetchUpstreamCatalogue();
   if(btn){ btn.disabled=false; btn.textContent="See what changed"; }
   if(!upstream){ alert("Could not read the newer catalogue."); return; }
   const s=catalogueChangeSummary(cataloguePayload().catalogue, upstream);
-  panel=document.createElement("div");
-  panel.id="catDiffPanel"; panel.className="qbpanel";
   const money=n=>fmt(+n||0);
-  panel.innerHTML=`<h4>What is different in the newer catalogue</h4>${
-    s.nothing
-      ? `<div class="qbempty">Nothing that shows on a quote. The revision moved on, but no step, option, price or name is different — someone saved without changing anything that matters here.</div>`
-      : `
-    ${s.removedOpts.length?`<div class="qbrow"><span class="who">gone</span><span class="what">${
-        s.removedOpts.length} option${s.removedOpts.length===1?"":"s"} removed</span></div>`+
+  const few=n=>n<=3;   // short enough to leave open
+  const body = s.nothing
+    ? `<div class="qbempty">Nothing that shows on a quote. The revision moved on, but no step, option, price or name is different — someone saved without changing anything that matters here.</div>`
+    : `
+    ${s.removedOpts.length?diffSection("gone",
+        `${s.removedOpts.length} option${s.removedOpts.length===1?"":"s"} removed`,
         catDiffRows(s.removedOpts, o=>`<div class="qbrow is-gone"><span class="when"></span>
           <span class="who">${esc(o.step)}</span>
-          <span class="what">${esc(o.name)} <b>${money(o.price)}</b></span></div>`):""}
-    ${s.addedOpts.length?`<div class="qbrow"><span class="who">new</span><span class="what">${
-        s.addedOpts.length} option${s.addedOpts.length===1?"":"s"} added</span></div>`+
+          <span class="what">${esc(o.name)} <b>${money(o.price)}</b></span></div>`),
+        few(s.removedOpts.length)):""}
+    ${s.addedOpts.length?diffSection("new",
+        `${s.addedOpts.length} option${s.addedOpts.length===1?"":"s"} added`,
         catDiffRows(s.addedOpts, o=>`<div class="qbrow"><span class="when"></span>
           <span class="who">${esc(o.step)}</span>
-          <span class="what">${esc(o.name)} <b>${money(o.price)}</b></span></div>`):""}
-    ${s.priceChanges.length?`<div class="qbrow"><span class="who">prices</span><span class="what">${
-        s.priceChanges.length} changed</span></div>`+
+          <span class="what">${esc(o.name)} <b>${money(o.price)}</b></span></div>`),
+        few(s.addedOpts.length)):""}
+    ${s.priceChanges.length?diffSection("prices", `${s.priceChanges.length} changed`,
         catDiffRows(s.priceChanges, p=>`<div class="qbrow"><span class="when"></span>
           <span class="who">${esc(p.step)}</span>
-          <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b></span></div>`):""}
+          <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b></span></div>`),
+        few(s.priceChanges.length)):""}
     ${s.removedSteps.length?`<div class="qbrow is-gone"><span class="who">steps gone</span>
         <span class="what">${s.removedSteps.map(esc).join(", ")}</span></div>`:""}
     ${s.addedSteps.length?`<div class="qbrow"><span class="who">steps new</span>
         <span class="what">${s.addedSteps.map(esc).join(", ")}</span></div>`:""}
-    ${s.nameChanges.length?`<div class="qbrow"><span class="who">renamed</span><span class="what">${
-        s.nameChanges.length}</span></div>`+
+    ${s.nameChanges.length?diffSection("renamed", `${s.nameChanges.length}`,
         catDiffRows(s.nameChanges, n=>`<div class="qbrow"><span class="when"></span>
           <span class="who">${esc(n.step)}</span>
-          <span class="what">${esc(n.from)} &rarr; <b>${esc(n.to)}</b></span></div>`, 8):""}
+          <span class="what">${esc(n.from)} &rarr; <b>${esc(n.to)}</b></span></div>`, 8),
+        few(s.nameChanges.length)):""}
     ${s.otherFields?`<div class="qbrow"><span class="who">other</span>
         <span class="what">${s.otherFields} other field${s.otherFields===1?"":"s"} changed (pictures, defaults, dependencies)</span></div>`:""}
-    <div class="qbrow"><span class="what"><i>Removed items that this quote uses are dropped from it when you update. What you have chosen is kept wherever the option still exists.</i></span></div>`}`;
-  const box=document.getElementById("notices");
-  box.insertAdjacentElement("afterend", panel);
-  catDiffPanelOpen=true;
+    <div class="qbrow"><span class="what"><i>Removed items that this quote uses are dropped from it when you update. What you have chosen is kept wherever the option still exists.</i></span></div>`;
+  diffPanel("catDiffPanel", "What is different in the newer catalogue", body);
 }
 /* ============================================================
    WHAT WILL CHANGE FOR THE CUSTOMER
@@ -10945,19 +10991,20 @@ async function shareDiffSummary(){
                   && theirs.total===mine.total};
 }
 async function showShareDiff(){
+  /* second press closes it again */
+  const existing=document.getElementById("shareDiffPanel");
+  if(existing){ existing.remove(); return; }
   const btn=document.getElementById("lbDiff");
   if(btn){ btn.disabled=true; btn.textContent="Comparing…"; }
-  const old=document.getElementById("shareDiffPanel"); if(old) old.remove();
   let s=null;
   try{ s=await shareDiffSummary(); }catch(err){ }
   if(btn){ btn.disabled=false; btn.textContent="See what changed"; }
   if(!s){ alert("Could not compare — this link has no frozen copy of the quote yet."); return; }
   const who=(CONFIG.customer||"the customer").trim()||"the customer";
   const money=n=>fmt(+n||0);
-  const panel=document.createElement("div");
-  panel.id="shareDiffPanel"; panel.className="qbpanel";
+  const few=n=>n<=3;
   const delta=s.totalTo-s.totalFrom;
-  panel.innerHTML=`<h4>What ${esc(who)} will see change</h4>${
+  const body=`${
     s.catalogueMissing
       ? `<div class="qbrow"><span class="what"><i>Catalogue version ${s.theirVersion} is no longer on the shelf, so his side is read against the catalogue you have. Names and prices of items he can no longer be shown may be off.</i></span></div>`:""}${
     s.nothing
@@ -10966,30 +11013,31 @@ async function showShareDiff(){
     <div class="qbrow"><span class="who">total</span><span class="what">${
       money(s.totalFrom)} &rarr; <b>${money(s.totalTo)}</b>${
       delta?` <b style="color:var(--${delta>0?"warn":"ok"})">${delta>0?"+":"&minus;"} ${money(Math.abs(delta))}</b>`:" (unchanged)"}</span></div>
-    ${s.removed.length?`<div class="qbrow"><span class="who">he loses</span><span class="what">${
-        s.removed.length} item${s.removed.length===1?"":"s"}</span></div>`+
+    ${s.removed.length?diffSection("he loses",
+        `${s.removed.length} item${s.removed.length===1?"":"s"}`,
         catDiffRows(s.removed, o=>`<div class="qbrow is-gone"><span class="when"></span>
           <span class="who">${esc(o.step)}</span>
-          <span class="what">${esc(o.name)} <b>${money(o.price)}</b>${o.optional?" (was optional)":""}</span></div>`):""}
-    ${s.added.length?`<div class="qbrow"><span class="who">he gains</span><span class="what">${
-        s.added.length} item${s.added.length===1?"":"s"}</span></div>`+
+          <span class="what">${esc(o.name)} <b>${money(o.price)}</b>${o.optional?" (was optional)":""}</span></div>`),
+        few(s.removed.length)):""}
+    ${s.added.length?diffSection("he gains",
+        `${s.added.length} item${s.added.length===1?"":"s"}`,
         catDiffRows(s.added, o=>`<div class="qbrow"><span class="when"></span>
           <span class="who">${esc(o.step)}</span>
-          <span class="what">${esc(o.name)} <b>${money(o.price)}</b>${o.optional?" (optional)":""}</span></div>`):""}
-    ${s.priced.length?`<div class="qbrow"><span class="who">price changes</span><span class="what">${
-        s.priced.length}</span></div>`+
+          <span class="what">${esc(o.name)} <b>${money(o.price)}</b>${o.optional?" (optional)":""}</span></div>`),
+        few(s.added.length)):""}
+    ${s.priced.length?diffSection("price changes", `${s.priced.length}`,
         catDiffRows(s.priced, p=>`<div class="qbrow"><span class="when"></span>
           <span class="who">${esc(p.step)}</span>
-          <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b></span></div>`):""}
-    ${s.scoped.length?`<div class="qbrow"><span class="who">in or out of scope</span><span class="what">${
-        s.scoped.length} changed</span></div>`+
+          <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b></span></div>`),
+        few(s.priced.length)):""}
+    ${s.scoped.length?diffSection("in or out of scope", `${s.scoped.length} changed`,
         catDiffRows(s.scoped, c=>`<div class="qbrow"><span class="when"></span>
           <span class="who">${esc(c.step)}</span>
-          <span class="what">${esc(c.name)} becomes <b>${esc(c.to)}</b></span></div>`):""}
+          <span class="what">${esc(c.name)} becomes <b>${esc(c.to)}</b></span></div>`),
+        few(s.scoped.length)):""}
     ${quoteShare.customer_changed_at?`<div class="qbrow is-gone"><span class="who">careful</span>
         <span class="what">${esc(who)} changed his own selection in this link. Updating replaces his copy and those changes are lost — take them first if you want to keep them.</span></div>`:""}`}`;
-  const box=document.getElementById("notices");
-  box.insertAdjacentElement("afterend", panel);
+  diffPanel("shareDiffPanel", `What ${esc(who)} will see change`, body);
 }
 async function takeUpstreamCatalogue(){
   if(!catUpstream) return;
