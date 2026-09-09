@@ -483,14 +483,25 @@
   .catbar.dirty .catdot{background:var(--warn)}
   .catbar .btn{white-space:nowrap}
   .catbar .catmeta{font-size:11px;color:var(--txt-faint);white-space:nowrap}
-  /* The sent-link reminder. Same bar, but it lives above the screens rather
-     than inside the Admin grid, and it is always the warning colour — it
-     only exists when there is something to act on. Sticky, so walking away
-     from it means deciding, not scrolling. */
-  .linkbar{grid-column:auto;background:var(--warn-softer);border-bottom-color:var(--warn);
-    position:sticky;z-index:18}
-  .linkbar .catmsg{color:var(--txt)}
-  .linkbar .catdot{background:var(--warn)}
+  /* The notices. One sticky block above the screens; each notice is its own
+     row with its own subject and its own button, because "the catalogue
+     moved on" and "the customer's link is behind" are different questions
+     with different answers. Always the warning colour — a notice only
+     exists while there is something to act on. */
+  .noticebar{position:sticky;z-index:18;background:var(--warn-softer);
+    border-bottom:1px solid var(--warn)}
+  .notice{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 16px;font-size:12.5px}
+  .notice + .notice{border-top:1px solid var(--warn)}
+  .notice .catmsg{flex:1;min-width:200px;color:var(--txt)}
+  .notice .catmsg b{color:var(--txt)}
+  .notice .catdot{flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:var(--warn)}
+  .notice .catmeta{font-size:11px;color:var(--txt-faint);white-space:nowrap}
+  .notice .btn{white-space:nowrap}
+  /* the catalogue notice is about your own tools, the link notice about
+     something a customer can see — the second is the louder of the two */
+  .notice.is-cat .catdot{background:var(--txt-faint)}
+  #catDiffPanel .qbrow.is-gone .what{color:var(--bad)}
+  #catDiffPanel .qbrow .who{flex:0 0 190px}
   .mlist{border-right:1px solid var(--line);background:var(--rail);padding:18px 12px;overflow-y:auto}
   .mrow{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;cursor:pointer;color:var(--txt-dim);white-space:nowrap}
   .mrow:hover{background:var(--panel-2);color:var(--txt)}
@@ -715,7 +726,7 @@
   .qbrow.is-customer .what{color:#28338A;font-weight:500}
   .qbempty{color:var(--txt-faint);font-size:12px;font-style:italic}
   body.share-mode > header, body.share-mode > #subtabs, body.share-mode > #qbPanel,
-  body.share-mode > #linkBar, body.share-mode > #viewLogin,
+  body.share-mode > #notices, body.share-mode > #catDiffPanel, body.share-mode > #viewLogin,
   body.share-mode > #viewConfigure, body.share-mode > #viewFormats,
   body.share-mode > #viewService, body.share-mode > #viewAdmin,
   body.share-mode > #viewDocs, body.share-mode > #viewQuotes{display:none!important}
@@ -2153,7 +2164,7 @@
 <!-- The reminder that a sent link no longer matches this quote. Outside the
      screens themselves so it shows wherever you are when you change
      something — renderLinkBar() fills it in and hides it again. -->
-<div class="catbar linkbar hidden" id="linkBar"></div>
+<div class="noticebar hidden" id="notices"></div>
 
 <!-- ===== sign in =====
      Email+password for now — zero extra setup beyond the Supabase project
@@ -10314,7 +10325,7 @@ const CONFIG_SUBMODES=["configure","formats","service"];
    header scrolls away with the page and the stylesheet sets it to 0. */
 function syncTopbar(){
   const hd=document.querySelector("header"), sb=document.getElementById("subtabs"),
-        lb=document.getElementById("linkBar");
+        lb=document.getElementById("notices");
   if(!hd) return;
   if(window.innerWidth<=900){
     document.body.style.removeProperty("--topbar");
@@ -10623,36 +10634,252 @@ async function pushShareNow(){
    It deliberately does NOT appear for an unsent quote, a revoked link or an
    expired one; those need no action. */
 let linkBarSnoozed=null;
-function renderLinkBar(){
-  const bar=document.getElementById("linkBar");
-  if(!bar) return;
+/* THE TWO NOTICES, SIDE BY SIDE AND NEVER MIXED UP
+   They are about different things and have different answers, so each gets
+   its own row, its own subject and its own button:
+
+     the catalogue  — someone else changed what you are selling FROM.
+                      Answer: look at what changed, then take it or not.
+     the link       — you changed what you are selling TO this customer,
+                      and he is still looking at the older page.
+                      Answer: update his link.
+
+   One container so there is one thing stuck to the top and one height to
+   measure, however many of them apply. */
+function renderNotices(){
+  const box=document.getElementById("notices");
+  if(!box) return;
+  if(document.body.classList.contains("share-mode")){
+    box.classList.add("hidden"); box.innerHTML=""; syncTopbar(); return;
+  }
+  const rows=[];
+
+  /* ---- 1. the catalogue on screen is not the newest one ---- */
+  if(catUpstream){
+    const who=(catUpstream.updated_by && catUpstream.updated_by!=="unknown")
+      ? esc(catUpstream.updated_by) : "Someone";
+    const when=catUpstream.at ? new Date(catUpstream.at).toLocaleString() : "";
+    rows.push(`<div class="notice is-cat">
+      <span class="catdot"></span>
+      <span class="catmsg"><b>The catalogue has moved on.</b>
+        ${catUpstream.kind==="version"
+          ? `Version <b>${catUpstream.version}</b> has been published; you are working from version ${loadedCatalogueVersion||"an older one"}.`
+          : `${who} saved a change${when?" at "+esc(when):""} — your screen still has the copy you opened.`}
+        Your quote keeps its own choices either way.</span>
+      <button class="btn sm" id="ntDiff">See what changed</button>
+      <button class="btn primary sm" id="ntTake">Update to the new version</button>
+      <button class="btn sm" id="ntLater" title="Keep working from the catalogue you have">Later</button>
+    </div>`);
+  }
+
+  /* ---- 2. this quote has a live link that is behind ---- */
   const stamp=quoteUpdatedAt||"";
-  const show = !document.body.classList.contains("share-mode")
-            && shareIsLive() && (shareIsBehind() || shareCatalogueBehind())
-            && linkBarSnoozed!==stamp;
-  bar.classList.toggle("hidden", !show);
-  if(!show){ bar.innerHTML=""; syncTopbar(); return; }
-  const who=(CONFIG.customer||(CONFIG.customerInfo&&CONFIG.customerInfo.company)||"").trim();
-  const qB=shareIsBehind(), cB=shareCatalogueBehind();
-  const what = (qB&&cB)
-    ? "You changed this quote, and the prices were published anew, since the link was last sent"
-    : (qB ? "You changed this quote since the link was last sent"
-          : "New prices were published since the link was last sent");
-  bar.innerHTML=`
-    <span class="catdot"></span>
-    <span class="catmsg"><b>${who?esc(who)+" is":"The customer is"} looking at an older version.</b>
-      ${what} &mdash; ${esc(who||"the customer")} sees what you sent, not what is on your screen.</span>
-    ${quoteShare.customer_changed_at
-      ? `<span class="catmeta">they changed something themselves</span>`:""}
-    <button class="btn primary sm" id="lbPush">Update the link</button>
-    <button class="btn sm" id="lbDismiss" title="Leave the customer on the version they have">Later</button>`;
-  const push=document.getElementById("lbPush");
-  if(push) push.onclick=pushShareNow;
-  const later=document.getElementById("lbDismiss");
-  /* Dismissing is per quote and lasts until this quote is edited again:
-     "later" means "I know, not now", not "never tell me again". */
-  if(later) later.onclick=()=>{ linkBarSnoozed=stamp; renderLinkBar(); };
+  if(shareIsLive() && (shareIsBehind() || shareCatalogueBehind()) && linkBarSnoozed!==stamp){
+    const who=(CONFIG.customer||(CONFIG.customerInfo&&CONFIG.customerInfo.company)||"").trim();
+    const qB=shareIsBehind(), cB=shareCatalogueBehind();
+    const what = (qB&&cB)
+      ? "You changed this quote, and the prices were published anew, since the link was last sent"
+      : (qB ? "You changed this quote since the link was last sent"
+            : "New prices were published since the link was last sent");
+    rows.push(`<div class="notice is-link">
+      <span class="catdot"></span>
+      <span class="catmsg"><b>${who?esc(who)+" is":"The customer is"} looking at an older version.</b>
+        ${what} &mdash; ${esc(who||"the customer")} sees what you sent, not what is on your screen.</span>
+      ${quoteShare.customer_changed_at
+        ? `<span class="catmeta">they changed something themselves</span>`:""}
+      <button class="btn primary sm" id="lbPush">Update the link</button>
+      <button class="btn sm" id="lbDismiss" title="Leave the customer on the version they have">Later</button>
+    </div>`);
+  }
+
+  box.classList.toggle("hidden", !rows.length);
+  box.innerHTML=rows.join("");
+  const on=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
+  on("ntDiff", showCatalogueDiff);
+  on("ntTake", takeUpstreamCatalogue);
+  /* Later on the catalogue means "not this change": remember which rev was
+     waved away, so the notice comes back when the next one arrives. */
+  on("ntLater", ()=>{ catUpstreamSnoozed=catUpstreamKey(catUpstream); catUpstream=null; renderNotices(); });
+  on("lbPush", pushShareNow);
+  /* Later on the link lasts until this quote is edited again: "I know, not
+     now", not "never tell me again". */
+  on("lbDismiss", ()=>{ linkBarSnoozed=stamp; renderNotices(); });
   syncTopbar();
+}
+/* kept so older call sites keep working */
+function renderLinkBar(){ renderNotices(); }
+
+/* ============================================================
+   IS THE CATALOGUE ON SCREEN STILL THE CURRENT ONE?
+   Field edits go up as patches, which carry no rev check on purpose — two
+   people editing different prices must not block each other. The
+   consequence is that a colleague's change lands in the database and never
+   appears on your screen, and nothing used to tell you. Hence this.
+
+   catKnownRev is the draft revision this screen's content corresponds to.
+   Two ways to find out it has moved on:
+     - a poll, for while you are just sitting there;
+     - your own patch coming back with a rev more than one higher than the
+       one you knew about, which means somebody wrote in between. That one
+       is exact and free.
+   ============================================================ */
+let catKnownRev=null;            // draft rev this screen is based on
+let loadedCatalogueVersion=null; // set when working from a published version
+let catUpstream=null;            // {kind, rev|version, updated_by, at}
+let catUpstreamSnoozed=null;
+let catDiffPanelOpen=false;
+const catUpstreamKey=u=>u?(u.kind+":"+(u.rev||u.version)):null;
+function noteUpstream(u){
+  if(!u || catUpstreamKey(u)===catUpstreamSnoozed) return;
+  catUpstream=u;
+  renderNotices();
+}
+/* Called after every successful patch write: the rev the server hands back
+   tells you whether you were the only one writing. */
+function noteDraftRevAfterWrite(newRev){
+  if(catKnownRev!==null && newRev>catKnownRev+1)
+    noteUpstream({kind:"draft", rev:newRev, updated_by:null, at:new Date().toISOString()});
+  catKnownRev=newRev;
+}
+async function checkCatalogueUpstream(){
+  if(!supa || document.body.classList.contains("share-mode")) return;
+  try{
+    if(draftRev!==null){
+      const {data}=await supa.from("catalogue_draft").select("rev,updated_at,updated_by")
+        .eq("id",1).maybeSingle();
+      if(data && catKnownRev!==null && data.rev>catKnownRev)
+        noteUpstream({kind:"draft", rev:data.rev, updated_by:data.updated_by, at:data.updated_at});
+    } else if(loadedCatalogueVersion){
+      const {data}=await supa.from("catalogue_versions").select("version,created_at")
+        .order("version",{ascending:false}).limit(1).maybeSingle();
+      if(data && data.version>loadedCatalogueVersion)
+        noteUpstream({kind:"version", version:data.version, at:data.created_at});
+    }
+  }catch(err){}
+}
+/* every minute while the tab is open, and straight away when you come back
+   to it — that is when you are about to act on what is on screen */
+setInterval(()=>{ if(!document.hidden) checkCatalogueUpstream(); }, 60000);
+window.addEventListener("focus", ()=>checkCatalogueUpstream());
+
+/* ---- WHAT CHANGED ----
+   Compared by id, never by position, and only on the things worth reading:
+   which steps and options exist, what they cost and what they are called.
+   Everything else is counted, not listed. */
+function catalogueChangeSummary(oldCat, newCat){
+  const idx=cat=>{
+    const steps=new Map(), opts=new Map();
+    const walk=(list, parentTitle)=>{
+      for(const m of (list||[])){
+        steps.set(m.id, m.title||m.id);
+        for(const o of (m.options||[])){
+          opts.set(o.id, {name:o.name||o.id, price:+o.price||0, step:m.title||m.id, o});
+          walk(o.children, m.title||m.id);
+        }
+      }
+    };
+    walk(cat&&cat.modules);
+    return {steps, opts};
+  };
+  const A=idx(oldCat), B=idx(newCat);
+  const out={addedSteps:[], removedSteps:[], addedOpts:[], removedOpts:[],
+             priceChanges:[], nameChanges:[], otherFields:0};
+  for(const [id,t] of B.steps) if(!A.steps.has(id)) out.addedSteps.push(t);
+  for(const [id,t] of A.steps) if(!B.steps.has(id)) out.removedSteps.push(t);
+  for(const [id,o] of B.opts) if(!A.opts.has(id)) out.addedOpts.push(o);
+  for(const [id,o] of A.opts) if(!B.opts.has(id)) out.removedOpts.push(o);
+  for(const [id,b] of B.opts){
+    const a=A.opts.get(id); if(!a) continue;
+    if(a.price!==b.price) out.priceChanges.push({step:b.step, name:b.name, from:a.price, to:b.price});
+    if(a.name!==b.name) out.nameChanges.push({step:b.step, from:a.name, to:b.name});
+    for(const f of new Set([...Object.keys(a.o), ...Object.keys(b.o)])){
+      if(f==="children"||f==="price"||f==="name"||PERQUOTE_OPTION_FIELDS.has(f)) continue;
+      if(JSON.stringify(a.o[f])!==JSON.stringify(b.o[f])) out.otherFields++;
+    }
+  }
+  out.nothing = !out.addedSteps.length && !out.removedSteps.length && !out.addedOpts.length
+             && !out.removedOpts.length && !out.priceChanges.length && !out.nameChanges.length
+             && !out.otherFields;
+  return out;
+}
+/* The newer catalogue is only fetched when you ask to see it: it carries
+   base64 pictures, so it is far too heavy to pull on a poll. */
+async function fetchUpstreamCatalogue(){
+  if(!supa || !catUpstream) return null;
+  if(catUpstream.kind==="version"){
+    const {data}=await supa.from("catalogue_versions").select("data")
+      .order("version",{ascending:false}).limit(1).maybeSingle();
+    return data && data.data;
+  }
+  const {data}=await supa.from("catalogue_draft").select("data").eq("id",1).maybeSingle();
+  return data && data.data;
+}
+function catDiffRows(list, fmtRow, cap){
+  const shown=list.slice(0, cap||12).map(fmtRow).join("");
+  const rest=list.length-(cap||12);
+  return shown + (rest>0?`<div class="qbrow"><span class="what">and ${rest} more</span></div>`:"");
+}
+async function showCatalogueDiff(){
+  const btn=document.getElementById("ntDiff");
+  if(btn){ btn.disabled=true; btn.textContent="Comparing…"; }
+  let panel=document.getElementById("catDiffPanel");
+  if(panel) panel.remove();
+  const upstream=await fetchUpstreamCatalogue();
+  if(btn){ btn.disabled=false; btn.textContent="See what changed"; }
+  if(!upstream){ alert("Could not read the newer catalogue."); return; }
+  const s=catalogueChangeSummary(cataloguePayload().catalogue, upstream);
+  panel=document.createElement("div");
+  panel.id="catDiffPanel"; panel.className="qbpanel";
+  const money=n=>fmt(+n||0);
+  panel.innerHTML=`<h4>What is different in the newer catalogue</h4>${
+    s.nothing
+      ? `<div class="qbempty">Nothing that shows on a quote. The revision moved on, but no step, option, price or name is different — someone saved without changing anything that matters here.</div>`
+      : `
+    ${s.removedOpts.length?`<div class="qbrow"><span class="who">gone</span><span class="what">${
+        s.removedOpts.length} option${s.removedOpts.length===1?"":"s"} removed</span></div>`+
+        catDiffRows(s.removedOpts, o=>`<div class="qbrow is-gone"><span class="when"></span>
+          <span class="who">${esc(o.step)}</span>
+          <span class="what">${esc(o.name)} <b>${money(o.price)}</b></span></div>`):""}
+    ${s.addedOpts.length?`<div class="qbrow"><span class="who">new</span><span class="what">${
+        s.addedOpts.length} option${s.addedOpts.length===1?"":"s"} added</span></div>`+
+        catDiffRows(s.addedOpts, o=>`<div class="qbrow"><span class="when"></span>
+          <span class="who">${esc(o.step)}</span>
+          <span class="what">${esc(o.name)} <b>${money(o.price)}</b></span></div>`):""}
+    ${s.priceChanges.length?`<div class="qbrow"><span class="who">prices</span><span class="what">${
+        s.priceChanges.length} changed</span></div>`+
+        catDiffRows(s.priceChanges, p=>`<div class="qbrow"><span class="when"></span>
+          <span class="who">${esc(p.step)}</span>
+          <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b></span></div>`):""}
+    ${s.removedSteps.length?`<div class="qbrow is-gone"><span class="who">steps gone</span>
+        <span class="what">${s.removedSteps.map(esc).join(", ")}</span></div>`:""}
+    ${s.addedSteps.length?`<div class="qbrow"><span class="who">steps new</span>
+        <span class="what">${s.addedSteps.map(esc).join(", ")}</span></div>`:""}
+    ${s.nameChanges.length?`<div class="qbrow"><span class="who">renamed</span><span class="what">${
+        s.nameChanges.length}</span></div>`+
+        catDiffRows(s.nameChanges, n=>`<div class="qbrow"><span class="when"></span>
+          <span class="who">${esc(n.step)}</span>
+          <span class="what">${esc(n.from)} &rarr; <b>${esc(n.to)}</b></span></div>`, 8):""}
+    ${s.otherFields?`<div class="qbrow"><span class="who">other</span>
+        <span class="what">${s.otherFields} other field${s.otherFields===1?"":"s"} changed (pictures, defaults, dependencies)</span></div>`:""}
+    <div class="qbrow"><span class="what"><i>Removed items that this quote uses are dropped from it when you update. What you have chosen is kept wherever the option still exists.</i></span></div>`}`;
+  const box=document.getElementById("notices");
+  box.insertAdjacentElement("afterend", panel);
+  catDiffPanelOpen=true;
+}
+async function takeUpstreamCatalogue(){
+  if(!catUpstream) return;
+  const mineUnsaved = draftRev!==null && draftSavedSig!==catalogueSig();
+  if(mineUnsaved &&
+     !confirm("You have catalogue changes that have not been saved yet. Taking the newer catalogue replaces what is on screen and those are lost.\n\nContinue?")) return;
+  const ok = catUpstream.kind==="version"
+    ? await cloudLoadLatestCatalogue()
+    : await cloudLoadCatalogueDraft();
+  if(!ok){ alert("Could not load the newer catalogue."); return; }
+  catUpstream=null; catUpstreamSnoozed=null;
+  const p=document.getElementById("catDiffPanel"); if(p) p.remove();
+  flagSaved("Catalogue updated");
+  renderNotices(); renderCatalogueBar(); refreshView();
+  if(mode==="admin") renderAdmin();
 }
 function renderQuoteBar(){
   const bar=document.getElementById("quoteBar");
@@ -10944,6 +11171,8 @@ async function cloudLoadCatalogueDraft(){
     if(error || !data) return false;            // not installed, or no draft yet
     if(!applyCatalogue({catalogue:data.data})) return false;
     draftRev=data.rev;
+    catKnownRev=data.rev;         // this screen matches that revision
+    loadedCatalogueVersion=null;  // working from the draft, not a version
     draftSavedSig=catalogueSig();
     /* what the database holds right now — every later save is expressed as
        the difference against this */
@@ -11020,6 +11249,7 @@ async function cloudSaveCatalogueDraft(){
         if(error) throw error;
         if(data && data.ok){
           draftRev=data.rev;
+          noteDraftRevAfterWrite(data.rev);
           draftBase=clone(cur);
           draftSavedSig=sig;
           renderCatalogueBar();
@@ -11044,6 +11274,7 @@ async function cloudSaveCatalogueDraft(){
       return null;
     }
     draftRev=(data&&data.rev)||draftRev;
+    catKnownRev=draftRev;
     draftBase=clone(cur);
     draftSavedSig=sig;
     renderCatalogueBar();
@@ -11074,10 +11305,11 @@ async function draftKeepMine(){
 }
 async function cloudLoadLatestCatalogue(){
   if(!supa) return false;
-  const {data, error} = await supa.from("catalogue_versions").select("data")
+  const {data, error} = await supa.from("catalogue_versions").select("data,version")
     .order("version",{ascending:false}).limit(1).single();
   if(error || !data) return false;
   const ok=applyCatalogue({catalogue: data.data});
+  if(ok) loadedCatalogueVersion=data.version;
   /* what is now in memory is exactly what the team has, so that becomes the
      baseline unpublished edits are measured against */
   if(ok) markCataloguePublished();
@@ -12938,6 +13170,9 @@ async function boot(){
   renderCatalogueBar();
   await loadQuoteMeta();
   renderQuoteBar();
+  /* One check right away: a tab left open overnight, or one opened after a
+     colleague published, should say so before you start quoting from it. */
+  checkCatalogueUpstream();
   const {data:{session}}=await supa.auth.getSession();
   if(session){
     document.getElementById("whoAmI").textContent=session.user.email||"";
