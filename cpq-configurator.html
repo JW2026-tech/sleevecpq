@@ -483,6 +483,14 @@
   .catbar.dirty .catdot{background:var(--warn)}
   .catbar .btn{white-space:nowrap}
   .catbar .catmeta{font-size:11px;color:var(--txt-faint);white-space:nowrap}
+  /* The sent-link reminder. Same bar, but it lives above the screens rather
+     than inside the Admin grid, and it is always the warning colour — it
+     only exists when there is something to act on. Sticky, so walking away
+     from it means deciding, not scrolling. */
+  .linkbar{grid-column:auto;background:var(--warn-softer);border-bottom-color:var(--warn);
+    position:sticky;z-index:18}
+  .linkbar .catmsg{color:var(--txt)}
+  .linkbar .catdot{background:var(--warn)}
   .mlist{border-right:1px solid var(--line);background:var(--rail);padding:18px 12px;overflow-y:auto}
   .mrow{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;cursor:pointer;color:var(--txt-dim);white-space:nowrap}
   .mrow:hover{background:var(--panel-2);color:var(--txt)}
@@ -707,7 +715,7 @@
   .qbrow.is-customer .what{color:#28338A;font-weight:500}
   .qbempty{color:var(--txt-faint);font-size:12px;font-style:italic}
   body.share-mode > header, body.share-mode > #subtabs, body.share-mode > #qbPanel,
-  body.share-mode > #viewLogin,
+  body.share-mode > #linkBar, body.share-mode > #viewLogin,
   body.share-mode > #viewConfigure, body.share-mode > #viewFormats,
   body.share-mode > #viewService, body.share-mode > #viewAdmin,
   body.share-mode > #viewDocs, body.share-mode > #viewQuotes{display:none!important}
@@ -2141,6 +2149,11 @@
   <button class="subtab" data-sub="formats">Format parts</button>
   <button class="subtab" data-sub="service">Services</button>
 </div>
+
+<!-- The reminder that a sent link no longer matches this quote. Outside the
+     screens themselves so it shows wherever you are when you change
+     something — renderLinkBar() fills it in and hides it again. -->
+<div class="catbar linkbar hidden" id="linkBar"></div>
 
 <!-- ===== sign in =====
      Email+password for now — zero extra setup beyond the Supabase project
@@ -10300,17 +10313,25 @@ const CONFIG_SUBMODES=["configure","formats","service"];
    --topbar, so this is the one place that has to be right. Below 900px the
    header scrolls away with the page and the stylesheet sets it to 0. */
 function syncTopbar(){
-  const hd=document.querySelector("header"), sb=document.getElementById("subtabs");
+  const hd=document.querySelector("header"), sb=document.getElementById("subtabs"),
+        lb=document.getElementById("linkBar");
   if(!hd) return;
   if(window.innerWidth<=900){
     document.body.style.removeProperty("--topbar");
     if(sb) sb.style.removeProperty("top");
+    if(lb) lb.style.removeProperty("top");
     return;
   }
-  const hh=Math.round(hd.getBoundingClientRect().height);
-  const sh=(sb && !sb.classList.contains("hidden")) ? Math.round(sb.getBoundingClientRect().height) : 0;
-  document.body.style.setProperty("--topbar",(hh+sh)+"px");
+  const shown=el=>el && !el.classList.contains("hidden");
+  const h=el=>Math.round(el.getBoundingClientRect().height);
+  const hh=h(hd);
+  const sh=shown(sb)?h(sb):0;
+  const lh=shown(lb)?h(lb):0;
+  /* each bar sticks below the ones above it, and everything else below the
+     lot of them */
   if(sb) sb.style.top=hh+"px";
+  if(lb) lb.style.top=(hh+sh)+"px";
+  document.body.style.setProperty("--topbar",(hh+sh+lh)+"px");
 }
 window.addEventListener("resize",syncTopbar);
 if(window.ResizeObserver){
@@ -10448,13 +10469,26 @@ function cataloguePayload(){
    ============================================================ */
 let publishedSig=null;         // signature of the catalogue as last published/loaded
 let _sigCache={at:0, sig:null};
+/* Fields that sit on a catalogue option but record a QUOTE decision, not a
+   catalogue fact: whether this item is offered as an extra, and whether it
+   stands in as an alternative. Configure writes them (takeOptional,
+   takeAlternative, setScope), which meant that marking one item optional
+   changed the catalogue's fingerprint and the Admin bar announced
+   "Not published yet" for a catalogue nobody had touched. They are left out
+   of the fingerprint so that bar speaks only for real Admin edits.
+   They are deliberately still SAVED with the catalogue: the customer's page
+   reads them from the pinned version, so stripping them there would show
+   every optional item as included. Moving them into `state`, where they
+   belong, is a bigger job — noted, not done here. */
+const PERQUOTE_OPTION_FIELDS=new Set(["optional","alt","altFor","altOptional","__viaAlt"]);
 /* A 32-bit rolling hash of the catalogue JSON. Cheap enough to call from a
    render, and cached briefly because base64 images make the string large. */
 function catalogueSig(){
   const now=Date.now();
   if(_sigCache.sig!==null && (now-_sigCache.at)<400) return _sigCache.sig;
   let s;
-  try{ s=JSON.stringify(pickKeys(CONFIG, CATALOGUE_KEYS)); }
+  try{ s=JSON.stringify(pickKeys(CONFIG, CATALOGUE_KEYS),
+        (k,v)=>PERQUOTE_OPTION_FIELDS.has(k)?undefined:v); }
   catch(err){ return _sigCache.sig; }        // circular/oversized: keep the last answer
   let h=5381;
   for(let i=0;i<s.length;i++) h=(((h<<5)+h)^s.charCodeAt(i))>>>0;
@@ -10555,11 +10589,77 @@ function shareIsBehind(){
   /* a second of slack: the push itself touches the row */
   return new Date(quoteUpdatedAt).getTime() > new Date(quoteShare.pushed_at).getTime() + 1000;
 }
+/* Is there a link a customer could open right now? loadQuoteMeta() only
+   filters out revoked links, not expired ones, so this has to check both —
+   an expired link needs no reminder, there is nobody looking at it. */
+function shareIsLive(){
+  if(!quoteShare || quoteShare.revoked_at) return false;
+  if(!quoteShare.expires_at) return true;
+  return new Date(quoteShare.expires_at).getTime() > Date.now();
+}
+/* Updating the link, from either the header button or the reminder bar. */
+async function pushShareNow(){
+  if(!supa || !quoteShare) return;
+  if(shareCatalogueBehind() &&
+     !confirm("This link shows catalogue version "+quoteShare.catalogue_version+
+              ". Updating it moves the customer to version "+publishedVersion+
+              ", so the prices and pictures they see change to the ones published now.\n\nUpdate the link?")) return;
+  if(quoteShare.customer_changed_at &&
+     !confirm("The customer has changed their own selection in this link.\n\nUpdating the link replaces their copy with yours and their changes are lost. Take their changes first if you want to keep them.\n\nUpdate anyway?")) return;
+  try{
+    clearTimeout(saveTimer); saveNow();
+    await supa.rpc("push_quote_share",{p_share_id:quoteShare.id});
+    await loadQuoteMeta();
+    flagSaved("Customer link updated");
+    renderQuoteBar();
+  }catch(err){ alert("Could not update the link: "+(err&&err.message||err)+"\n\nHas supabase-migratie-alles.sql been run?"); }
+}
+/* THE REMINDER
+   A quote that has been sent and then edited is the one state worth
+   interrupting for: the customer is looking at a page that no longer says
+   what you mean. The primary button in the header says the same thing, but
+   a button that changes colour is easy to walk past — this is a bar, and it
+   only appears when there really is a live link that is behind.
+   It deliberately does NOT appear for an unsent quote, a revoked link or an
+   expired one; those need no action. */
+let linkBarSnoozed=null;
+function renderLinkBar(){
+  const bar=document.getElementById("linkBar");
+  if(!bar) return;
+  const stamp=quoteUpdatedAt||"";
+  const show = !document.body.classList.contains("share-mode")
+            && shareIsLive() && (shareIsBehind() || shareCatalogueBehind())
+            && linkBarSnoozed!==stamp;
+  bar.classList.toggle("hidden", !show);
+  if(!show){ bar.innerHTML=""; syncTopbar(); return; }
+  const who=(CONFIG.customer||(CONFIG.customerInfo&&CONFIG.customerInfo.company)||"").trim();
+  const qB=shareIsBehind(), cB=shareCatalogueBehind();
+  const what = (qB&&cB)
+    ? "You changed this quote, and the prices were published anew, since the link was last sent"
+    : (qB ? "You changed this quote since the link was last sent"
+          : "New prices were published since the link was last sent");
+  bar.innerHTML=`
+    <span class="catdot"></span>
+    <span class="catmsg"><b>${who?esc(who)+" is":"The customer is"} looking at an older version.</b>
+      ${what} &mdash; ${esc(who||"the customer")} sees what you sent, not what is on your screen.</span>
+    ${quoteShare.customer_changed_at
+      ? `<span class="catmeta">they changed something themselves</span>`:""}
+    <button class="btn primary sm" id="lbPush">Update the link</button>
+    <button class="btn sm" id="lbDismiss" title="Leave the customer on the version they have">Later</button>`;
+  const push=document.getElementById("lbPush");
+  if(push) push.onclick=pushShareNow;
+  const later=document.getElementById("lbDismiss");
+  /* Dismissing is per quote and lasts until this quote is edited again:
+     "later" means "I know, not now", not "never tell me again". */
+  if(later) later.onclick=()=>{ linkBarSnoozed=stamp; renderLinkBar(); };
+  syncTopbar();
+}
 function renderQuoteBar(){
   const bar=document.getElementById("quoteBar");
   if(!bar) return;
   if(document.body.classList.contains("share-mode")){ bar.classList.add("hidden"); return; }
   bar.classList.remove("hidden");
+  renderLinkBar();
   const num=CONFIG.quoteNumber||"(no number yet)";
   const cust=(CONFIG.customer||(CONFIG.customerInfo&&CONFIG.customerInfo.company)||"").trim();
   const st=QUOTE_STATUSES.find(s=>s.id===quoteStatus)||QUOTE_STATUSES[0];
@@ -10674,21 +10774,7 @@ function wireQuoteBar(){
     const url=`${location.origin}${location.pathname}?share=${quoteShare.token}`;
     navigator.clipboard.writeText(url).then(()=>flagSaved("Link copied"));
   });
-  on("qbPush", async ()=>{
-    if(shareCatalogueBehind() &&
-       !confirm("This link shows catalogue version "+quoteShare.catalogue_version+
-                ". Updating it moves the customer to version "+publishedVersion+
-                ", so the prices and pictures they see change to the ones published now.\n\nUpdate the link?")) return;
-    if(quoteShare.customer_changed_at &&
-       !confirm("The customer has changed their own selection in this link.\n\nUpdating the link replaces their copy with yours and their changes are lost. Take their changes first if you want to keep them.\n\nUpdate anyway?")) return;
-    try{
-      clearTimeout(saveTimer); saveNow();
-      await supa.rpc("push_quote_share",{p_share_id:quoteShare.id});
-      await loadQuoteMeta();
-      flagSaved("Customer link updated");
-      renderQuoteBar();
-    }catch(err){ alert("Could not update the link: "+(err&&err.message||err)+"\n\nHas supabase-schema-quoteflow.sql been run?"); }
-  });
+  on("qbPush", pushShareNow);
   on("qbPull", async ()=>{
     if(!confirm("Take the customer's selection into this quote? Your current version is kept in the history.")) return;
     try{
