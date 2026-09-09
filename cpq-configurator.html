@@ -10675,6 +10675,7 @@ function renderQuoteBar(){
     ${!cloudQuoteId
       ? `<button class="btn sm primary" id="qbSaveNew" title="This quote only exists in this browser so far">Save as new quote</button>`
       : `<span class="qbmeta" id="qbSaved"></span>`}
+    <button class="btn sm" id="qbNew" title="Start an empty quote. This one is saved first, and the catalogue stays as it is.">New quote</button>
     ${quoteShare
       ? `<span class="qbsep"></span>
          <button class="btn sm" id="qbCopyLink">Copy customer link</button>
@@ -10769,6 +10770,7 @@ function wireQuoteBar(){
     try{ await cloudCreateQuote(); await loadQuoteMeta(); flagSaved("Saved as new quote"); renderQuoteBar(); }
     catch(err){ alert("Could not save: "+(err&&err.message||err)); }
   });
+  on("qbNew", ()=>{ newQuote().then(ok=>{ if(ok) refreshView(); }); });
   on("qbShare", ()=>{ setMode("docs"); const b=document.getElementById("btnShareLink"); if(b) b.click(); });
   on("qbCopyLink", ()=>{
     const url=`${location.origin}${location.pathname}?share=${quoteShare.token}`;
@@ -11223,6 +11225,69 @@ async function ensureCloudQuote(){
   await cloudSaveQuote();
   return cloudQuoteId;
 }
+/* ---------------------- STARTING A NEW QUOTE ----------------------
+   Getting an empty quote used to mean saving by hand and then pressing
+   Reset, and Reset is a blunt instrument: in Admin it throws away the whole
+   catalogue, and nowhere does it let go of the cloud row, so the next thing
+   you typed was saved over the quote you thought you had left.
+
+   This clears the quote side only. The catalogue stays exactly as it is,
+   and so does the template, the currency and the folder settings — those
+   describe how you sell, not who you are selling to. */
+function quoteHasContent(){
+  if(Object.keys(state).some(k=>!k.startsWith("__"))) return true;
+  if((CONFIG.customer||"").trim()) return true;
+  const c=CONFIG.customerInfo||{};
+  if((c.company||"").trim() || (c.reference||"").trim()) return true;
+  return (c.contacts||[]).some(x=>(x.name||x.email||"").trim());
+}
+/* Per-quote fields. What is NOT here is deliberate: model, currency,
+   sharedBase, folderPaths and everything in CATALOGUE_KEYS survive. */
+function clearQuoteSide(){
+  CONFIG.quoteNumber="";
+  CONFIG.customer="";
+  CONFIG.validity=clone(DEFAULT_CONFIG.validity);
+  CONFIG.docs=clone(DEFAULT_CONFIG.docs);
+  /* discount has no entry in DEFAULT_CONFIG — discountSpec() builds it on
+     first use, so dropping it is how you get a clean one */
+  delete CONFIG.discount;
+  delete CONFIG.customerInfo;
+  delete CONFIG.specColumns; delete CONFIG.specValues;
+  ensureCustomer(); ensureSpecs();
+  state={}; cursor=0; includedSteps=[];
+  /* let go of the row, or the first keystroke in the new quote would be
+     saved over the old one */
+  cloudQuoteId=null; cloudQuoteRev=null; cloudConflictPaused=false;
+  removeCloudConflictBanner();
+  quoteShare=null; quoteStatus="draft"; quoteEvents=[]; quoteVersions=[];
+  quoteUpdatedAt=null; linkBarSnoozed=null;
+  /* No number yet, on purpose: next_quote_number() is a shared counter, so
+     handing one out before the quote is saved would burn numbers on quotes
+     that never happen. "Save as new quote" draws the number. */
+}
+async function newQuote(){
+  /* Never lose the quote on screen. If it is already a cloud row it is
+     safe; if it is not and there is something in it, it becomes one first,
+     so "New quote" can be pressed without thinking about it. */
+  let kept=null;
+  if(!cloudQuoteId && quoteHasContent() && supa){
+    try{ await cloudCreateQuote(); kept=CONFIG.quoteNumber; }
+    catch(err){
+      if(!confirm("The quote on screen could not be saved ("+(err&&err.message||err)+
+                  ").\n\nStart a new quote anyway and lose it?")) return false;
+    }
+  } else if(cloudQuoteId){
+    kept=CONFIG.quoteNumber;
+    clearTimeout(saveTimer); saveNow();
+  }
+  clearQuoteSide();
+  reconcile();
+  saveNow();
+  setMode("configure");
+  renderQuoteBar();
+  flagSaved(kept?("Started a new quote — "+kept+" is saved"):"Started a new quote");
+  return true;
+}
 async function cloudDeleteQuote(id){
   if(!supa) return false;
   const {error} = await supa.from("quotes").delete().eq("id", id);
@@ -11428,6 +11493,7 @@ function renderQuotes(){
       </div>
       <div class="qcuracts">
         <button class="btn primary" id="qSaveNew">Save as new quote</button>
+        <button class="btn" id="qNew" title="Start an empty quote. This one is saved first, and the catalogue stays as it is.">New quote</button>
         <button class="btn" id="qExportCur">Export file</button>
         <label class="btn" for="qImport">Import file</label>
         <input type="file" id="qImport" accept=".json,application/json" class="hidden">
@@ -11451,6 +11517,7 @@ function renderQuotes(){
     try{ await cloudCreateQuote(); flagSaved("Saved as new quote"); renderQuotes(); }
     catch(err){ alert("Could not save: "+(err&&err.message||err)); }
   });
+  wire("qNew", ()=>{ newQuote(); });
   wire("qPublishCat", async ()=>{
     /* no label prompt here either — see the Admin bar's publish button */
     try{ const v=await cloudPublishCatalogue(null); flagSaved("Published version "+v); renderQuotes(); }
