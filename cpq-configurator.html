@@ -10908,8 +10908,12 @@ async function shareDiffSummary(){
     }catch(err){}
   }
   const mine=quoteFiguresNow();
-  /* keep everything the measurement is allowed to touch */
-  const keepState=state, keepLang=docLang, keepCfg={};
+  /* Keep everything the measurement is allowed to touch. includedSteps is
+     easy to forget and silently fatal: activeModules() filters the tree by
+     it, so measuring his quote against YOUR list of included steps found
+     none of his selections and reported a total that had changed with no
+     items to explain it. */
+  const keepState=state, keepLang=docLang, keepIncl=includedSteps, keepCfg={};
   for(const k of CATALOGUE_KEYS.concat(QUOTE_KEYS)) keepCfg[k]=CONFIG[k];
   let theirs;
   try{
@@ -10917,10 +10921,11 @@ async function shareDiffSummary(){
     const q=theirQuote.quote||{};
     for(const k of QUOTE_KEYS) if(q[k]!==undefined) CONFIG[k]=clone(q[k]);
     state=clone(theirQuote.state||{});
+    if(Array.isArray(theirQuote.includedSteps)) includedSteps=clone(theirQuote.includedSteps);
     if(theirQuote.docLang) docLang=theirQuote.docLang;
     theirs=quoteFiguresNow();
   } finally {
-    state=keepState; docLang=keepLang;
+    state=keepState; docLang=keepLang; includedSteps=keepIncl;
     for(const k of CATALOGUE_KEYS.concat(QUOTE_KEYS)) CONFIG[k]=keepCfg[k];
   }
   const added=[], removed=[], priced=[], scoped=[];
