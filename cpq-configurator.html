@@ -488,7 +488,12 @@
      moved on" and "the customer's link is behind" are different questions
      with different answers. Always the warning colour — a notice only
      exists while there is something to act on. */
-  .noticebar{position:sticky;z-index:18;background:var(--warn-softer);
+  /* --warn-softer is a 6% wash, which is fine for a bar that sits in the
+     page and wrong for one that is stuck to the top: the comparison panel
+     scrolled underneath and read straight through it, both sets of words on
+     the same lines. The tint is laid over an opaque ground instead. */
+  .noticebar{position:sticky;z-index:18;
+    background:linear-gradient(var(--warn-softer),var(--warn-softer)) var(--panel);
     border-bottom:1px solid var(--warn)}
   .notice{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 16px;font-size:12.5px}
   .notice + .notice{border-top:1px solid var(--warn)}
