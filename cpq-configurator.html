@@ -11062,12 +11062,26 @@ async function shareDiffSummary(){
       scoped.push({step:m.step, name:m.name, to:m.optional?"optional":"in scope"});
   }
   for(const [id,t] of theirs.items) if(!mine.items.has(id)) removed.push(t);
-  return {added, removed, priced, scoped,
+  /* Not everything that reaches the customer has a price. The memo, the
+     validity, his own address and contacts are all on the page he opens,
+     and comparing only lines and totals reported "nothing has changed" for
+     a quote that plainly had. */
+  const FIELD_WORDS={model:"Machine name", currency:"Currency", quoteNumber:"Quote number",
+    customer:"Customer name", customerInfo:"Customer details", validity:"Validity",
+    docs:"Document texts", specColumns:"Product columns", specValues:"Specifications",
+    sharedBase:"Quote template", discount:"Discount"};
+  const fields=[];
+  {
+    const t=(theirQuote.quote)||{}, m=pickKeys(CONFIG, QUOTE_KEYS);
+    for(const k of QUOTE_KEYS)
+      if(JSON.stringify(t[k])!==JSON.stringify(m[k])) fields.push(FIELD_WORDS[k]||k);
+  }
+  return {added, removed, priced, scoped, fields,
           totalFrom:theirs.total, totalTo:mine.total,
           theirVersion:quoteShare.catalogue_version||null,
           catalogueMissing:!!(quoteShare.catalogue_version && !theirCat),
           nothing:!added.length && !removed.length && !priced.length && !scoped.length
-                  && theirs.total===mine.total};
+                  && !fields.length && theirs.total===mine.total};
 }
 async function showShareDiff(){
   /* second press closes it again */
@@ -11087,7 +11101,7 @@ async function showShareDiff(){
     s.catalogueMissing
       ? `<div class="qbrow"><span class="what"><i>Catalogue version ${s.theirVersion} is no longer on the shelf, so his side is read against the catalogue you have. Names and prices of items he can no longer be shown may be off.</i></span></div>`:""}${
     s.nothing
-      ? `<div class="qbempty">Nothing. His page already says the same as your screen — the link is only marked behind because the quote row was touched.</div>`
+      ? `<div class="qbempty">Nothing. His page already says the same as your screen, down to the document texts and the customer details.</div>`
       : `
     <div class="qbrow"><span class="who">total</span><span class="what">${
       money(s.totalFrom)} &rarr; <b>${money(s.totalTo)}</b>${
@@ -11114,6 +11128,8 @@ async function showShareDiff(){
           <span class="who">${esc(c.step)}</span>
           <span class="what">${esc(c.name)} becomes <b>${esc(c.to)}</b></span></div>`),
         few(s.scoped.length)):""}
+    ${s.fields.length?`<div class="qbrow"><span class="who">also changed</span>
+        <span class="what">${s.fields.map(esc).join(", ")}</span></div>`:""}
     ${quoteShare.customer_changed_at?`<div class="qbrow is-gone"><span class="who">careful</span>
         <span class="what">${esc(who)} changed his own selection in this link. Updating replaces his copy and those changes are lost — take them first if you want to keep them.</span></div>`:""}`}`;
   const panel=diffPanel("shareDiffPanel", `What ${esc(who)} will see change`, body);
