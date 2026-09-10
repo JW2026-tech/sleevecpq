@@ -10609,8 +10609,22 @@ function shareCatalogueBehind(){
    Before the migration there is no pushed_at and the link is live anyway,
    so there is nothing to push and this stays false. */
 function shareIsBehind(){
-  if(!quoteShare || !quoteShare.pushed_at || !quoteUpdatedAt) return false;
-  /* a second of slack: the push itself touches the row */
+  if(!quoteShare) return false;
+  /* Ask the question the notice actually means: does the copy the customer
+     is looking at say something different from what is on screen? Compare
+     the two. A timestamp is only a proxy for that, and it was a poor one —
+     it fired on a save that changed nothing, on a clock a second fast, and
+     on a write that landed just after the push. Measured on a real link:
+     the frozen copy was identical to the byte, and the notice was up. */
+  const theirs=quoteContentSig(quoteShare.data);
+  if(theirs!==null){
+    const mine=quoteContentSig(quotePayload());
+    if(mine!==null) return theirs!==mine;
+  }
+  /* No frozen copy (a link made before the migration): fall back to the
+     timestamps, with a second of slack because the push itself touches the
+     row. Wrong sometimes, which is why it is the fallback and not the rule. */
+  if(!quoteShare.pushed_at || !quoteUpdatedAt) return false;
   return new Date(quoteUpdatedAt).getTime() > new Date(quoteShare.pushed_at).getTime() + 1000;
 }
 /* Is there a link a customer could open right now? loadQuoteMeta() only
@@ -11528,7 +11542,7 @@ async function cloudCreateQuote(){
   }catch(err){}
   const {data:ins, error} = await supa.from("quotes").insert(quoteRowPayload()).select("id,rev").single();
   if(error) throw error;
-  cloudQuoteId=ins.id; cloudQuoteRev=ins.rev;
+  cloudQuoteId=ins.id; cloudQuoteRev=ins.rev; cloudSavedSig=quoteContentSig(quotePayload());
   quoteStatus="draft"; quoteShare=null;
   loadQuoteMeta().then(()=>renderQuoteBar());
   return cloudQuoteId;
@@ -11538,8 +11552,25 @@ async function cloudCreateQuote(){
    `eq('rev', ...)` makes the update match zero rows — not an error — when
    the rev has moved on; `quotes_before_update` (supabase-schema.sql) bumps
    rev automatically on every successful write. */
+/* What a quote actually SAYS, with the housekeeping left out: quotePayload()
+   carries savedAt and a display name, which differ on every call and would
+   make every comparison report a change. */
+function quoteContentSig(payload){
+  if(!payload) return null;
+  try{
+    return JSON.stringify({q:payload.quote||null, s:payload.state||null,
+                           i:payload.includedSteps||null, l:payload.docLang||null});
+  }catch(err){ return null; }
+}
+let cloudSavedSig=null;      // content last written to the quotes row
 async function cloudSaveQuote(){
   if(!supa || !cloudQuoteId || cloudConflictPaused) return null;
+  /* Writing an unchanged quote is not free: the trigger stamps updated_at
+     and files a row in quote_versions, so switching tabs used to age the
+     quote past the customer's link and add a version saying nothing. One
+     quote here sat at rev 36 with 35 versions behind it. */
+  const sig=quoteContentSig(quotePayload());
+  if(sig!==null && sig===cloudSavedSig) return cloudQuoteId;
   const {data, error} = await supa.from("quotes").update(quoteRowPayload())
     .eq("id", cloudQuoteId).eq("rev", cloudQuoteRev).select("id,rev,updated_at").maybeSingle();
   if(error) throw error;
@@ -11555,6 +11586,7 @@ async function cloudSaveQuote(){
      "behind", however often you updated it. */
   const wasBehind=shareIsBehind();
   quoteUpdatedAt=data.updated_at||quoteUpdatedAt;
+  cloudSavedSig=sig;
   if(shareIsBehind()!==wasBehind) renderQuoteBar();
   return cloudQuoteId;
 }
@@ -11563,7 +11595,7 @@ async function cloudForceSaveQuote(){
   const {data, error} = await supa.from("quotes").update(quoteRowPayload())
     .eq("id", cloudQuoteId).select("id,rev").single();
   if(error) throw error;
-  cloudQuoteRev=data.rev; cloudConflictPaused=false;
+  cloudQuoteRev=data.rev; cloudConflictPaused=false; cloudSavedSig=quoteContentSig(quotePayload());
   removeCloudConflictBanner();
   return cloudQuoteId;
 }
@@ -11616,6 +11648,7 @@ async function cloudOpenQuote(id){
   if(error || !data) return false;
   if(!applyAnyFile(data.data)) return false;
   cloudQuoteId=id; cloudQuoteRev=data.rev; cloudConflictPaused=false;
+  cloudSavedSig=quoteContentSig(data.data);
   removeCloudConflictBanner();
   /* the bar speaks for whichever quote is open, so it has to be told */
   loadQuoteMeta().then(()=>renderQuoteBar());
@@ -11669,7 +11702,7 @@ function clearQuoteSide(){
   state={}; cursor=0; includedSteps=[];
   /* let go of the row, or the first keystroke in the new quote would be
      saved over the old one */
-  cloudQuoteId=null; cloudQuoteRev=null; cloudConflictPaused=false;
+  cloudQuoteId=null; cloudQuoteRev=null; cloudConflictPaused=false; cloudSavedSig=null;
   removeCloudConflictBanner();
   quoteShare=null; quoteStatus="draft"; quoteEvents=[]; quoteVersions=[];
   quoteUpdatedAt=null; linkBarSnoozed=null;
@@ -11704,7 +11737,7 @@ async function cloudDeleteQuote(id){
   if(!supa) return false;
   const {error} = await supa.from("quotes").delete().eq("id", id);
   if(error) throw error;
-  if(cloudQuoteId===id){ cloudQuoteId=null; cloudQuoteRev=null; }
+  if(cloudQuoteId===id){ cloudQuoteId=null; cloudQuoteRev=null; cloudSavedSig=null; }
   return true;
 }
 
