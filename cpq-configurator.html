@@ -10558,7 +10558,8 @@ const EVENT_WORDS={
   customer_changed:"Customer changed their selection",
   customer_changes_taken:"Customer's changes taken into the quote",
   status_changed:"Status changed",
-  version_restored:"Earlier version restored"
+  version_restored:"Earlier version restored",
+  reverted_to_link:"Went back to the version in the customer's link"
 };
 /* one round trip for everything the bar needs to say */
 async function loadQuoteMeta(){
@@ -10660,6 +10661,32 @@ async function pushShareNow(){
     renderQuoteBar();
   }catch(err){ alert("Could not update the link: "+(err&&err.message||err)+"\n\nHas supabase-migratie-alles.sql been run?"); }
 }
+/* The other way round: throw away what you have been doing and go back to
+   the quote as the customer has it. Only reachable while a live link
+   exists, because without one there is no such version to go back to.
+   The copy in the link is the authority — including anything the customer
+   changed himself, which is the same thing "take their changes" does. */
+async function restoreCustomerVersion(){
+  if(!supa || !shareIsLive() || !quoteShare.data) return;
+  const who=(CONFIG.customer||"the customer").trim()||"the customer";
+  const extra=quoteShare.customer_changed_at
+    ? "\n\nThat copy includes the changes "+who+" made himself."
+    : "";
+  if(!confirm("Replace the quote on screen with the version "+who+" is looking at?"+extra+
+              "\n\nWhat you have now is kept in the history, so this can be undone from Versions.")) return;
+  try{
+    /* write what is on screen first, so the trigger files it as a version
+       and this is undoable rather than a one-way door */
+    await flushQuoteNow();
+    if(!applyQuote(quoteShare.data)) throw new Error("the link has no readable copy of the quote");
+    await flushQuoteNow();
+    await loadQuoteMeta();
+    logQuoteEvent("reverted_to_link", null);
+    const p=document.getElementById("shareDiffPanel"); if(p) p.remove();
+    flagSaved("Back to the customer's version");
+    renderQuoteBar(); refreshView();
+  }catch(err){ alert("Could not go back: "+(err&&err.message||err)); }
+}
 /* THE REMINDER
    A quote that has been sent and then edited is the one state worth
    interrupting for: the customer is looking at a page that no longer says
@@ -10724,6 +10751,9 @@ function renderNotices(){
         ? `<span class="catmeta">they changed something themselves</span>`:""}
       <button class="btn sm" id="lbDiff">See what changed</button>
       <button class="btn primary sm" id="lbPush">Update the link</button>
+      ${/* the opposite decision, in the same place as the one it is the
+            opposite of: send yours, or take his back */""}
+      <button class="btn sm" id="lbRevert" title="Throw away what you changed and go back to the quote as ${esc(who||"the customer")} has it">Back to customer version</button>
       <button class="btn sm" id="lbDismiss" title="Leave the customer on the version they have">Later</button>
     </div>`);
   }
@@ -10743,6 +10773,7 @@ function renderNotices(){
   on("ntLater", ()=>{ catUpstreamSnoozed=catUpstreamKey(catUpstream); catUpstream=null; renderNotices(); });
   on("lbDiff", showShareDiff);
   on("lbPush", pushShareNow);
+  on("lbRevert", restoreCustomerVersion);
   /* Later on the link lasts until this quote is edited again: "I know, not
      now", not "never tell me again". */
   on("lbDismiss", ()=>{ linkBarSnoozed=stamp; renderNotices(); });
@@ -11085,7 +11116,19 @@ async function showShareDiff(){
         few(s.scoped.length)):""}
     ${quoteShare.customer_changed_at?`<div class="qbrow is-gone"><span class="who">careful</span>
         <span class="what">${esc(who)} changed his own selection in this link. Updating replaces his copy and those changes are lost — take them first if you want to keep them.</span></div>`:""}`}`;
-  diffPanel("shareDiffPanel", `What ${esc(who)} will see change`, body);
+  const panel=diffPanel("shareDiffPanel", `What ${esc(who)} will see change`, body);
+  /* Also here, not only on the notice: this is where you are looking at
+     the difference, so it is where you may decide you want his version
+     back rather than yours sent. */
+  if(!s.nothing){
+    const bar=panel.querySelector(".diffbar");
+    const b=document.createElement("button");
+    b.className="btn sm"; b.id="dpRevert";
+    b.textContent="Back to customer version";
+    b.title=`Throw away what you changed and go back to the quote as ${who} has it`;
+    bar.insertBefore(b, bar.querySelector("[data-diffclose]"));
+    b.onclick=restoreCustomerVersion;
+  }
 }
 async function takeUpstreamCatalogue(){
   if(!catUpstream) return;
