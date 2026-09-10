@@ -11398,10 +11398,19 @@ function quotePayload(name){
 function applyCatalogue(d){
   const c=(d&&d.catalogue)||(d&&Array.isArray(d.modules)?d:null);
   if(!c || !Array.isArray(c.modules)) return false;
+  /* The open quote's optional/alternative marks live on the option objects
+     that are about to be replaced. They belong to the QUOTE, so they are
+     carried across: loading the team's catalogue, taking a newer version,
+     or simply refreshing the page must not hand this quote the marks that
+     happen to be in the shared draft. A caller that is also loading a
+     quote — applyQuote, share mode — sets its own straight afterwards. */
+  const keepScope=collectScopeFlags();
   for(const k of CATALOGUE_KEYS) if(c[k]!==undefined) CONFIG[k]=clone(c[k]);
   CONFIG.languages=CONFIG.templates;
   sel=CONFIG.modules.length?[0]:[];
-  ensureLanguages(); ensureSpecs(); ensureProps(); ensureParts(); ensureCustomer(); ensureSymmetricConflicts(); reconcile();
+  ensureLanguages(); ensureSpecs(); ensureProps(); ensureParts(); ensureCustomer(); ensureSymmetricConflicts();
+  applyScopeFlags(keepScope);
+  reconcile();
   return true;
 }
 /* a quote lands on top of whatever catalogue is loaded */
@@ -11695,6 +11704,19 @@ async function cloudCreateQuote(){
 /* What a quote actually SAYS, with the housekeeping left out: quotePayload()
    carries savedAt and a display name, which differ on every call and would
    make every comparison report a change. */
+/* JSON.stringify writes keys in insertion order, and Postgres hands jsonb
+   back in an order of its own. So a copy read from the database never
+   matched the same content built here, and every comparison between the
+   two said "different" — which for a customer link meant the reminder was
+   permanently on, whatever you did. Keys are sorted; arrays keep their
+   order, because in this document an array's order is part of its meaning. */
+function stableStringify(v){
+  if(v===null || typeof v!=="object") return JSON.stringify(v)||"null";
+  if(Array.isArray(v)) return "["+v.map(stableStringify).join(",")+"]";
+  return "{"+Object.keys(v).sort()
+    .filter(k=>v[k]!==undefined)
+    .map(k=>JSON.stringify(k)+":"+stableStringify(v[k])).join(",")+"}";
+}
 function quoteContentSig(payload){
   if(!payload) return null;
   try{
@@ -11702,9 +11724,9 @@ function quoteContentSig(payload){
        the customer is shown and what it costs him, so a link that has not
        had that pushed to it IS behind. Before the flags travelled with the
        quote this was invisible and such a change could be forgotten. */
-    return JSON.stringify({q:payload.quote||null, s:payload.state||null,
-                           c:payload.scope||null,
-                           i:payload.includedSteps||null, l:payload.docLang||null});
+    return stableStringify({q:payload.quote||null, s:payload.state||null,
+                            c:payload.scope||null,
+                            i:payload.includedSteps||null, l:payload.docLang||null});
   }catch(err){ return null; }
 }
 let cloudSavedSig=null;      // content last written to the quotes row
