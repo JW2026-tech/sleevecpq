@@ -10631,7 +10631,9 @@ async function pushShareNow(){
   if(quoteShare.customer_changed_at &&
      !confirm("The customer has changed their own selection in this link.\n\nUpdating the link replaces their copy with yours and their changes are lost. Take their changes first if you want to keep them.\n\nUpdate anyway?")) return;
   try{
-    clearTimeout(saveTimer); saveNow();
+    /* awaited, not fire-and-forget: the push copies the quote row, so the
+       save has to be in it before the copy is taken */
+    await flushQuoteNow();
     await supa.rpc("push_quote_share",{p_share_id:quoteShare.id});
     await loadQuoteMeta();
     const p=document.getElementById("shareDiffPanel"); if(p) p.remove();
@@ -11539,15 +11541,20 @@ async function cloudCreateQuote(){
 async function cloudSaveQuote(){
   if(!supa || !cloudQuoteId || cloudConflictPaused) return null;
   const {data, error} = await supa.from("quotes").update(quoteRowPayload())
-    .eq("id", cloudQuoteId).eq("rev", cloudQuoteRev).select("id,rev").maybeSingle();
+    .eq("id", cloudQuoteId).eq("rev", cloudQuoteRev).select("id,rev,updated_at").maybeSingle();
   if(error) throw error;
   if(!data){ cloudConflictPaused=true; renderCloudConflictBanner(); return null; }
   cloudQuoteRev=data.rev;
   /* the row has just moved on, so the customer's link may now be behind.
      Only repaint the bar when that actually flips — this runs on every
-     debounced save and a re-render per keystroke would be wasteful. */
+     debounced save and a re-render per keystroke would be wasteful.
+
+     updated_at comes back FROM THE ROW, never from new Date(): pushed_at is
+     stamped by the database, so a client clock running even a second or two
+     fast made every save look later than the push and the link permanently
+     "behind", however often you updated it. */
   const wasBehind=shareIsBehind();
-  quoteUpdatedAt=new Date().toISOString();
+  quoteUpdatedAt=data.updated_at||quoteUpdatedAt;
   if(shareIsBehind()!==wasBehind) renderQuoteBar();
   return cloudQuoteId;
 }
@@ -11725,6 +11732,23 @@ function saveNow(){
   /* catalogue edits go to the shared draft as well, on their own slower
      timer — see draftSaveSoon */
   draftSaveSoon();
+}
+/* saveNow() lets the cloud write run on by itself, which is right for
+   typing and wrong for anything that then reads the row. Sharing a link and
+   updating one both COPY the quote, so they have to wait for the write:
+   otherwise the copy is taken first and your save lands a moment later,
+   which is exactly how a link could come back "behind" the instant after
+   you updated it. */
+async function flushQuoteNow(){
+  clearTimeout(saveTimer);
+  if(storageOK){
+    try{ localStorage.setItem(SAVE_KEY, snapshot()); flagSaved("Saved"); }
+    catch(err){ storageOK=false; flagSaved("Not saved — use Download config", true); }
+  }
+  draftSaveSoon();
+  if(supa && cloudQuoteId){
+    try{ await cloudSaveQuote(); }catch(err){ flagSaved("Not synced — retrying", true); }
+  }
 }
 window.addEventListener("online", ()=>{ if(supa) cloudSaveQuote().catch(()=>{}); });
 function saveSoon(){
@@ -13157,9 +13181,11 @@ document.getElementById("btnShareLink").onclick=async ()=>{
   if(!supa) return alert("Cloud sign-in is required to share a quote.");
   try{
     await ensureCloudQuote();
-    /* flush first: the link takes a copy of the quote as it stands, so an
-       edit still sitting in the 400ms debounce would be left out of it */
-    clearTimeout(saveTimer); saveNow();
+    /* flush first, and WAIT for it: the link takes a copy of the quote as
+       it stands, so an edit still sitting in the 400ms debounce — or a save
+       still in flight — would be left out of the copy and the link would be
+       born already behind */
+    await flushQuoteNow();
     const {data, error}=await supa.rpc("create_quote_share", {p_quote_id: cloudQuoteId, p_days: 14});
     if(error || !data) throw error||new Error("no data");
     loadQuoteMeta().then(()=>renderQuoteBar());
