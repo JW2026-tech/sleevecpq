@@ -10998,12 +10998,20 @@ async function shareDiffSummary(){
   for(const k of CATALOGUE_KEYS.concat(QUOTE_KEYS)) keepCfg[k]=CONFIG[k];
   let theirs;
   try{
-    if(theirCat) for(const k of CATALOGUE_KEYS) if(theirCat[k]!==undefined) CONFIG[k]=clone(theirCat[k]);
+    if(theirCat){ for(const k of CATALOGUE_KEYS) if(theirCat[k]!==undefined) CONFIG[k]=clone(theirCat[k]); }
+    /* No pinned version to read: then the measurement runs against YOUR
+       catalogue, and it is about to write his flags onto those option
+       objects. keepCfg holds references, not copies, so without this the
+       flags would stay on your screen after the comparison. */
+    else for(const k of CATALOGUE_KEYS) if(CONFIG[k]!==undefined) CONFIG[k]=clone(CONFIG[k]);
     const q=theirQuote.quote||{};
     for(const k of QUOTE_KEYS) if(q[k]!==undefined) CONFIG[k]=clone(q[k]);
     state=clone(theirQuote.state||{});
     if(Array.isArray(theirQuote.includedSteps)) includedSteps=clone(theirQuote.includedSteps);
     if(theirQuote.docLang) docLang=theirQuote.docLang;
+    /* his optional/alternative decisions, not the ones the catalogue
+       version happens to carry */
+    if(theirQuote.scope) applyScopeFlags(theirQuote.scope);
     theirs=quoteFiguresNow();
   } finally {
     state=keepState; docLang=keepLang; includedSteps=keepIncl;
@@ -11318,7 +11326,8 @@ function renderCatalogueBar(){
 function quotePayload(name){
   return {kind:"cpq-quote", v:2, name:name||defaultQuoteName(), savedAt:Date.now(),
           quote:pickKeys(CONFIG, QUOTE_KEYS),
-          state:clone(state), docLang, cursor, includedSteps:clone(includedSteps), navWidth, partsColW:clone(partsColW)};
+          state:clone(state), scope:collectScopeFlags(),
+          docLang, cursor, includedSteps:clone(includedSteps), navWidth, partsColW:clone(partsColW)};
 }
 /* the catalogue lands on top of whatever quote is open */
 function applyCatalogue(d){
@@ -11331,6 +11340,47 @@ function applyCatalogue(d){
   return true;
 }
 /* a quote lands on top of whatever catalogue is loaded */
+/* ---------- THE PER-QUOTE FLAGS TRAVEL WITH THE QUOTE ----------
+   "This item is optional" and "this one stands in as an alternative" are
+   decisions about ONE quote, but they are written onto the catalogue's
+   option objects, because that is where every renderer looks for them.
+
+   That had three consequences, all of them things you have run into:
+   the customer could not be sent such a change (the push copies the quote,
+   and the flags were not in it); the comparison could not see it, so a
+   change could be forgotten — the very thing the reminder exists to
+   prevent; and your choices leaked into the catalogue your colleagues work
+   in.
+
+   So the flags are collected into the quote when it is saved and put back
+   when it is loaded. They still live on the option objects while you work,
+   which is why no renderer had to change — but the QUOTE now owns them.
+   readable keys, because this ends up in stored documents. */
+function collectScopeFlags(){
+  const out={};
+  for(const o of allOptions()){
+    const f={};
+    if(o.optional) f.optional=true;
+    if(o.alt) f.alt=true;
+    if(o.altFor) f.altFor=o.altFor;
+    if(o.altOptional) f.altOptional=true;
+    if(Object.keys(f).length) out[o.id]=f;
+  }
+  return out;
+}
+function applyScopeFlags(map){
+  if(!map || typeof map!=="object") return false;
+  for(const o of allOptions()){
+    const f=map[o.id];
+    /* every option is addressed, so a flag the quote does NOT carry is
+       cleared rather than left over from whatever was on screen before */
+    o.optional=!!(f&&f.optional);
+    if(f&&f.alt) o.alt=true; else o.alt=false;
+    if(f&&f.altFor) o.altFor=f.altFor; else delete o.altFor;
+    if(f&&f.altOptional) o.altOptional=true; else delete o.altOptional;
+  }
+  return true;
+}
 function applyQuote(d){
   if(!d || !d.quote) return false;
   for(const k of QUOTE_KEYS) if(d.quote[k]!==undefined) CONFIG[k]=clone(d.quote[k]);
@@ -11341,7 +11391,13 @@ function applyQuote(d){
   navWidth=+d.navWidth||null;
   partsColW=(d.partsColW&&typeof d.partsColW==="object")?d.partsColW:{};
   applyNavWidth();
-  ensureLanguages(); ensureSpecs(); ensureCustomer(); reconcile();
+  ensureLanguages(); ensureSpecs(); ensureCustomer();
+  /* before reconcile(), so its cascades run against this quote's own
+     scope decisions instead of the ones the previous quote left behind.
+     A quote saved before this existed carries no map; then the flags on
+     the catalogue are all there is, and they are left alone. */
+  if(d.scope) applyScopeFlags(d.scope);
+  reconcile();
   return true;
 }
 /* accepts any of the three shapes this tool has ever written */
@@ -11577,7 +11633,12 @@ async function cloudCreateQuote(){
 function quoteContentSig(payload){
   if(!payload) return null;
   try{
+    /* scope is in here on purpose: moving an item to optional changes what
+       the customer is shown and what it costs him, so a link that has not
+       had that pushed to it IS behind. Before the flags travelled with the
+       quote this was invisible and such a change could be forgotten. */
     return JSON.stringify({q:payload.quote||null, s:payload.state||null,
+                           c:payload.scope||null,
                            i:payload.includedSteps||null, l:payload.docLang||null});
   }catch(err){ return null; }
 }
@@ -11713,6 +11774,9 @@ function clearQuoteSide(){
   delete CONFIG.customerInfo;
   delete CONFIG.specColumns; delete CONFIG.specValues;
   ensureCustomer(); ensureSpecs();
+  /* the previous quote's optional/alternative marks live on the catalogue
+     objects, so a new quote would inherit them without this */
+  applyScopeFlags({});
   state={}; cursor=0; includedSteps=[];
   /* let go of the row, or the first keystroke in the new quote would be
      saved over the old one */
