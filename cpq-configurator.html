@@ -10623,9 +10623,10 @@ function shareIsBehind(){
      it fired on a save that changed nothing, on a clock a second fast, and
      on a write that landed just after the push. Measured on a real link:
      the frozen copy was identical to the byte, and the notice was up. */
-  const theirs=quoteContentSig(quoteShare.data);
+  const noScope=!(quoteShare.data && quoteShare.data.scope);
+  const theirs=quoteContentSig(quoteShare.data, noScope);
   if(theirs!==null){
-    const mine=quoteContentSig(quotePayload());
+    const mine=quoteContentSig(quotePayload(), noScope);
     if(mine!==null) return theirs!==mine;
   }
   /* No frozen copy (a link made before the migration): fall back to the
@@ -10679,7 +10680,21 @@ async function restoreCustomerVersion(){
     /* write what is on screen first, so the trigger files it as a version
        and this is undoable rather than a one-way door */
     await flushQuoteNow();
+    /* A copy frozen before the flags travelled with the quote carries no
+       scope map. What that customer is actually shown then comes from the
+       catalogue version his link is pinned to, so that is where the marks
+       are read from — otherwise "back to his version" would restore his
+       choices but leave your optional marks sitting on top of them. */
+    let scope=quoteShare.data.scope;
+    if(!scope && quoteShare.catalogue_version){
+      try{
+        const {data}=await supa.from("catalogue_versions").select("data")
+          .eq("version", quoteShare.catalogue_version).maybeSingle();
+        if(data && data.data) scope=scopeFlagsFromCatalogue(data.data);
+      }catch(err){}
+    }
     if(!applyQuote(quoteShare.data)) throw new Error("the link has no readable copy of the quote");
+    if(scope && !quoteShare.data.scope){ applyScopeFlags(scope); reconcile(); }
     await flushQuoteNow();
     await loadQuoteMeta();
     logQuoteEvent("reverted_to_link", null);
@@ -11717,17 +11732,40 @@ function stableStringify(v){
     .filter(k=>v[k]!==undefined)
     .map(k=>JSON.stringify(k)+":"+stableStringify(v[k])).join(",")+"}";
 }
-function quoteContentSig(payload){
+function quoteContentSig(payload, noScope){
   if(!payload) return null;
   try{
     /* scope is in here on purpose: moving an item to optional changes what
        the customer is shown and what it costs him, so a link that has not
        had that pushed to it IS behind. Before the flags travelled with the
-       quote this was invisible and such a change could be forgotten. */
+       quote this was invisible and such a change could be forgotten.
+       noScope is for a copy frozen before those flags travelled: it has no
+       map, and counting "no map" as different from "twenty marks" made
+       such a link permanently behind with no way to settle it — going back
+       to the customer's version could not clear a difference the copy does
+       not describe. One push and the copy has a map, and the full
+       comparison takes over by itself. */
     return stableStringify({q:payload.quote||null, s:payload.state||null,
-                            c:payload.scope||null,
+                            c:noScope?undefined:(payload.scope||null),
                             i:payload.includedSteps||null, l:payload.docLang||null});
   }catch(err){ return null; }
+}
+/* the per-quote flags as they stand in some other catalogue — used to work
+   out what a customer on an older link is actually being shown, since his
+   page reads them from the version his link is pinned to */
+function scopeFlagsFromCatalogue(cat){
+  const out={};
+  const walk=list=>{ for(const m of (list||[])) for(const o of (m.options||[])){
+    const f={};
+    if(o.optional) f.optional=true;
+    if(o.alt) f.alt=true;
+    if(o.altFor) f.altFor=o.altFor;
+    if(o.altOptional) f.altOptional=true;
+    if(Object.keys(f).length) out[o.id]=f;
+    walk(o.children);
+  } };
+  walk(cat&&cat.modules);
+  return out;
 }
 let cloudSavedSig=null;      // content last written to the quotes row
 async function cloudSaveQuote(){
