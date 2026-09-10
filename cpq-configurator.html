@@ -10754,8 +10754,6 @@ async function createRevisionOn(version, quoteId){
 function askRevisionCatalogue(quoteId, onCat, nextRev){
   const newest=publishedVersion;
   if(!onCat || !newest || onCat===newest){
-    if(!confirm("Make revision "+nextRev+" of this quote?\n\n"+
-                "You get a new link with the quote as it stands. What was sent stays in the record and goes offline once you send the new one.")) return;
     createRevisionOn(null, quoteId);
     return;
   }
@@ -12601,6 +12599,9 @@ function renderQuotes(){
               what is open, begin something new, or pick one from the list
               below. */""}
         <button class="btn primary" id="qContinue">Continue this quote</button>
+        ${cloudQuoteId?`<button class="btn" id="qLink">${
+          shareIsSent()?`New revision (rev ${shareRevision()+1})`
+          :(quoteShare?"Update the customer link":"Share with customer")}</button>`:""}
         <button class="btn" id="qNew" title="Start an empty quote. This one is saved first, and the catalogue stays as it is.">New quote</button>
         ${!cloudQuoteId?`<button class="btn" id="qSaveNew" title="This quote only exists in this browser so far">Save as new quote</button>`:""}
         <button class="btn" id="qExportCur">Export file</button>
@@ -12623,6 +12624,13 @@ function renderQuotes(){
   const wire=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
   wire("qExportCur", ()=>exportQuote(null));
   wire("qContinue", ()=>setMode("configure"));
+  wire("qLink", ()=>{
+    if(shareIsSent())      askRevisionCatalogue(cloudQuoteId,
+                             quoteCatVersion || quoteShare.catalogue_version || null,
+                             shareRevision()+1);
+    else if(quoteShare)    pushShareNow();
+    else                   createRevisionOn(null, cloudQuoteId);
+  });
   wire("qSaveNew", async ()=>{
     try{ await cloudCreateQuote(); flagSaved("Saved as new quote"); renderQuotes(); }
     catch(err){ alert("Could not save: "+(err&&err.message||err)); }
@@ -12694,9 +12702,12 @@ function renderQuotes(){
                 </div>`;
               }).join("")
             : `<span class="meta">Not shared</span>`}
-            <div class="revline"><button class="pbtn" data-shnew="${esc(q.id)}" title="${(share&&share.length)
-              ? "A new revision with its own link, and its own catalogue"
-              : "Make the first link for this quote"}">${(share&&share.length)?"New revision":"Share with customer"}</button></div></td>
+            <div class="revline">${(()=>{
+              const top=(share&&share.length)?share[0]:null;
+              if(!top) return `<button class="pbtn" data-shnew="${esc(q.id)}" title="Make the first link for this quote">Share with customer</button>`;
+              if(top.sent_at) return `<button class="pbtn" data-shnew="${esc(q.id)}" title="Revision ${top.revision||1} has been sent and stays as it is. The next revision gets its own link, and its own catalogue.">New revision (rev ${(top.revision||1)+1})</button>`;
+              return `<button class="pbtn" data-shpush="${esc(top.id)}" title="Revision ${top.revision||1} has not been sent, so it is still yours to change — this puts the quote as it stands into that link">Update rev ${top.revision||1}</button>`;
+            })()}</div></td>
           <td class="qacts">
             ${/* Before Open, deliberately: on an older catalogue, opening is
                  the destructive move and looking is the safe one. */""}
@@ -12743,6 +12754,19 @@ function renderQuotes(){
         renderQuotes(); renderQuoteBar();
       };
     });
+    wrap.querySelectorAll("[data-shpush]").forEach(b=>{
+      b.onclick=async ()=>{
+        try{
+          /* if it happens to be the open quote, its edits go in first */
+          if(cloudQuoteId) await flushQuoteNow();
+          const {error}=await supa.rpc("push_quote_share",{p_share_id:b.dataset.shpush});
+          if(error) throw error;
+          if(cloudQuoteId) await loadQuoteMeta();
+          flagSaved("Link updated");
+          renderQuotes(); renderQuoteBar();
+        }catch(err){ alert("Could not update that link: "+(err&&err.message||err)); }
+      };
+    });
     wrap.querySelectorAll("[data-shsend]").forEach(b=>{
       b.onclick=()=>markShareSent(b.dataset.shsend);
     });
@@ -12754,12 +12778,7 @@ function renderQuotes(){
         const id=b.dataset.shnew;
         const list=shares.get(id)||[];
         const newest=list[0];
-        if(!newest){ await createRevisionOn(null, id); return; }   // first link
-        if(!newest.sent_at){
-          alert("Revision "+(newest.revision||1)+" of this quote has not been sent yet. "+
-                "Update that one instead of making another — a quote should not collect links nobody can tell apart.");
-          return;
-        }
+        if(!newest || !newest.sent_at){ await createRevisionOn(null, id); return; }
         askRevisionCatalogue(id, newest.catalogue_version||null, (newest.revision||1)+1);
       };
     });
