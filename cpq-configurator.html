@@ -11355,7 +11355,9 @@ async function showQuoteBreakdown(quoteId, btn){
            ? `catalogue version <b>${s.version}</b>, the one its link is pinned to`
            : `catalogue version ${s.version}, which is no longer on the shelf &mdash; the catalogue you have now was used instead`)}</span></div>
     <div class="qbrow"><span class="who">total</span><span class="what"><b>${money(s.total)}</b>
-      <i>in scope only; optional items are quoted beside it</i></span></div>
+      <i>what is in scope. Optional items are offered beside it and alternatives
+      stand in for something else, so neither is counted here &mdash; their
+      figures below are what those items are worth, not what they add.</i></span></div>
     ${diffSection("in scope", `${s.inScope.length} item${s.inScope.length===1?"":"s"} &middot; ${money(sum(s.inScope))}`,
         rows(s.inScope), s.inScope.length<=3)}
     ${s.optional.length?diffSection("optional",
