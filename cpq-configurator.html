@@ -10741,10 +10741,29 @@ function renderNotices(){
   /* Later on the link lasts until this quote is edited again: "I know, not
      now", not "never tell me again". */
   on("lbDismiss", ()=>{ linkBarSnoozed=stamp; renderNotices(); });
+  /* the memo always reflects what is actually on screen, so it can never go
+     stale and suppress a repaint that was needed */
+  noticeWasBehind = shareIsLive() && (shareIsBehind() || shareCatalogueBehind());
   syncTopbar();
 }
 /* kept so older call sites keep working */
 function renderLinkBar(){ renderNotices(); }
+/* WHEN THE REMINDER APPEARS
+   It used to be repainted from cloudSaveQuote, on the moment the answer
+   flipped as the row was written. That worked while "behind" meant "the
+   row is newer than the push": false before the write, true after.
+   Now that it means "his copy says something else", it is already true the
+   moment you change a step — before any save — so nothing flips during the
+   write and the reminder never appeared. It is driven by the edit instead:
+   every save checks, and repaints only when the answer really changed, so
+   typing does not rebuild a bar you might be about to click. */
+let noticeWasBehind=null;
+function refreshShareNotice(){
+  const now = shareIsLive() && (shareIsBehind() || shareCatalogueBehind());
+  if(now===noticeWasBehind) return;
+  noticeWasBehind=now;
+  renderQuoteBar();          // draws the bar and the notices with it
+}
 
 /* ============================================================
    IS THE CATALOGUE ON SCREEN STILL THE CURRENT ONE?
@@ -11576,18 +11595,13 @@ async function cloudSaveQuote(){
   if(error) throw error;
   if(!data){ cloudConflictPaused=true; renderCloudConflictBanner(); return null; }
   cloudQuoteRev=data.rev;
-  /* the row has just moved on, so the customer's link may now be behind.
-     Only repaint the bar when that actually flips — this runs on every
-     debounced save and a re-render per keystroke would be wasteful.
-
-     updated_at comes back FROM THE ROW, never from new Date(): pushed_at is
+  /* updated_at comes back FROM THE ROW, never from new Date(): pushed_at is
      stamped by the database, so a client clock running even a second or two
      fast made every save look later than the push and the link permanently
      "behind", however often you updated it. */
-  const wasBehind=shareIsBehind();
   quoteUpdatedAt=data.updated_at||quoteUpdatedAt;
   cloudSavedSig=sig;
-  if(shareIsBehind()!==wasBehind) renderQuoteBar();
+  refreshShareNotice();
   return cloudQuoteId;
 }
 async function cloudForceSaveQuote(){
@@ -11762,6 +11776,10 @@ function saveNow(){
     flagSaved("Not saved — use Download config", true);
   }
   if(supa) cloudSaveQuote().catch(()=>flagSaved("Not synced — retrying", true));
+  /* also when the write above is skipped as a no-op, or when there is no
+     cloud row at all: whether the customer's copy still matches is decided
+     by what is on screen, not by whether anything was written */
+  refreshShareNotice();
   /* catalogue edits go to the shared draft as well, on their own slower
      timer — see draftSaveSoon */
   draftSaveSoon();
