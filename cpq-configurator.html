@@ -1769,6 +1769,19 @@
 
   /* per-item type assignment screen */
   .assignwrap{margin-top:2px}
+  /* price classes in Admin */
+  .clslist{display:flex;flex-direction:column;gap:5px;margin:8px 0 10px}
+  .clsrow{display:flex;align-items:center;gap:9px}
+  .clsrow .in{max-width:260px}
+  .clsrow .meta{white-space:nowrap}
+  .vclasses{margin:2px 0 12px 12px;border-left:2px solid var(--line);padding-left:12px}
+  .vclasses summary{font-size:11.5px;color:var(--txt-dim);cursor:pointer;padding:3px 0}
+  .vclasses .sublbl{margin:4px 0 8px}
+  .vclsrow{display:flex;align-items:center;gap:9px;padding:2px 0}
+  .vclsname{flex:0 0 150px;font-size:12px;color:var(--txt)}
+  .vclsrow .oprice{max-width:110px}
+  .vclsrow .in:not(.oprice){flex:1;max-width:280px}
+  .clspick select{max-width:150px}
   /* One decision for the whole line, with what it costs on it. Sits above
      the per-item table because it settles almost every row underneath. */
   .pmode{border:1px solid var(--line);border-radius:12px;background:var(--panel);
@@ -3384,7 +3397,104 @@ function parentOptMap(){
   })(CONFIG.modules, null);
   return (_parentOptCache=map);
 }
-const invalidateQtyCache = () => { _parentOptCache=null; };
+const invalidateQtyCache = () => { _parentOptCache=null; _optByIdCache=null; };
+/* ============================================================
+   PRICE CLASSES
+   What KIND of section this is — a corner, an applicator section, a plain
+   one. Tagged once on the option and read by every property, so cable
+   tray, drip tray and central drain all price the same bend as a bend
+   instead of each carrying its own copy of "which one is this".
+
+   A property's type then holds a price per class beside its own, and the
+   plain unitPrice is what an untagged part pays. A type with no per-class
+   prices behaves exactly as it always did, which is why feet and access
+   doors are untouched by any of this.
+   ============================================================ */
+function partClasses(){ return CONFIG.partClasses || (CONFIG.partClasses=[]); }
+/* Turn "one type per price" into "one choice, a price per class".
+   A property that grew three closed-cable-tray types because three
+   sections cost three different amounts is really one choice with three
+   prices. The first type stays the base; the rest become classes, keeping
+   their own name so the quote line still says which part it is, and any
+   option already pinned to one of them is tagged with the matching class. */
+function mergeTypesIntoClasses(p){
+  const vars=p.variants||[];
+  if(vars.length<3){ alert("Nothing to merge — this property has one choice beyond the standard type."); return; }
+  const base=vars[0], rest=vars.slice(1);
+  const keep=rest[0];
+  const plan=rest.map(v=>({v, className:v.name, price:+v.unitPrice||0}));
+  if(!confirm(
+      "Merge into one choice with a price per class?\n\n"+
+      "Stays as it is:  "+base.name+"\n"+
+      "Becomes the choice:  "+keep.name+"\n\n"+
+      "Becomes a class:\n"+plan.map(x=>"  · "+x.className+" — "+fmt(x.price)).join("\n")+
+      "\n\nParts already pinned to one of these types are tagged with its class. "+
+      "Nothing is priced differently by this; it only changes how it is written down.")) return;
+  /* a class per merged type, reusing one that already has the same name */
+  const clsOf={};
+  for(const x of plan){
+    let cl=partClasses().find(c=>c.name.trim().toLowerCase()===x.className.trim().toLowerCase());
+    if(!cl){ cl={id:specUid(partClasses().map(c=>c.id),"cls"), name:x.className}; partClasses().push(cl); }
+    clsOf[x.v.id]=cl.id;
+  }
+  keep.byClass=keep.byClass||{};
+  for(const x of plan) keep.byClass[clsOf[x.v.id]]={price:x.price, name:x.className};
+  /* every part that was pinned to one of the merged types now carries its
+     class instead, and points at the surviving choice */
+  for(const o of allOptions(CONFIG.modules)){
+    const pinned=o.propVar && o.propVar[p.id];
+    if(pinned && clsOf[pinned]){
+      o.cls=clsOf[pinned];
+      o.propVar[p.id]=keep.id;
+    }
+  }
+  /* and the same for anything a quote already assigned */
+  p.variants=[base, keep];
+  invalidateQtyCache();
+  reconcile(); renderConfigureQuiet(); renderAdmin();
+  flagSaved("Merged into "+p.variants.length+" choices and "+plan.length+" classes");
+}
+function partClassById(id){ return partClasses().find(c=>c.id===id)||null; }
+let _optByIdCache=null;
+function optionById2(id){
+  if(!_optByIdCache){
+    _optByIdCache={};
+    for(const o of allOptions(CONFIG.modules)) _optByIdCache[o.id]=o;
+  }
+  return _optByIdCache[id]||null;
+}
+function classOfOption(optionId){
+  const o=optionById2(optionId);
+  const id=o && o.cls;
+  return (id && partClassById(id)) ? id : null;
+}
+function variantCell(v, optionId){
+  const cls=classOfOption(optionId);
+  return (v && v.byClass && cls && v.byClass[cls]) || null;
+}
+/* the two questions every money and label site asks */
+function variantPriceFor(v, optionId){
+  if(!v) return 0;
+  const c=variantCell(v, optionId);
+  return (c && c.price!==undefined && c.price!==null && c.price!=="") ? (+c.price||0) : (+v.unitPrice||0);
+}
+function variantNameFor(v, optionId){
+  if(!v) return "";
+  const c=variantCell(v, optionId);
+  return (c && (c.name||"").trim()) ? c.name : (v.name||"");
+}
+/* for headers and pickers, where no single option is in view */
+function variantPriceRange(p, v){
+  const seen=new Set([+v.unitPrice||0]);
+  for(const c of propContributors(p)) seen.add(variantPriceFor(v, c.o.id));
+  const list=[...seen].sort((a,b)=>a-b);
+  return {min:list[0], max:list[list.length-1], varies:list.length>1};
+}
+function variantRateWords(p, v){
+  const r=variantPriceRange(p, v);
+  if(!r.max && !r.min) return "included";
+  return r.varies ? fmt(r.min)+" – "+fmt(r.max)+" ea." : fmt(r.max)+" ea.";
+}
 /* the quantity an option inherits: whatever its parent is set to, all the
    way up. Two transition units feeding a step means that step's items are
    needed twice over, so the parent's figure is the sensible default. */
@@ -3603,8 +3713,47 @@ function optPropVarId(p, optionId){
 }
 /* does this property work as one switch at all? only if the catalogue has
    said, somewhere, what the upgrade means */
+function propUpgradeId(p, optionId){
+  const pinned=optPropVarId(p, optionId);
+  if(pinned) return pinned;
+  const vars=p.variants||[];
+  return vars.length===2 ? vars[1].id : null;
+}
 function propHasModes(p){
-  return propContributors(p).some(c=>optPropVarId(p, c.o.id));
+  return propContributors(p).some(c=>propUpgradeId(p, c.o.id));
+}
+/* Where the line stands, read back from what is actually set rather than
+   from a flag: offered on every part means "offered", and the switch says
+   so even if the offers were made one by one in the table. */
+function propLineState(p){
+  const items=propContributors(p);
+  if(!items.length) return "base";
+  const allOffered=items.every(c=>{
+    const up=propUpgradeId(p, c.o.id);
+    return up && (assignEntry(p, c.o.id)[up]||[]).includes("opt");
+  });
+  if(allOffered) return "opt";
+  return propMode(p)==="up" ? "up" : "base";
+}
+/* the three presses */
+function setPropLine(p, want){
+  const items=propContributors(p);
+  /* whatever was offered line-wide is cleared first, so the three states
+     stay mutually exclusive instead of stacking */
+  for(const c of items){
+    const up=propUpgradeId(p, c.o.id);
+    if(up && (assignEntry(p, c.o.id)[up]||[]).includes("opt"))
+      setVariantScope(p, c.o.id, up, "opt");        // toggles it back off
+  }
+  if(want==="opt"){
+    setPropMode(p, "base");
+    for(const c of items){
+      const up=propUpgradeId(p, c.o.id);
+      if(up) setVariantScope(p, c.o.id, up, "opt");
+    }
+  } else {
+    setPropMode(p, want);
+  }
 }
 function propMode(p){
   const m=(state[PROPMODE_KEY]||{})[p.id];
@@ -3623,7 +3772,7 @@ function propModeDelta(p){
   for(const c of propContributors(p)){
     const up=vars.find(v=>v.id===optPropVarId(p, c.o.id));
     if(!up) continue;
-    n += c.qty*((+up.unitPrice||0) - (+((base&&base.unitPrice)||0)));
+    n += c.qty*(variantPriceFor(up, c.o.id) - variantPriceFor(base, c.o.id));
   }
   return n;
 }
@@ -4280,7 +4429,7 @@ function propsSurcharge(o){
     const qty=propQtyOf(o, p.id);
     if(!qty || !(p.variants&&p.variants.length)) continue;
     const v=assignedVariant(p, o.id);
-    if(v) n += qty*(+v.unitPrice||0);
+    if(v) n += qty*variantPriceFor(v, o.id);
   }
   return n;
 }
@@ -4292,7 +4441,8 @@ function propsSurchargeParts(o){
     const qty=propQtyOf(o, p.id);
     if(!qty || !(p.variants&&p.variants.length)) continue;
     const v=assignedVariant(p, o.id);
-    if(v && +v.unitPrice) out.push({propId:p.id, qty, name:v.name, each:+v.unitPrice, total:qty*(+v.unitPrice||0)});
+    const each=variantPriceFor(v, o.id);
+    if(v && each) out.push({propId:p.id, qty, name:variantNameFor(v, o.id), each, total:qty*each});
   }
   return out;
 }
@@ -4796,8 +4946,8 @@ function altPropGaps(){
         const e=assignEntry(p, o.id);
         if(p.variants.some(x=>(e[x.id]||[]).some(s=>s==="opt"||s==="alt"))) continue;
         const supplied=assignedVariant(p, o.id);
-        const base=supplied?(+supplied.unitPrice||0):0;
-        const best=p.variants.reduce((mx,x)=>Math.max(mx,(+x.unitPrice||0)-base),0);
+        const base=supplied?variantPriceFor(supplied, o.id):0;
+        const best=p.variants.reduce((mx,x)=>Math.max(mx,variantPriceFor(x, o.id)-base),0);
         out.push({m, o, p, qty, value:qty*best});
       }
     }
@@ -6734,7 +6884,7 @@ function renderConfigure(){
   document.querySelectorAll("#main [data-pmode]").forEach(btn=>{
     btn.onclick=()=>{
       const p=(CONFIG.props||[]).find(x=>x.id===m.propId); if(!p) return;
-      setPropMode(p, btn.dataset.pmode);
+      setPropLine(p, btn.dataset.pmode);
       reconcile(); saveSoon(); renderConfigure();
     };
   });
@@ -7372,6 +7522,12 @@ function renderAdmin(){
             ${(CONFIG.props&&CONFIG.props.length)?`
             <div class="proprow">
               <span class="deflabel">Adds to the machine</span>
+              ${partClasses().length?`<label class="propqty clspick" title="What kind of section this is. Every property can charge a different price for it.">
+                <select class="in" data-ocls>
+                  <option value="">no class</option>
+                  ${partClasses().map(cl=>`<option value="${esc(cl.id)}" ${(o.cls===cl.id)?"selected":""}>${esc(cl.name)}</option>`).join("")}
+                </select>
+              </label>`:""}
               ${CONFIG.props.map(p=>{
                 const n=(o.props&&+o.props[p.id])||0;
                 const vs=p.variants||[];
@@ -8145,21 +8301,101 @@ function renderPropsAdmin(){
           <div class="vrow" data-vi="${vi}">
             <input class="in" value="${esc(v.name)}" data-vf="name" placeholder="Type name, e.g. Hygienic feet">
             <input class="in" value="${esc(v.note||"")}" data-vf="note" placeholder="Short description">
-            <input class="in oprice" type="number" step="10" value="${+v.unitPrice||0}" data-vf="unitPrice" title="Price per unit">
+            <input class="in oprice" type="number" step="10" value="${+v.unitPrice||0}" data-vf="unitPrice" title="Price per unit for a part with no class of its own">
             <span class="vcalc">${propCount(p.id)&&+v.unitPrice?`= ${fmt((+v.unitPrice||0)*propCount(p.id))}`:""}</span>
             <button class="btn sm" data-vact="up" ${vi===0?"disabled":""}>&#9650;</button>
             <button class="btn sm" data-vact="down" ${vi===(p.variants.length-1)?"disabled":""}>&#9660;</button>
             <button class="x" data-vact="del" title="Remove type">&times;</button>
-          </div>`).join("") || '<div class="meta">No types yet — add one to make this property configurable.</div>'}
+          </div>
+          ${partClasses().length?`<details class="vclasses" data-vi="${vi}" ${
+            (v.byClass&&Object.keys(v.byClass).length)?"open":""}>
+            <summary>Price per class${(v.byClass&&Object.keys(v.byClass).length)
+              ? ` &mdash; ${esc(variantRateWords(p,v))}` : " &mdash; same for every part"}</summary>
+            <div class="sublbl">A corner piece costs a different amount from a plain section, and the
+              applicator section different again. Fill in only the classes that differ; the rest pay the
+              price above. Give a class its own name and the quote line says which part it is.</div>
+            ${partClasses().map(cl=>{
+              const cell=(v.byClass&&v.byClass[cl.id])||{};
+              return `<div class="vclsrow" data-cls="${esc(cl.id)}">
+                <span class="vclsname">${esc(cl.name)}</span>
+                <input class="in oprice" type="number" step="10" placeholder="${+v.unitPrice||0}"
+                  value="${cell.price===undefined||cell.price===null?"":cell.price}" data-vcf="price"
+                  title="Leave empty to use ${fmt(+v.unitPrice||0)}">
+                <input class="in" placeholder="${esc(v.name)}" value="${esc(cell.name||"")}" data-vcf="name"
+                  title="What the quote line calls it for this class. Empty means the type's own name.">
+              </div>`;
+            }).join("")}
+          </details>`:""}`).join("") || '<div class="meta">No types yet — add one to make this property configurable.</div>'}
+        ${((p.variants||[]).length>2)?`<button class="btn sm" data-pact="tocls"
+          title="Turn the extra types into one choice with a price per class">Merge types into price classes…</button>`:""}
         <button class="btn sm" data-vact="add">+ Add type</button>
       </section>
     </div>`).join("");
   ed.innerHTML=`
     <div class="ed-head"><h2 style="margin:0;font-size:21px;font-weight:600">Option properties</h2></div>
     <div class="sublbl" style="margin:2px 0 18px">Countable things the machine ends up with — adjustments, feet, and so on. Each option says how many it adds. Give a property two or more <b>types</b> and a step appears automatically in Configure once the count is above zero, letting you pick the standard type or a costlier one for however many the configuration worked out.</div>
+
+    ${/* Classes are shared by every property on purpose: a bend is a bend
+         whether you are pricing its cable tray, its drip tray or its
+         central drain, so it is tagged once on the option itself. */""}
+    <section class="blk" style="margin-bottom:18px">
+      <h4>Price classes</h4>
+      <div class="sublbl">What kind of section a part is — a corner, an applicator section, a plain one.
+        Tag an option once with its class (on the option itself, under “Adds to the machine”) and every
+        property can charge a different price for it. Leave this empty and nothing changes: every part
+        pays the type's own price.</div>
+      <div class="clslist">
+        ${partClasses().map((cl,ci)=>`<div class="clsrow" data-ci="${ci}">
+          <input class="in" value="${esc(cl.name)}" data-clf="name" placeholder="e.g. Corner piece">
+          <span class="meta">${allOptions(CONFIG.modules).filter(o=>o.cls===cl.id).length} parts</span>
+          <button class="x" data-clact="del" title="Remove class">&times;</button>
+        </div>`).join("") || '<div class="meta">No classes yet.</div>'}
+      </div>
+      <button class="btn sm" id="addPartClass">+ Add class</button>
+    </section>
     ${rows || '<div class="meta">No properties yet.</div>'}
     <button class="btn" id="addPropAdmin">+ Add property</button>`;
 
+  /* the shared class list */
+  ed.querySelectorAll("[data-clf]").forEach(el=>{
+    const cl=partClasses()[+el.closest(".clsrow").dataset.ci];
+    el.oninput=()=>{ cl[el.dataset.clf]=el.value; };
+  });
+  ed.querySelectorAll("[data-clact]").forEach(btn=>{
+    const ci=+btn.closest(".clsrow").dataset.ci;
+    btn.onclick=()=>{
+      const cl=partClasses()[ci];
+      const used=allOptions(CONFIG.modules).filter(o=>o.cls===cl.id);
+      if(!confirm(`Remove the class "${cl.name}"?` + (used.length
+        ? ` ${used.length} part${used.length===1?"":"s"} carry it and fall back to the plain price.` : ""))) return;
+      for(const o of used) delete o.cls;
+      for(const pr of (CONFIG.props||[])) for(const v of (pr.variants||[]))
+        if(v.byClass) delete v.byClass[cl.id];
+      partClasses().splice(ci,1);
+      renderConfigureQuiet(); renderAdmin();
+    };
+  });
+  const addCls=document.getElementById("addPartClass");
+  if(addCls) addCls.onclick=()=>{
+    partClasses().push({id:specUid(partClasses().map(c=>c.id),"cls"), name:"New class"});
+    renderAdmin();
+  };
+  /* a price, and optionally a name, for one class of one type */
+  ed.querySelectorAll("[data-vcf]").forEach(el=>{
+    const pr=CONFIG.props[+el.closest(".ocard").dataset.pi];
+    const v=pr.variants[+el.closest(".vclasses").dataset.vi];
+    const cls=el.closest(".vclsrow").dataset.cls, f=el.dataset.vcf;
+    const write=()=>{
+      v.byClass=v.byClass||{};
+      const cell=v.byClass[cls]=v.byClass[cls]||{};
+      if(f==="price"){ if(el.value==="") delete cell.price; else cell.price=+el.value||0; }
+      else { if(!el.value.trim()) delete cell.name; else cell.name=el.value; }
+      if(!Object.keys(cell).length) delete v.byClass[cls];
+      if(!Object.keys(v.byClass).length) delete v.byClass;
+    };
+    el.oninput=write;
+    if(f==="price") el.onchange=()=>{ write(); renderConfigureQuiet(); renderAdmin(); };
+  });
   ed.querySelectorAll("[data-pf]").forEach(el=>{
     const p=CONFIG.props[+el.closest(".ocard").dataset.pi];
     const f=el.dataset.pf;
@@ -8169,6 +8405,7 @@ function renderPropsAdmin(){
     const i=+btn.closest(".ocard").dataset.pi, L=CONFIG.props;
     btn.onclick=()=>{
       const a=btn.dataset.pact;
+      if(a==="tocls"){ mergeTypesIntoClasses(L[i]); return; }
       if(a==="up"&&i>0){ [L[i-1],L[i]]=[L[i],L[i-1]]; }
       else if(a==="down"&&i<L.length-1){ [L[i+1],L[i]]=[L[i],L[i+1]]; }
       else if(a==="del"){
@@ -8522,6 +8759,14 @@ function wireEditor(m,list,idx){
 
   /* per-option property quantities — these feed optionPrice(), so a change
      re-renders to refresh the "+ cost → total" hint next to the boxes */
+  ed.querySelectorAll("[data-ocls]").forEach(el=>{
+    const o=m.options[+el.closest(".ocard").dataset.oi];
+    el.onchange=()=>{
+      if(el.value) o.cls=el.value; else delete o.cls;
+      invalidateQtyCache();
+      reconcile(); renderConfigureQuiet(); renderAdmin();
+    };
+  });
   ed.querySelectorAll("[data-pv]").forEach(el=>{
     const o=m.options[+el.closest(".ocard").dataset.oi];
     el.onchange=()=>{
@@ -8640,22 +8885,30 @@ function assignScreenHtml(m){
   const modeBand=(()=>{
     if(!propHasModes(p)) return "";
     const base=propDefaultVariant(p);
-    const up=propMode(p)==="up";
+    const state3=propLineState(p);
     const delta=propModeDelta(p);
     const perModule=propContributors(p).map(c=>{
-      const v=(p.variants||[]).find(x=>x.id===optPropVarId(p,c.o.id));
-      return v?{name:c.o.name, qty:c.qty, type:v.name, each:+v.unitPrice||0}:null;
+      const v=(p.variants||[]).find(x=>x.id===propUpgradeId(p,c.o.id));
+      return v?{name:c.o.name, qty:c.qty, type:variantNameFor(v, c.o.id),
+                each:variantPriceFor(v, c.o.id)}:null;
     }).filter(Boolean);
-    return `<div class="pmode ${up?"is-up":""}">
+    const money=n=>n>0?"+ "+fmt(n):(n<0?"&minus; "+fmt(-n):"no extra cost");
+    return `<div class="pmode ${state3==="base"?"":"is-up"}">
       <div class="pmodehead">Which ${lower} for this line?</div>
       <div class="pmodepick">
-        <button class="pmodebtn ${up?"":"on"}" data-pmode="base">
+        <button class="pmodebtn ${state3==="base"?"on":""}" data-pmode="base">
           <b>${esc(base?base.name:"Standard")}</b>
           <span>${+((base&&base.unitPrice)||0)?fmt(+base.unitPrice)+" each":"included"}</span>
         </button>
-        <button class="pmodebtn ${up?"on":""}" data-pmode="up">
-          <b>As specified per module</b>
-          <span>${delta>0?"+ "+fmt(delta):(delta<0?"&minus; "+fmt(-delta):"no extra cost")}</span>
+        <button class="pmodebtn ${state3==="up"?"on":""}" data-pmode="up">
+          <b>Upgraded, in scope</b>
+          <span>${money(delta)}</span>
+        </button>
+        ${/* the third column of the spreadsheet: same parts, same prices,
+             but offered rather than included */""}
+        <button class="pmodebtn ${state3==="opt"?"on":""}" data-pmode="opt">
+          <b>Upgraded, offered as an option</b>
+          <span>${money(delta)} &mdash; not in the total</span>
         </button>
       </div>
       <div class="pmodelist">${perModule.map(x=>`<div class="pmoderow">
@@ -8663,8 +8916,8 @@ function assignScreenHtml(m){
         <span class="arrow">&rarr;</span> <b>${esc(x.type)}</b>
         <span class="meta">${x.each?fmt(x.each)+" each":"included"}</span>
       </div>`).join("")}</div>
-      <div class="pmodefoot">Each module keeps its own type and its own price, so one press
-        moves the whole line. A single item can still be set differently in the table below.</div>
+      <div class="pmodefoot">Each part is priced by its class, so one press moves the whole line and
+        a corner still costs what a corner costs. A single item can be set differently in the table below.</div>
     </div>`;
   })();
   const vars=p.variants||[];
@@ -8693,7 +8946,7 @@ function assignScreenHtml(m){
       <th class="asgitem" rowspan="2">Item</th>
       ${vars.map(v=>`<th class="asgtype" colspan="2">
         <span class="asg-vname">${esc(v.name)}</span>
-        <span class="asg-vrate">${+v.unitPrice?`${fmt(+v.unitPrice)} ea.`:"included"}</span>
+        <span class="asg-vrate">${esc(variantRateWords(p, v))}</span>
       </th>`).join("")}
       <th class="asgcost" rowspan="2">Cost</th>
     </tr>
@@ -8715,19 +8968,19 @@ function assignScreenHtml(m){
       const answered=Object.keys(ent).length>0;
       const vid=assignedVariantId(p,c.o.id);
       const v=vars.find(x=>x.id===vid);
-      const cost=(+((v&&v.unitPrice)||0))*c.qty;
+      const cost=variantPriceFor(v, c.o.id)*c.qty;
       const badge = kind==="alt" ? `<span class="altpill">alternative</span> `
                   : kind==="opt" ? `<span class="optpill">optional</span> ` : "";
       const tail  = kind==="alt" && c.o.altFor
                   ? ` <span class="snote">— instead of ${esc(optionLabel(c.o.altFor))}</span>` : "";
       const extra=vars.reduce((t,x)=>
-        t + ((ent[x.id]||[]).includes("opt") ? c.qty*(+x.unitPrice||0) : 0), 0);
+        t + ((ent[x.id]||[]).includes("opt") ? c.qty*variantPriceFor(x, c.o.id) : 0), 0);
       const dot=(x,sc,title)=>`<td class="asgcell sc-${sc}"><button class="asgdot sc-${sc} ${(ent[x.id]||[]).includes(sc)?"on":""}"
           data-vsc="${esc(c.o.id)}|${esc(x.id)}|${sc}" title="${esc(title)}"></button></td>`;
       return `<tr class="asg-row ${(kind==="opt")?"is-optional":""} ${(kind==="alt")?"is-alt":""} ${answered?"":"needs"}">
         <td class="asgitem">${badge}<span class="qty">${c.qty}&times;</span> ${esc(c.o.name)}${tail}</td>
         ${vars.map(x=>{
-          const line=c.qty*(+x.unitPrice||0);
+          const line=c.qty*variantPriceFor(x, c.o.id);
           const money=line?fmt(line):"included";
           const supplied=vid && vid!==x.id ? vars.find(y=>y.id===vid) : null;
           return dot(x,"in",`Supplied — ${money}. Click again to clear.`)
@@ -8741,7 +8994,7 @@ function assignScreenHtml(m){
   const tally=propTally(p);
   const pills=vars.filter(v=>tally[v.id]).map(v=>
     `<span class="tallypill">${tally[v.id]}&times; ${esc(v.name)}</span>`).join("");
-  const costOf=c=>{const v=assignedVariant(p,c.o.id);return c.qty*(+((v&&v.unitPrice)||0));};
+  const costOf=c=>c.qty*variantPriceFor(assignedVariant(p,c.o.id), c.o.id);
   const inScope=items.filter(c=>!c.o.optional).reduce((t,c)=>t+costOf(c),0);
   const offered=propScopeLines("opt").filter(r=>r.p===p).reduce((t,r)=>t+r.price,0)
               + propScopeLines("alt").filter(r=>r.p===p).reduce((t,r)=>t+r.price,0);
