@@ -12194,8 +12194,13 @@ function renderQuotes(){
         <span class="num">${m.total?fmt(m.total):"—"}</span>
       </div>
       <div class="qcuracts">
-        <button class="btn primary" id="qSaveNew">Save as new quote</button>
+        ${/* This screen is where the tool now opens, so the way onward has
+              to be on it. Three things you can want here: carry on with
+              what is open, begin something new, or pick one from the list
+              below. */""}
+        <button class="btn primary" id="qContinue">Continue this quote</button>
         <button class="btn" id="qNew" title="Start an empty quote. This one is saved first, and the catalogue stays as it is.">New quote</button>
+        ${!cloudQuoteId?`<button class="btn" id="qSaveNew" title="This quote only exists in this browser so far">Save as new quote</button>`:""}
         <button class="btn" id="qExportCur">Export file</button>
         <label class="btn" for="qImport">Import file</label>
         <input type="file" id="qImport" accept=".json,application/json" class="hidden">
@@ -12215,6 +12220,7 @@ function renderQuotes(){
 
   const wire=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
   wire("qExportCur", ()=>exportQuote(null));
+  wire("qContinue", ()=>setMode("configure"));
   wire("qSaveNew", async ()=>{
     try{ await cloudCreateQuote(); flagSaved("Saved as new quote"); renderQuotes(); }
     catch(err){ alert("Could not save: "+(err&&err.message||err)); }
@@ -13416,9 +13422,13 @@ function bootLocalOnly(){
   else if(restored) flagSaved("Restored your last session");
 
   (function(){ const h=document.getElementById("hdrLogo"); if(h) h.innerHTML=logoSvg(); })();
-  /* setMode() paints the buttons and shows the matching view, so the restored
-     screen is the one that actually appears */
-  setMode(mode);
+  /* The tool opens on Quotes, whatever screen was last in use. Starting
+     work means one of two things — a new quote, or an existing one — and
+     that is the screen where both are in front of you, with the one you
+     had open at the top and Continue on it. Reopening halfway into a
+     configuration made it too easy to keep typing into the wrong quote.
+     The last mode is still saved; it is deliberately not restored here. */
+  setMode("quotes");
   /* on a phone the step list sits above the step being answered — this folds
      it away so the options have the screen to themselves */
   document.getElementById("btnNav").onclick=()=>document.body.classList.toggle("navclosed");
