@@ -11820,12 +11820,16 @@ async function reattachCloudQuote(){
   if(!supa || !restoredQuoteId || cloudQuoteId) return false;
   const id=restoredQuoteId; restoredQuoteId=null;
   try{
-    const {data, error}=await supa.from("quotes").select("id,rev,updated_at,status")
+    const {data, error}=await supa.from("quotes").select("id,rev,updated_at,status,data")
       .eq("id", id).maybeSingle();
     if(error || !data) return false;        // deleted while the tab was closed
     cloudQuoteId=data.id; cloudQuoteRev=data.rev;
     quoteUpdatedAt=data.updated_at; quoteStatus=data.status||"draft";
-    cloudSavedSig=null;
+    /* what the row holds right now. The next save then writes only if the
+       screen says something else — so a plain refresh costs no write and
+       leaves no empty version behind, while genuinely unsaved work still
+       goes up. */
+    cloudSavedSig=quoteContentSig(data.data);
     return true;
   }catch(err){ return false; }
 }
