@@ -3561,13 +3561,28 @@ function propContributors(p){
 }
 /* An item starts with NO type chosen: a new option must be dealt with
    deliberately rather than quietly inheriting the first type in the list. */
+/* Which type an option is fixed to in the catalogue, if any. Some
+   properties are not a question for the quote at all: the applicator
+   conveyor simply has the expensive closed cable tray and a plain
+   conveyor section has the cheap one — that follows from the machine, not
+   from anything a customer picks. Admin settles it on the option; the
+   quote can still override it, and a property with nothing set here goes
+   on being asked exactly as before. */
+function fixedVariantId(p, optionId){
+  const o=(function(){ for(const x of allOptions(CONFIG.modules)) if(x.id===optionId) return x; })();
+  const id=o && o.propVar && o.propVar[p.id];
+  return (id && (p.variants||[]).some(v=>v.id===id)) ? id : null;
+}
 function assignedVariantId(p, optionId){
   const e=assignEntry(p, optionId);
   const id=Object.keys(e).find(k=>e[k].includes("in"));
-  return (id && (p.variants||[]).some(v=>v.id===id)) ? id : null;
+  if(id && (p.variants||[]).some(v=>v.id===id)) return id;
+  /* nothing chosen in the quote: what the catalogue says stands */
+  return fixedVariantId(p, optionId);
 }
 /* a row counts as dealt with once any type on it has been given a standing */
-const assignAnswered = (p, optionId) => Object.keys(assignEntry(p,optionId)).length>0;
+const assignAnswered = (p, optionId) =>
+  Object.keys(assignEntry(p,optionId)).length>0 || !!fixedVariantId(p, optionId);
 function assignUnanswered(p){
   return propContributors(p).filter(c=>!assignAnswered(p,c.o.id));
 }
@@ -7287,10 +7302,20 @@ function renderAdmin(){
             ${(CONFIG.props&&CONFIG.props.length)?`
             <div class="proprow">
               <span class="deflabel">Adds to the machine</span>
-              ${CONFIG.props.map(p=>`<label class="propqty" title="How many ${esc(p.plural||p.label+"s")} this option puts in the machine">
-                <input class="in" type="number" min="0" step="1" value="${(o.props&&+o.props[p.id])||0}" data-pq="${esc(p.id)}">
-                <span>${esc(p.plural||p.label+"s")}</span>
-              </label>`).join("")}
+              ${CONFIG.props.map(p=>{
+                const n=(o.props&&+o.props[p.id])||0;
+                const vs=p.variants||[];
+                return `<label class="propqty" title="How many ${esc(p.plural||p.label+"s")} this option puts in the machine">
+                  <input class="in" type="number" min="0" step="1" value="${n}" data-pq="${esc(p.id)}">
+                  <span>${esc(p.plural||p.label+"s")}${p.unit?` <i>(${esc(p.unit)})</i>`:""}</span>
+                </label>
+                ${(n>0 && vs.length>1)?`<select class="in propvar" data-pv="${esc(p.id)}"
+                  title="Which one this step gets. Settle it here and the quote stops asking — the applicator conveyor can carry the expensive closed tray while a plain section carries the cheap one.">
+                  <option value="">ask in the quote</option>
+                  ${vs.map(v=>`<option value="${esc(v.id)}" ${((o.propVar||{})[p.id]===v.id)?"selected":""}>${esc(v.name)}${
+                    +v.unitPrice?` — ${fmt(+v.unitPrice)}/${esc(p.unit||"pc")}`:" — included"}</option>`).join("")}
+                </select>`:""}`;
+              }).join("")}
             </div>
             `:""}
           </section>
@@ -8427,6 +8452,15 @@ function wireEditor(m,list,idx){
 
   /* per-option property quantities — these feed optionPrice(), so a change
      re-renders to refresh the "+ cost → total" hint next to the boxes */
+  ed.querySelectorAll("[data-pv]").forEach(el=>{
+    const o=m.options[+el.closest(".ocard").dataset.oi];
+    el.onchange=()=>{
+      o.propVar=o.propVar||{};
+      if(el.value) o.propVar[el.dataset.pv]=el.value; else delete o.propVar[el.dataset.pv];
+      if(!Object.keys(o.propVar).length) delete o.propVar;
+      reconcile(); renderConfigureQuiet(); renderAdmin();
+    };
+  });
   ed.querySelectorAll("[data-pq]").forEach(el=>{
     const o=m.options[+el.closest(".ocard").dataset.oi];
     el.onchange=()=>{
