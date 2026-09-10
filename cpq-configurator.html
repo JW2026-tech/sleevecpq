@@ -2313,6 +2313,7 @@ const supa = (window.supabase && window.supabase.createClient)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {auth:{persistSession:true, detectSessionInUrl:true}})
   : null;
 let cloudQuoteId = null;      // set once the open quote has a row in `quotes`
+let restoredQuoteId = null;   // that row's id as remembered across a refresh
 let cloudQuoteRev = null;     // the rev we last read/wrote — used to spot a colleague's save
 let cloudConflictPaused = false;  // true while a rev conflict banner is waiting on a choice
 /* the quote bar's own state: the row's status, the active share (if any) and
@@ -11809,6 +11810,25 @@ async function ensureCloudQuote(){
   await cloudSaveQuote();
   return cloudQuoteId;
 }
+/* After a refresh the screen still holds the quote, but the app had
+   forgotten which row it was. Pick that back up: check the row is still
+   there, take its revision so the next save can detect a colleague's write,
+   and leave cloudSavedSig empty so whatever is on screen is written once.
+   The quote's own data is NOT re-read — what you were looking at wins, and
+   the revision check catches it if someone else has been in there. */
+async function reattachCloudQuote(){
+  if(!supa || !restoredQuoteId || cloudQuoteId) return false;
+  const id=restoredQuoteId; restoredQuoteId=null;
+  try{
+    const {data, error}=await supa.from("quotes").select("id,rev,updated_at,status")
+      .eq("id", id).maybeSingle();
+    if(error || !data) return false;        // deleted while the tab was closed
+    cloudQuoteId=data.id; cloudQuoteRev=data.rev;
+    quoteUpdatedAt=data.updated_at; quoteStatus=data.status||"draft";
+    cloudSavedSig=null;
+    return true;
+  }catch(err){ return false; }
+}
 /* ---------------------- STARTING A NEW QUOTE ----------------------
    Getting an empty quote used to mean saving by hand and then pressing
    Reset, and Reset is a blunt instrument: in Admin it throws away the whole
@@ -11890,8 +11910,14 @@ function snapshot(){
   /* publishedSig travels with the snapshot: without it a reload has no
      baseline to compare against and could not tell an unpublished Admin
      edit from a catalogue that was already published */
+  /* cloudQuoteId travels with the snapshot: without it a refresh left the
+     screen holding a quote that no longer knew which row it belonged to.
+     Nothing was saved to that row any more, the customer-link reminder had
+     no link to compare against, and "Save as new quote" came back — so the
+     obvious next move made a duplicate. */
   return JSON.stringify({v:1, savedAt:Date.now(), CONFIG, state, docLang, cursor, includedSteps,
-                         navWidth, partsColW, mode, docsTab, adminSection, sel, publishedSig});
+                         navWidth, partsColW, mode, docsTab, adminSection, sel, publishedSig,
+                         cloudQuoteId});
 }
 function saveNow(){
   if(!storageOK) return;
@@ -11960,6 +11986,10 @@ function applySnapshot(raw){
     navWidth=+d.navWidth||null;
     partsColW=(d.partsColW&&typeof d.partsColW==="object")?d.partsColW:{};
     publishedSig=(typeof d.publishedSig==="string")?d.publishedSig:null;
+    /* which row this quote is, remembered but not trusted yet — boot()
+       checks the row is still there and reads its revision before anything
+       is written to it */
+    restoredQuoteId=(typeof d.cloudQuoteId==="string")?d.cloudQuoteId:null;
     _sigCache={at:0, sig:null};
     /* pick up where the last session left off — the screen that was open,
        which document tab, and which Admin section */
@@ -13546,6 +13576,10 @@ async function boot(){
     }
   }catch(err){}
   renderCatalogueBar();
+  /* before loadQuoteMeta, which needs to know which quote it is asking
+     about — otherwise the link, the history and the reminder all come back
+     empty after a refresh */
+  await reattachCloudQuote();
   await loadQuoteMeta();
   renderQuoteBar();
   /* One check right away: a tab left open overnight, or one opened after a
