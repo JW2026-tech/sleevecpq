@@ -735,6 +735,17 @@
   .qbrev{font-size:11px;padding:2px 7px;border-radius:20px;white-space:nowrap;
     border:1px dashed var(--line-strong);color:var(--txt-dim)}
   .qbrev.is-sent{border-style:solid;border-color:#28338A;color:#28338A;background:var(--accent-soft);font-weight:600}
+  /* One line per revision in the Quotes list: which one, on which
+     catalogue, and whether it ever went out. This is the answer to "which
+     of these actually reached the customer", so it has to be readable at a
+     glance rather than hidden behind a click. */
+  .revline{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:3px 0}
+  .revline + .revline{border-top:1px dotted var(--line-soft)}
+  .revpill{font-size:10.5px;padding:1px 7px;border-radius:20px;white-space:nowrap;
+    border:1px dashed var(--line-strong);color:var(--txt-dim)}
+  .revpill.is-sent{border-style:solid;border-color:#28338A;color:#28338A;
+    background:var(--accent-soft);font-weight:600}
+  td.qshare{min-width:330px}
   /* the log and version panels drop out of the bar */
   .qbpanel{border-bottom:1px solid var(--line);background:var(--panel);
     padding:12px 16px;max-height:320px;overflow-y:auto}
@@ -10673,30 +10684,33 @@ function shareIsLive(){
 function shareIsSent(){ return !!(quoteShare && quoteShare.sent_at); }
 function shareRevision(){ return (quoteShare && quoteShare.revision) || 1; }
 function shareWhen(t){ try{ return new Date(t).toLocaleDateString(); }catch(e){ return ""; } }
-async function markShareSent(){
-  if(!supa || !quoteShare || shareIsSent()) return;
+async function markShareSent(shareId){
+  const id=shareId||(quoteShare&&quoteShare.id);
+  if(!supa || !id) return;
+  if(!shareId && shareIsSent()) return;
   const who=(CONFIG.customer||"the customer").trim()||"the customer";
   if(!confirm("Mark revision "+shareRevision()+" as sent to "+who+"?\n\n"+
               "From then on this link is the record of what he was given: it cannot be changed or deleted, only taken offline. "+
               "Changing the quote afterwards means making a revision, with a link of its own."+
               "\n\nAny earlier revision that is still online goes offline now.")) return;
   try{
-    await flushQuoteNow();
-    await supa.rpc("mark_share_sent",{p_share_id:quoteShare.id});
-    await loadQuoteMeta();
-    flagSaved("Revision "+shareRevision()+" marked as sent");
+    if(!shareId) await flushQuoteNow();
+    await supa.rpc("mark_share_sent",{p_share_id:id});
+    if(cloudQuoteId) await loadQuoteMeta();
+    flagSaved("Marked as sent");
     renderQuoteBar();
     if(mode==="quotes") renderQuotes();
   }catch(err){ alert("Could not mark it as sent: "+(err&&err.message||err)+"\n\nHas supabase-verzonden-links.sql been run?"); }
 }
-async function setShareOffline(offline){
-  if(!supa || !quoteShare) return;
+async function setShareOffline(offline, shareId){
+  const id=shareId||(quoteShare&&quoteShare.id);
+  if(!supa || !id) return;
   if(offline && !confirm("Take this link offline? "+
      (CONFIG.customer||"The customer")+" gets \"this link is no longer available\" when he opens it. "+
      "It stays in the record and you can put it back online.")) return;
   try{
-    await supa.rpc("set_share_offline",{p_share_id:quoteShare.id, p_offline:!!offline});
-    await loadQuoteMeta();
+    await supa.rpc("set_share_offline",{p_share_id:id, p_offline:!!offline});
+    if(cloudQuoteId) await loadQuoteMeta();
     flagSaved(offline?"Link taken offline":"Link back online");
     renderQuoteBar();
     if(mode==="quotes") renderQuotes();
@@ -10705,22 +10719,88 @@ async function setShareOffline(offline){
 /* A sent quote is not edited, it is revised: a new link, a new frozen copy,
    the old one kept. create_quote_share hands out the next revision number
    by itself once there is no draft link left. */
+/* Making the revision, once the catalogue question is settled.
+   version null means "the newest published one". */
+async function createRevisionOn(version, quoteId){
+  const id=quoteId||cloudQuoteId;
+  if(!supa || !id) return null;
+  try{
+    if(id===cloudQuoteId) await flushQuoteNow();
+    const args={p_quote_id:id, p_days:14};
+    if(version) args.p_version=version;
+    const {data, error}=await supa.rpc("create_quote_share", args);
+    if(error || !data) throw error||new Error("no link came back");
+    if(id===cloudQuoteId){
+      /* the quote moves with the revision, or deliberately does not */
+      if(data.catalogue_version) quoteCatVersion=data.catalogue_version;
+      await loadQuoteMeta();
+      const dp=document.getElementById("shareDiffPanel"); if(dp) dp.remove();
+      renderQuoteBar();
+    }
+    flagSaved("Revision "+data.revision+" created on catalogue v"+data.catalogue_version);
+    if(mode==="quotes") renderQuotes();
+    return data;
+  }catch(err){
+    alert("Could not make a revision: "+(err&&err.message||err)+
+          "\n\nHas supabase-revisie-catalogus.sql been run?");
+    return null;
+  }
+}
+/* A sent revision stays on the catalogue it was written against — that is
+   what the customer was shown. Changing the quote means a new revision, and
+   the catalogue is a decision you make there and then: carry on where this
+   one sat, or come along with what has been published since. So it is
+   asked, not assumed — and only when there is actually a choice. */
+function askRevisionCatalogue(quoteId, onCat, nextRev){
+  const newest=publishedVersion;
+  if(!onCat || !newest || onCat===newest){
+    if(!confirm("Make revision "+nextRev+" of this quote?\n\n"+
+                "You get a new link with the quote as it stands. What was sent stays in the record and goes offline once you send the new one.")) return;
+    createRevisionOn(null, quoteId);
+    return;
+  }
+  const body=`
+    <div class="qbrow"><span class="what">What was sent stays as it is, on catalogue
+      <b>v${onCat}</b>. Revision <b>${nextRev}</b> gets a link of its own &mdash; and its own catalogue.</span></div>
+    <div class="qbrow"><span class="who">stay on v${onCat}</span>
+      <span class="what">The same prices and steps the customer already has, so the difference between the
+      two revisions is only what you change yourself.
+      <button class="btn sm" data-revon="${onCat}">Stay on v${onCat}</button></span></div>
+    <div class="qbrow"><span class="who">move to v${newest}</span>
+      <span class="what">Today&rsquo;s prices and steps. Anything the catalogue no longer has drops out of the quote.
+      <button class="btn sm primary" data-revon="new">Move to v${newest}</button></span></div>
+    <div class="qbrow"><span class="what"><i>Not sure what moving costs? Close this and use
+      &ldquo;Compare catalogue to newest version&rdquo; on the quote first &mdash; it lists what would be
+      dropped, added and repriced.</i></span></div>`;
+  const panel=diffPanel("revChoice", `Revision ${nextRev} — on which catalogue?`, body,
+    mode==="quotes"?document.getElementById("qListWrap"):null);
+  panel.querySelectorAll("[data-revon]").forEach(b=>{
+    b.onclick=()=>{
+      const v=b.dataset.revon==="new" ? null : +b.dataset.revon;
+      panel.remove();
+      createRevisionOn(v, quoteId);
+    };
+  });
+}
 async function createRevision(){
   if(!supa || !cloudQuoteId) return;
-  const next=shareRevision()+1;
-  if(!confirm("Revision "+shareRevision()+" has been sent, so it stays as it is.\n\n"+
-              "Make revision "+next+" of this quote? You get a new link with the quote as it stands now. "+
-              "Revision "+shareRevision()+" stays in the record and goes offline once you send the new one.")) return;
+  askRevisionCatalogue(cloudQuoteId,
+    quoteCatVersion || (quoteShare && quoteShare.catalogue_version) || null,
+    shareRevision()+1);
+}
+/* Take the selection the customer made in his link into the quote. His
+   copy stays where it is; only the quote moves. */
+async function pullShareChanges(){
+  if(!supa || !quoteShare || !cloudQuoteId) return;
+  if(!confirm("Take the customer's selection into this quote? What you have now is kept in the history.")) return;
   try{
-    await flushQuoteNow();
-    const {data, error}=await supa.rpc("create_quote_share",{p_quote_id:cloudQuoteId, p_days:14});
-    if(error || !data) throw error||new Error("no link came back");
+    await supa.rpc("pull_share_changes",{p_share_id:quoteShare.id});
+    await cloudOpenQuote(cloudQuoteId);
     await loadQuoteMeta();
-    const p=document.getElementById("shareDiffPanel"); if(p) p.remove();
-    flagSaved("Revision "+next+" created");
-    renderQuoteBar();
+    flagSaved("Customer's changes taken");
+    renderQuoteBar(); refreshView();
     if(mode==="quotes") renderQuotes();
-  }catch(err){ alert("Could not make a revision: "+(err&&err.message||err)); }
+  }catch(err){ alert("Could not take the changes: "+(err&&err.message||err)); }
 }
 /* Updating the link, from either the header button or the reminder bar. */
 async function pushShareNow(){
@@ -10831,22 +10911,26 @@ function renderNotices(){
 
   /* ---- 2. this quote has a live link that is behind ---- */
   const stamp=quoteUpdatedAt||"";
-  if(shareIsLive() && (shareIsBehind() || shareCatalogueBehind()) && linkBarSnoozed!==stamp){
+  const custEdited = shareIsLive() && !!quoteShare.customer_changed_at;
+  if(shareIsLive() && (shareIsBehind() || shareCatalogueBehind() || custEdited) && linkBarSnoozed!==stamp){
     const who=(CONFIG.customer||(CONFIG.customerInfo&&CONFIG.customerInfo.company)||"").trim();
     const qB=shareIsBehind(), cB=shareCatalogueBehind();
-    const what = (qB&&cB)
-      ? "You changed this quote, and the prices were published anew, since the link was last sent"
-      : (qB ? "You changed this quote since the link was last sent"
-            : "New prices were published since the link was last sent");
+    const what = (!qB && !cB && custEdited)
+      ? "He changed his own selection in the link and it is not in the quote yet"
+      : ((qB&&cB)
+         ? "You changed this quote, and the prices were published anew, since the link was last sent"
+         : (qB ? "You changed this quote since the link was last sent"
+               : "New prices were published since the link was last sent"));
     const sent=shareIsSent();
     rows.push(`<div class="notice is-link">
       <span class="catdot"></span>
-      <span class="catmsg"><b>${who?esc(who)+" is":"The customer is"} looking at ${
-          sent?`revision ${shareRevision()}, sent ${esc(shareWhen(quoteShare.sent_at))}`:"an older version"}.</b>
+      <span class="catmsg"><b>${(!qB && !cB && custEdited)
+          ? `${who?esc(who):"The customer"} has made changes of his own.`
+          : `${who?esc(who)+" is":"The customer is"} looking at ${
+             sent?`revision ${shareRevision()}, sent ${esc(shareWhen(quoteShare.sent_at))}`:"an older version"}.`}</b>
         ${what} &mdash; ${esc(who||"the customer")} sees what you sent, not what is on your screen.${
         sent?` What was sent stays as it is; changing it means a revision.`:""}</span>
-      ${quoteShare.customer_changed_at
-        ? `<span class="catmeta">they changed something themselves</span>`:""}
+      ${custEdited?`<button class="btn sm" id="lbPull" title="Take the selection he made in his link into this quote">Take their changes</button>`:""}
       <button class="btn sm" id="lbDiff">See what changed</button>
       ${sent
         ? `<button class="btn primary sm" id="lbRevise" title="A new link with the quote as it stands. Revision ${shareRevision()} stays in the record.">Make revision ${shareRevision()+1}</button>`
@@ -10871,6 +10955,7 @@ function renderNotices(){
   /* Later on the catalogue means "not this change": remember which rev was
      waved away, so the notice comes back when the next one arrives. */
   on("ntLater", ()=>{ catUpstreamSnoozed=catUpstreamKey(catUpstream); catUpstream=null; renderNotices(); });
+  on("lbPull", pullShareChanges);
   on("lbDiff", showShareDiff);
   on("lbPush", pushShareNow);
   on("lbRevise", createRevision);
@@ -11440,41 +11525,7 @@ function renderQuoteBar(){
       ? `<button class="btn sm primary" id="qbSaveNew" title="This quote only exists in this browser so far">Save as new quote</button>`
       : `<span class="qbmeta" id="qbSaved"></span>`}
     <button class="btn sm" id="qbNew" title="Start an empty quote. This one is saved first, and the catalogue stays as it is.">New quote</button>
-    ${quoteShare
-      ? `<span class="qbsep"></span>
-         <span class="qbrev ${shareIsSent()?"is-sent":""}" title="${shareIsSent()
-             ? `Sent on ${esc(shareWhen(quoteShare.sent_at))}${quoteShare.sent_by&&quoteShare.sent_by!=="unknown"?" by "+esc(quoteShare.sent_by):""} — this is the record of what the customer was given`
-             : "Not sent yet, so this link is still yours to change"}">rev ${shareRevision()} &middot; ${
-             shareIsSent()?`sent ${esc(shareWhen(quoteShare.sent_at))}`:"draft"}${
-             quoteShare.revoked_at?" &middot; offline":""}</span>
-         <button class="btn sm" id="qbCopyLink">Copy customer link</button>
-         ${shareIsSent()
-           ? /* what went out cannot move; the way forward is a revision */
-             `${shareIsBehind()||shareCatalogueBehind()
-                ? `<button class="btn sm primary" id="qbRevise" title="The quote has changed since this was sent. A revision is a new link; this one stays as the record.">Make revision ${shareRevision()+1}</button>`
-                : `<span class="qbmeta">Matches what was sent</span>`}
-              <button class="btn sm" id="qbOffline" title="${quoteShare.revoked_at
-                ? "Let the customer open this link again"
-                : "The customer can no longer open it. It stays in the record."}">${
-                quoteShare.revoked_at?"Put back online":"Take offline"}</button>`
-           : `${(()=>{
-                const qBehind=shareIsBehind(), cBehind=shareCatalogueBehind();
-                const v=quoteShare.catalogue_version;
-                if(!qBehind && !cBehind)
-                  return `<span class="qbmeta" title="${v?`Showing catalogue version ${v}`:"Not pinned to a catalogue version"}">Link is up to date${v?` &middot; v${v}`:""}</span>`;
-                const why = (qBehind&&cBehind)
-                  ? `the quote has changed and the catalogue is now at version ${publishedVersion} while the link still shows ${v}`
-                  : (qBehind
-                     ? "the quote has changed since you last updated the link"
-                     : `the catalogue is now at version ${publishedVersion}, the link still shows version ${v}`);
-                return `<button class="btn sm primary" id="qbPush" title="Send the quote as it stands, at the prices published now, to the customer's link — ${why}">Update the link${
-                  cBehind&&!qBehind?" (new prices)":""}</button>`;
-              })()}
-              <button class="btn sm" id="qbSent" title="Say that this link has gone to the customer. From then on it is the record: it cannot be changed or deleted, only taken offline.">Mark as sent</button>
-              <button class="btn sm" id="qbRevoke" title="Throw this draft link away. Nothing has been sent from it.">Delete link</button>`}
-         ${custChanged?`<span class="qbwarn">${shareLockIconSvg()}<b>The customer changed something</b>
-            <button class="btn sm" id="qbPull">Take their changes</button></span>`:""}`
-      : `<span class="qbsep"></span><button class="btn sm" id="qbShare">Share with customer</button>`}
+    
     ${/* No PDF button: the customer makes their own from the link, and the
           Email button renders one too (it downloads it while Microsoft
           sign-in is still unconfigured), so there is nothing this would add
@@ -11559,16 +11610,7 @@ function wireQuoteBar(){
     navigator.clipboard.writeText(url).then(()=>flagSaved("Link copied"));
   });
   on("qbPush", pushShareNow);
-  on("qbPull", async ()=>{
-    if(!confirm("Take the customer's selection into this quote? Your current version is kept in the history.")) return;
-    try{
-      await supa.rpc("pull_share_changes",{p_share_id:quoteShare.id});
-      await cloudOpenQuote(cloudQuoteId);
-      await loadQuoteMeta();
-      flagSaved("Customer's changes taken");
-      renderQuoteBar(); refreshView();
-    }catch(err){ alert("Could not take the changes: "+(err&&err.message||err)); }
-  });
+  on("qbPull", pullShareChanges);
   /* Only offered on a draft link, and then it really deletes: leaving
      revoked drafts behind is how a quote ends up with ten links nobody can
      tell apart. A sent link cannot get here — the database refuses it too. */
@@ -12143,10 +12185,19 @@ async function cloudActiveShares(){
      query for an unknown column, so naming it would make this fail — and the
      quotes list would report every shared quote as "not shared" — on any
      project where supabase-schema-pin-catalogue.sql has not been run yet */
+  /* All of them now, newest revision first: a quote can have several, they
+     can sit on different catalogue versions, and which one actually went to
+     the customer is the question the list has to answer. Offline and expired
+     ones are part of that answer, so they are not filtered away. */
   const {data, error} = await supa.from("quote_shares").select("*")
-    .is("revoked_at", null).gt("expires_at", new Date().toISOString()).order("created_at",{ascending:false});
+    .order("created_at",{ascending:false});
   const byQuote=new Map();
-  if(!error) for(const s of (data||[])) if(!byQuote.has(s.quote_id)) byQuote.set(s.quote_id, s);
+  if(!error) for(const sh of (data||[])){
+    if(!byQuote.has(sh.quote_id)) byQuote.set(sh.quote_id, []);
+    byQuote.get(sh.quote_id).push(sh);
+  }
+  for(const list of byQuote.values())
+    list.sort((a,b)=>(b.revision||1)-(a.revision||1) || (b.created_at<a.created_at?-1:1));
   return byQuote;
 }
 /* Which catalogue does this quote belong to? Its own stamp if it has one;
@@ -12621,14 +12672,31 @@ function renderQuotes(){
           <td class="qname"><b>${esc(q.number||"—")}</b>${q.id===cloudQuoteId?'<span class="curpill">open</span>':""}</td>
           <td>${esc(q.customer||"—")}</td>
           <td class="when">${q.updated_at?new Date(q.updated_at).toLocaleString():""}</td>
-          <td class="qshare">${share
-            ? `<span class="curpill">Shared &middot; until ${new Date(share.expires_at).toLocaleDateString()}</span>
-               ${share.catalogue_version
-                 ? `<span class="meta" title="This link keeps showing catalogue version ${share.catalogue_version} — publishing new prices does not change it">on catalogue v${share.catalogue_version}</span>`
-                 : ""}
-               <button class="pbtn" data-copyshare="${esc(share.token)}">Copy link</button>
-               <button class="x" data-revokeshare="${esc(share.id)}" title="Revoke">&times;</button>`
-            : `<span class="meta">Not shared</span>`}</td>
+          <td class="qshare">${(share&&share.length)
+            ? share.map(sh=>{
+                const sent=!!sh.sent_at, off=!!sh.revoked_at,
+                      gone=sh.expires_at && new Date(sh.expires_at)<new Date(),
+                      live=!off && !gone;
+                return `<div class="revline">
+                  <span class="revpill ${sent?"is-sent":""}" title="${sent
+                    ? "Sent on "+new Date(sh.sent_at).toLocaleDateString()+" — this is the record of what the customer was given"
+                    : "Not sent yet, so this one is still yours to change"}">rev ${sh.revision||1} &middot; ${
+                    sent?"sent "+new Date(sh.sent_at).toLocaleDateString():"draft"}</span>
+                  ${sh.catalogue_version?`<span class="meta" title="This link keeps showing catalogue version ${sh.catalogue_version}; publishing new prices does not change it">v${sh.catalogue_version}</span>`:""}
+                  ${off?`<span class="meta">offline</span>`:(gone?`<span class="meta">expired</span>`:
+                     `<span class="meta">until ${new Date(sh.expires_at).toLocaleDateString()}</span>`)}
+                  ${sh.customer_changed_at?`<span class="meta" title="The customer changed his own selection in this link">customer edited</span>`:""}
+                  ${live?`<button class="pbtn" data-copyshare="${esc(sh.token)}">Copy link</button>`:""}
+                  ${sent
+                    ? `<button class="pbtn" data-shoffline="${esc(sh.id)}" data-off="${off?"0":"1"}">${off?"Put online":"Take offline"}</button>`
+                    : `<button class="pbtn" data-shsend="${esc(sh.id)}" title="From then on this link is the record: it cannot be changed or deleted, only taken offline">Mark as sent</button>
+                       <button class="x" data-shdel="${esc(sh.id)}" title="Delete this draft link">&times;</button>`}
+                </div>`;
+              }).join("")
+            : `<span class="meta">Not shared</span>`}
+            <div class="revline"><button class="pbtn" data-shnew="${esc(q.id)}" title="${(share&&share.length)
+              ? "A new revision with its own link, and its own catalogue"
+              : "Make the first link for this quote"}">${(share&&share.length)?"New revision":"Share with customer"}</button></div></td>
           <td class="qacts">
             ${/* Before Open, deliberately: on an older catalogue, opening is
                  the destructive move and looking is the safe one. */""}
@@ -12666,11 +12734,33 @@ function renderQuotes(){
         navigator.clipboard.writeText(url).then(()=>flagSaved("Link copied"));
       };
     });
-    wrap.querySelectorAll("[data-revokeshare]").forEach(b=>{
+    wrap.querySelectorAll("[data-shdel]").forEach(b=>{
       b.onclick=async ()=>{
-        if(!confirm("Revoke this link? The customer will no longer be able to open it.")) return;
-        await supa.from("quote_shares").update({revoked_at:new Date().toISOString()}).eq("id", b.dataset.revokeshare);
-        renderQuotes();
+        if(!confirm("Delete this draft link? Nothing has been sent from it, so nothing is lost.")) return;
+        const {error}=await supa.from("quote_shares").delete().eq("id", b.dataset.shdel);
+        if(error) return alert("Could not delete it: "+error.message);
+        if(cloudQuoteId) await loadQuoteMeta();
+        renderQuotes(); renderQuoteBar();
+      };
+    });
+    wrap.querySelectorAll("[data-shsend]").forEach(b=>{
+      b.onclick=()=>markShareSent(b.dataset.shsend);
+    });
+    wrap.querySelectorAll("[data-shoffline]").forEach(b=>{
+      b.onclick=()=>setShareOffline(b.dataset.off==="1", b.dataset.shoffline);
+    });
+    wrap.querySelectorAll("[data-shnew]").forEach(b=>{
+      b.onclick=async ()=>{
+        const id=b.dataset.shnew;
+        const list=shares.get(id)||[];
+        const newest=list[0];
+        if(!newest){ await createRevisionOn(null, id); return; }   // first link
+        if(!newest.sent_at){
+          alert("Revision "+(newest.revision||1)+" of this quote has not been sent yet. "+
+                "Update that one instead of making another — a quote should not collect links nobody can tell apart.");
+          return;
+        }
+        askRevisionCatalogue(id, newest.catalogue_version||null, (newest.revision||1)+1);
       };
     });
   }).catch(()=>{
