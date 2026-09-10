@@ -11384,8 +11384,11 @@ async function showQuoteBreakdown(quoteId, btn){
               <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b></span></div>`).join(""),
             s.repriced.length<=3):""}
         ${s.lost.length?`<div class="qbrow"><span class="what"><i>Opening this quote applies that straight away: what the catalogue no longer has is dropped, and the first thing you touch saves it. Look here first.</i></span></div>`:""}`}`;
+  /* the title names the quote and nothing more: the button already says
+     what this is for, and the first row says which catalogue it was read
+     against */
   const panel=diffPanel("qBreakdown",
-    `What is in ${esc(s.number||"this quote")}${s.customer?" &mdash; "+esc(s.customer):""}`,
+    `${esc(s.number||"This quote")}${s.customer?" &mdash; "+esc(s.customer):""}`,
     body, document.getElementById("qListWrap"));
   panel.dataset.qid=quoteId;
 }
@@ -12531,7 +12534,7 @@ function renderQuotes(){
           <td class="qacts">
             ${/* Before Open, deliberately: on an older catalogue, opening is
                  the destructive move and looking is the safe one. */""}
-            <button class="btn sm" data-qact="peek" title="See what is in this quote — in scope, optional, alternative — read against the catalogue it was made on, without opening it">What's in it</button>
+            <button class="btn sm" data-qact="peek" title="Read this quote against the catalogue it was made on — in scope, optional, alternative — and see what moving it to the newest catalogue would change, without opening it">Compare catalogue to newest version</button>
             <button class="btn sm" data-qact="open">Open</button>
             <button class="btn sm" data-qact="dup">Copy</button>
             <button class="x" data-qact="del" title="Delete">&times;</button>
