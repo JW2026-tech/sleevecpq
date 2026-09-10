@@ -1769,6 +1769,29 @@
 
   /* per-item type assignment screen */
   .assignwrap{margin-top:2px}
+  /* One decision for the whole line, with what it costs on it. Sits above
+     the per-item table because it settles almost every row underneath. */
+  .pmode{border:1px solid var(--line);border-radius:12px;background:var(--panel);
+    padding:14px 16px;margin:0 0 14px}
+  .pmode.is-up{border-color:var(--accent)}
+  .pmodehead{font-size:13px;font-weight:600;margin-bottom:10px}
+  .pmodepick{display:flex;gap:10px;flex-wrap:wrap}
+  .pmodebtn{flex:1;min-width:190px;text-align:left;cursor:pointer;
+    border:1px solid var(--line-strong);border-radius:10px;background:var(--panel-2);
+    padding:10px 13px;transition:.12s}
+  .pmodebtn:hover{border-color:var(--accent)}
+  .pmodebtn.on{border-color:var(--accent);border-width:2px;padding:9px 12px;background:var(--accent-soft)}
+  .pmodebtn b{display:block;font-size:13px;color:var(--txt)}
+  .pmodebtn span{display:block;font-size:12px;color:var(--txt-dim);margin-top:2px;
+    font-variant-numeric:tabular-nums}
+  .pmodebtn.on span{color:var(--accent);font-weight:600}
+  .pmodelist{margin-top:11px;border-top:1px solid var(--line-soft);padding-top:8px}
+  .pmoderow{font-size:11.5px;color:var(--txt-dim);padding:2px 0;display:flex;
+    align-items:baseline;gap:6px;flex-wrap:wrap}
+  .pmoderow b{color:var(--txt)}
+  .pmoderow .arrow{color:var(--txt-faint)}
+  .pmoderow .meta{margin-left:auto;font-variant-numeric:tabular-nums}
+  .pmodefoot{font-size:11px;color:var(--txt-faint);margin-top:8px;line-height:1.5}
   .fxwrap{margin-top:2px}
   .fxtable{width:100%;border-collapse:collapse;font-size:12.5px}
   .fxtable th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;
@@ -3561,28 +3584,67 @@ function propContributors(p){
 }
 /* An item starts with NO type chosen: a new option must be dealt with
    deliberately rather than quietly inheriting the first type in the list. */
-/* Which type an option is fixed to in the catalogue, if any. Some
-   properties are not a question for the quote at all: the applicator
-   conveyor simply has the expensive closed cable tray and a plain
-   conveyor section has the cheap one — that follows from the machine, not
-   from anything a customer picks. Admin settles it on the option; the
-   quote can still override it, and a property with nothing set here goes
-   on being asked exactly as before. */
-function fixedVariantId(p, optionId){
+/* ---------- ONE CHOICE, A DIFFERENT PRICE PER MODULE ----------
+   Open cable tray or closed is a single decision about the line, but what
+   closed COSTS is not one number: the applicator conveyor takes a heavier
+   tray than a plain section, and a bend takes a corner piece. So the
+   catalogue says, per option, which type that option gets when the
+   upgrade is taken (propVar, set in Admin), and the quote makes the one
+   choice that decides whether it is taken.
+
+   Properties where no option carries a propVar are untouched by all of
+   this: feet and access doors are still a per-item question, answered in
+   the table below the switch. */
+const PROPMODE_KEY="__propmode";
+function optPropVarId(p, optionId){
   const o=(function(){ for(const x of allOptions(CONFIG.modules)) if(x.id===optionId) return x; })();
   const id=o && o.propVar && o.propVar[p.id];
   return (id && (p.variants||[]).some(v=>v.id===id)) ? id : null;
 }
+/* does this property work as one switch at all? only if the catalogue has
+   said, somewhere, what the upgrade means */
+function propHasModes(p){
+  return propContributors(p).some(c=>optPropVarId(p, c.o.id));
+}
+function propMode(p){
+  const m=(state[PROPMODE_KEY]||{})[p.id];
+  return m==="up" ? "up" : "base";        // the cheap side is where a quote starts
+}
+function setPropMode(p, mode){
+  const m=Object.assign({}, state[PROPMODE_KEY]||{});
+  if(mode==="up") m[p.id]="up"; else delete m[p.id];
+  state[PROPMODE_KEY]=m;
+}
+/* what the switch costs: every contributor at its own upgrade price,
+   against the same items at the base type */
+function propModeDelta(p){
+  const base=propDefaultVariant(p), vars=p.variants||[];
+  let n=0;
+  for(const c of propContributors(p)){
+    const up=vars.find(v=>v.id===optPropVarId(p, c.o.id));
+    if(!up) continue;
+    n += c.qty*((+up.unitPrice||0) - (+((base&&base.unitPrice)||0)));
+  }
+  return n;
+}
+function fixedVariantId(p, optionId){
+  const up=optPropVarId(p, optionId);
+  if(!up) return null;
+  if(propMode(p)==="up") return up;
+  const base=propDefaultVariant(p);
+  return base ? base.id : null;
+}
 function assignedVariantId(p, optionId){
   const e=assignEntry(p, optionId);
   const id=Object.keys(e).find(k=>e[k].includes("in"));
+  /* a deliberate choice on one item still wins over the switch, so a
+     single section can deviate from whatever the line is set to */
   if(id && (p.variants||[]).some(v=>v.id===id)) return id;
-  /* nothing chosen in the quote: what the catalogue says stands */
   return fixedVariantId(p, optionId);
 }
 /* a row counts as dealt with once any type on it has been given a standing */
 const assignAnswered = (p, optionId) =>
-  Object.keys(assignEntry(p,optionId)).length>0 || !!fixedVariantId(p, optionId);
+  Object.keys(assignEntry(p,optionId)).length>0 || !!optPropVarId(p, optionId);
 function assignUnanswered(p){
   return propContributors(p).filter(c=>!assignAnswered(p,c.o.id));
 }
@@ -6668,6 +6730,14 @@ function renderConfigure(){
     </div>`;
   if(m.custom) wireCustomScreen();
   if(m.service) wireServiceScreen(document.getElementById("main"));
+  /* the one choice for the whole line, above the per-item table */
+  document.querySelectorAll("#main [data-pmode]").forEach(btn=>{
+    btn.onclick=()=>{
+      const p=(CONFIG.props||[]).find(x=>x.id===m.propId); if(!p) return;
+      setPropMode(p, btn.dataset.pmode);
+      reconcile(); saveSoon(); renderConfigure();
+    };
+  });
   document.querySelectorAll("#main [data-setall]").forEach(btn=>{
     btn.onclick=()=>{
       const p=(CONFIG.props||[]).find(x=>x.id===m.propId); if(!p) return;
@@ -8564,6 +8634,39 @@ function assignScreenHtml(m){
     </div>`;
   }
   if(!items.length) return `<div class="empty">Nothing in this quote needs ${lower} yet.</div>`;
+  /* The one choice, when the catalogue has said what the upgrade means.
+     Above the per-item table, because it is the decision that settles
+     almost every row underneath it. */
+  const modeBand=(()=>{
+    if(!propHasModes(p)) return "";
+    const base=propDefaultVariant(p);
+    const up=propMode(p)==="up";
+    const delta=propModeDelta(p);
+    const perModule=propContributors(p).map(c=>{
+      const v=(p.variants||[]).find(x=>x.id===optPropVarId(p,c.o.id));
+      return v?{name:c.o.name, qty:c.qty, type:v.name, each:+v.unitPrice||0}:null;
+    }).filter(Boolean);
+    return `<div class="pmode ${up?"is-up":""}">
+      <div class="pmodehead">Which ${lower} for this line?</div>
+      <div class="pmodepick">
+        <button class="pmodebtn ${up?"":"on"}" data-pmode="base">
+          <b>${esc(base?base.name:"Standard")}</b>
+          <span>${+((base&&base.unitPrice)||0)?fmt(+base.unitPrice)+" each":"included"}</span>
+        </button>
+        <button class="pmodebtn ${up?"on":""}" data-pmode="up">
+          <b>As specified per module</b>
+          <span>${delta>0?"+ "+fmt(delta):(delta<0?"&minus; "+fmt(-delta):"no extra cost")}</span>
+        </button>
+      </div>
+      <div class="pmodelist">${perModule.map(x=>`<div class="pmoderow">
+        <span class="qty">${x.qty}&times;</span> ${esc(x.name)}
+        <span class="arrow">&rarr;</span> <b>${esc(x.type)}</b>
+        <span class="meta">${x.each?fmt(x.each)+" each":"included"}</span>
+      </div>`).join("")}</div>
+      <div class="pmodefoot">Each module keeps its own type and its own price, so one press
+        moves the whole line. A single item can still be set differently in the table below.</div>
+    </div>`;
+  })();
   const vars=p.variants||[];
   const todo=assignUnanswered(p);
   const allHave=(vid,sc)=>items.length && items.every(c=>hasVariantScope(p, c.o.id, vid, sc));
@@ -8643,7 +8746,7 @@ function assignScreenHtml(m){
   const offered=propScopeLines("opt").filter(r=>r.p===p).reduce((t,r)=>t+r.price,0)
               + propScopeLines("alt").filter(r=>r.p===p).reduce((t,r)=>t+r.price,0);
   const todoBar=todo.length?`<div class="asg-todobar">${todo.length} item${todo.length>1?"s":""} still to decide — nothing is picked until you say so.</div>`:"";
-  return `<div class="assignwrap">${todoBar}
+  return `<div class="assignwrap">${modeBand}${todoBar}
     <div class="asgscroll"><table class="asgtable" style="min-width:${260+vars.length*2*74+96}px">${colgroup}${head}${body}</table></div>
     <div class="assigntotals">${pills}<span class="spacer"></span>${
       offered?`<span class="offeredsum">plus ${fmt(offered)} offered</span>`:""}<b>${fmt(inScope)}</b></div>
