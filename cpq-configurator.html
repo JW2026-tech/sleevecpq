@@ -13656,6 +13656,10 @@ async function boot(){
   await reattachCloudQuote();
   await loadQuoteMeta();
   renderQuoteBar();
+  /* Quotes is drawn during bootLocalOnly, before the quote has been picked
+     back up, so it would still be offering to save a quote that is already
+     a row and would not mark it as the open one in the list. */
+  if(mode==="quotes") renderQuotes();
   /* One check right away: a tab left open overnight, or one opened after a
      colleague published, should say so before you start quoting from it. */
   checkCatalogueUpstream();
