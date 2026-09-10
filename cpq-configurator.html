@@ -11403,6 +11403,10 @@ async function takeUpstreamCatalogue(){
   if(!ok){ alert("Could not load the newer catalogue."); return; }
   catUpstream=null; catUpstreamSnoozed=null;
   const p=document.getElementById("catDiffPanel"); if(p) p.remove();
+  /* the open quote now belongs to the catalogue it was just moved to, and
+     reconcile may have dropped what the new one no longer has — both have
+     to be written down rather than left on screen */
+  saveSoon();
   flagSaved("Catalogue updated");
   renderNotices(); renderCatalogueBar(); refreshView();
   if(mode==="admin") renderAdmin();
@@ -11602,6 +11606,33 @@ function renderCatalogueBar(){
     if(tt) tt.onclick=()=>draftTakeTheirs();
     return;
   }
+  /* Working from a pinned version rather than the shared catalogue. That
+     happens when a quote is opened on the catalogue it was written against.
+     It has to be said plainly: edits here are not going to the catalogue
+     the rest of the team is working in, and there has to be a way home. */
+  if(draftRev===null && loadedCatalogueVersion){
+    bar.classList.toggle("dirty", dirty);
+    bar.innerHTML=`
+      <span class="catdot"></span>
+      <span class="catmsg"><b>Catalogue version ${loadedCatalogueVersion}.</b>
+        This is the catalogue the open quote was written against, so its prices
+        and steps are the ones it was made with.
+        ${dirty?`Your edits here go nowhere — this is a frozen version, not the shared catalogue.`
+               :`Editing here does not reach the shared catalogue.`}</span>
+      <button class="btn sm" id="catToDraft" title="Leave this quote's catalogue and work in the one the team shares">Back to the shared catalogue</button>`;
+    const home=document.getElementById("catToDraft");
+    if(home) home.onclick=async ()=>{
+      if(dirty && !confirm("Your edits to this frozen version are lost when you leave it. Continue?")) return;
+      loadedCatalogueVersion=null;
+      if(await cloudLoadCatalogueDraft()){
+        catUpstream=null; catUpstreamSnoozed=null;
+        flagSaved("Back on the shared catalogue");
+        renderCatalogueBar(); renderNotices(); refreshView();
+        if(mode==="admin") renderAdmin();
+      } else alert("Could not load the shared catalogue.");
+    };
+    return;
+  }
   /* on the shared draft the edits are never only local, so the wording
      changes: the question is no longer "is my work safe" but "have the
      customers been given this yet" */
@@ -11660,6 +11691,13 @@ function quotePayload(name){
   return {kind:"cpq-quote", v:2, name:name||defaultQuoteName(), savedAt:Date.now(),
           quote:pickKeys(CONFIG, QUOTE_KEYS),
           state:clone(state), scope:collectScopeFlags(),
+          /* which catalogue this quote's prices belong to, so reopening it
+             later brings that catalogue back instead of quietly repricing
+             it against whatever has been published since. On a pinned
+             version that is the version; while working from the shared
+             draft the closest true anchor is the newest published one,
+             which is also what a customer link would pin to. */
+          catalogueVersion: loadedCatalogueVersion || publishedVersion || null,
           docLang, cursor, includedSteps:clone(includedSteps), navWidth, partsColW:clone(partsColW)};
 }
 /* the catalogue lands on top of whatever quote is open */
@@ -11915,7 +11953,13 @@ async function cloudLoadLatestCatalogue(){
     .order("version",{ascending:false}).limit(1).single();
   if(error || !data) return false;
   const ok=applyCatalogue({catalogue: data.data});
-  if(ok) loadedCatalogueVersion=data.version;
+  if(ok){
+    loadedCatalogueVersion=data.version;
+    /* A version is not the shared draft. Without this, draftSaveSoon would
+       write this frozen copy back over the catalogue the whole team is
+       editing — an old catalogue silently replacing the current one. */
+    draftRev=null; draftConflict=null;
+  }
   /* what is now in memory is exactly what the team has, so that becomes the
      baseline unpublished edits are measured against */
   if(ok) markCataloguePublished();
@@ -12095,16 +12139,47 @@ async function cloudActiveShares(){
   if(!error) for(const s of (data||[])) if(!byQuote.has(s.quote_id)) byQuote.set(s.quote_id, s);
   return byQuote;
 }
+/* Which catalogue does this quote belong to? Its own stamp if it has one;
+   otherwise the version its link is pinned to, which is what the customer
+   was shown. Older quotes have neither and stay where they are. */
+async function quoteCatalogueVersion(id, payload){
+  const own=payload && payload.catalogueVersion;
+  if(own) return own;
+  if(!supa) return null;
+  try{
+    const {data}=await supa.from("quote_shares").select("catalogue_version,created_at")
+      .eq("quote_id",id).not("catalogue_version","is",null)
+      .order("created_at",{ascending:false}).limit(1).maybeSingle();
+    return (data&&data.catalogue_version)||null;
+  }catch(err){ return null; }
+}
 async function cloudOpenQuote(id){
   if(!supa) return false;
   const {data, error} = await supa.from("quotes").select("data,rev").eq("id", id).single();
   if(error || !data) return false;
+  /* The catalogue comes first: opening a quote on today's prices and only
+     then noticing it was written on version 17 is exactly the silent
+     repricing this is meant to stop. applyAnyFile carries the quote's own
+     scope marks across the catalogue swap. */
+  const want=await quoteCatalogueVersion(id, data.data);
+  if(want && want!==loadedCatalogueVersion){
+    const cat=await catalogueVersionData(want);
+    if(cat && applyCatalogue({catalogue:cat})){
+      loadedCatalogueVersion=want;
+      /* off the shared draft: nothing typed here may be written back to the
+         catalogue everyone else is editing */
+      draftRev=null; draftConflict=null;
+      markCataloguePublished();
+      flagSaved("Opened on catalogue version "+want);
+    }
+  }
   if(!applyAnyFile(data.data)) return false;
   cloudQuoteId=id; cloudQuoteRev=data.rev; cloudConflictPaused=false;
   cloudSavedSig=quoteContentSig(data.data);
   removeCloudConflictBanner();
   /* the bar speaks for whichever quote is open, so it has to be told */
-  loadQuoteMeta().then(()=>renderQuoteBar());
+  loadQuoteMeta().then(()=>{ renderQuoteBar(); checkCatalogueUpstream(); });
+  renderCatalogueBar();
   return true;
 }
 async function cloudDuplicateQuote(id){
@@ -12205,6 +12280,14 @@ async function newQuote(){
     clearTimeout(saveTimer); saveNow();
   }
   clearQuoteSide();
+  /* A new quote is written against the catalogue in use, not against the
+     frozen version the previous quote happened to be pinned to. */
+  if(draftRev===null && loadedCatalogueVersion && supa){
+    loadedCatalogueVersion=null;
+    if(!await cloudLoadCatalogueDraft()) await cloudLoadLatestCatalogue();
+    catUpstream=null; catUpstreamSnoozed=null;
+    renderCatalogueBar();
+  }
   reconcile();
   saveNow();
   setMode("configure");
