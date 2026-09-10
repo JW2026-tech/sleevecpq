@@ -746,6 +746,59 @@
   .revpill.is-sent{border-style:solid;border-color:#28338A;color:#28338A;
     background:var(--accent-soft);font-weight:600}
   td.qshare{min-width:330px}
+
+  /* ================= THE QUOTES SCREEN =================
+     A card per quote. Everything you scan sits in the same place on every
+     card — number, customer, what the customer can see, what it comes to —
+     however many revisions hang underneath. */
+  .qhead{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:18px}
+  .qhead h2{margin:0 0 3px}
+  .qheadacts{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .qsearch{width:230px;padding:7px 11px;border-radius:8px}
+  .qcard{display:grid;grid-template-columns:1fr auto auto;gap:6px 18px;align-items:center;
+    border:1px solid var(--line);border-left:3px solid transparent;border-radius:12px;
+    background:var(--panel);padding:13px 16px;margin-bottom:9px;transition:.12s}
+  .qcard:hover{border-color:var(--line-strong);box-shadow:0 1px 4px var(--shadow)}
+  .qcard.is-open{border-left-color:var(--accent);background:var(--accent-soft)}
+  .qcid{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .qcnum{font-size:15.5px;font-variant-numeric:tabular-nums;letter-spacing:.2px}
+  .qcopen{font-size:10px;text-transform:uppercase;letter-spacing:.6px;font-weight:700;
+    color:var(--accent);background:var(--panel);border:1px solid var(--accent);
+    padding:1px 7px;border-radius:20px}
+  .qcstat{font-size:10.5px;padding:1px 8px;border-radius:20px;border:1px solid var(--line-strong);
+    color:var(--txt-dim);white-space:nowrap}
+  .qcstat.is-sent{color:#28338A;border-color:#28338A;background:var(--accent-soft);font-weight:600}
+  .qcstat.is-accepted{color:var(--ok);border-color:var(--ok);font-weight:600}
+  .qcstat.is-rejected{color:var(--bad);border-color:var(--bad)}
+  .qcwho{font-size:13px;color:var(--txt);margin-top:2px}
+  .qcstate{font-size:11.5px;color:var(--txt-dim);margin-top:5px;display:flex;
+    align-items:center;gap:7px;flex-wrap:wrap}
+  /* one dot, four meanings: nothing shared, a draft only you can see,
+     something the customer is looking at, something taken down */
+  .qcdot{width:7px;height:7px;border-radius:50%;flex:0 0 7px;background:var(--line-strong)}
+  .qcdot.is-draft{background:var(--warn)}
+  .qcdot.is-sent{background:var(--ok)}
+  .qcdot.is-off{background:var(--txt-faint)}
+  .qcflag{font-size:10.5px;padding:1px 7px;border-radius:20px;color:var(--warn);
+    border:1px solid var(--warn);white-space:nowrap}
+  .qcright{text-align:right;white-space:nowrap}
+  .qcmoney{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--txt)}
+  .qcacts{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-self:end}
+  .qcmore{color:var(--txt-dim)}
+  .qcdetail{grid-column:1 / -1;border-top:1px solid var(--line-soft);margin-top:10px;padding-top:8px}
+  .qcsub{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--txt-faint);
+    margin:6px 0 3px}
+  .qcdetail .revline .spacer{flex:1}
+  .qempty{border:1px dashed var(--line-strong);border-radius:12px;padding:26px;
+    text-align:center;color:var(--txt-dim);font-size:13px}
+  .qcat{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:22px;
+    padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--rail)}
+  .qcattext{flex:1;min-width:220px;font-size:12.5px}
+  @media(max-width:820px){
+    .qcard{grid-template-columns:1fr}
+    .qcright{text-align:left}
+    .qcacts{justify-self:start}
+  }
   /* the log and version panels drop out of the bar */
   .qbpanel{border-bottom:1px solid var(--line);background:var(--panel);
     padding:12px 16px;max-height:320px;overflow-y:auto}
@@ -11741,6 +11794,9 @@ function quotePayload(name){
   return {kind:"cpq-quote", v:2, name:name||defaultQuoteName(), savedAt:Date.now(),
           quote:pickKeys(CONFIG, QUOTE_KEYS),
           state:clone(state), scope:collectScopeFlags(),
+          /* what this quote comes to, so the list can show it without
+             rebuilding every quote against the catalogue to find out */
+          total:(()=>{ try{ return priceRowsTotal(buildPriceRows(false)); }catch(e){ return null; } })(),
           /* which catalogue this quote's prices belong to, so reopening it
              later brings that catalogue back instead of quietly repricing
              it against whatever has been published since. On a pinned
@@ -12169,7 +12225,7 @@ function removeCloudConflictBanner(){
 async function cloudListQuotes(){
   if(!supa) return [];
   const {data, error} = await supa.from("quotes")
-    .select("id,number,customer,title,status,rev,updated_at").order("updated_at",{ascending:false});
+    .select("id,number,customer,title,status,rev,updated_at,data").order("updated_at",{ascending:false});
   if(error) return [];
   return data||[];
 }
@@ -12578,76 +12634,115 @@ function showQuoteFolder(){
    now the only place this lives, shared by the whole team. Rendering is
    synchronous (shell + "Loading…"), the quote list and share statuses
    arrive a moment later and replace the placeholder in place. */
+/* ======================================================================
+   THE QUOTES SCREEN
+   This is where the tool opens, so it has one job: let you pick up work.
+   It was a table, and a table was the wrong shape — every quote carries a
+   stack of revisions, so the rows grew to different heights and the things
+   you actually scan for (which quote, whose, how much, what is live with
+   the customer) floated in whitespace between them.
+
+   A card per quote instead. The front says the state in one line; the
+   revisions and the rarer actions fold out. What you scan stays in the
+   same place on every card, whether it has one revision or five.
+   ====================================================================== */
+let quoteFilter="";
+let quoteOpenCards={};          // which cards are folded out
+/* "3 hours ago" reads faster than a timestamp when you are scanning for
+   the thing you touched this morning. Older than a week gets a date. */
+function agoWords(t){
+  if(!t) return "";
+  const d=new Date(t), ms=Date.now()-d.getTime(), min=Math.round(ms/60000);
+  if(min<1) return "just now";
+  if(min<60) return min+" min ago";
+  const h=Math.round(min/60);
+  if(h<24) return h+(h===1?" hour ago":" hours ago");
+  const days=Math.round(h/24);
+  if(days===1) return "yesterday";
+  if(days<7) return days+" days ago";
+  return d.toLocaleDateString(undefined,{day:"numeric",month:"short"});
+}
+function shortDate(t){
+  try{ return new Date(t).toLocaleDateString(undefined,{day:"numeric",month:"short"}); }
+  catch(e){ return ""; }
+}
+const QSTATUS_WORDS={draft:"Draft", sent:"Sent", accepted:"Accepted", rejected:"Rejected"};
+/* The state of a quote's link, as one sentence and one colour. The newest
+   revision decides; an earlier sent one is named as well, because "rev 3
+   draft" alone hides the fact that rev 2 is what the customer has. */
+function linkStateOf(list){
+  if(!list || !list.length)
+    return {tone:"none", text:"No customer link yet"};
+  const top=list[0];
+  const sentOne=list.find(s=>s.sent_at);
+  const off=!!top.revoked_at;
+  const gone=top.expires_at && new Date(top.expires_at)<new Date();
+  const parts=[];
+  let tone;
+  if(top.sent_at){
+    tone = (off||gone) ? "off" : "sent";
+    parts.push("Sent "+shortDate(top.sent_at)+" &middot; rev "+(top.revision||1));
+  } else {
+    tone = (off||gone) ? "off" : "draft";
+    parts.push("Draft link &middot; rev "+(top.revision||1));
+  }
+  if(top.catalogue_version) parts.push("catalogue v"+top.catalogue_version);
+  if(off) parts.push("offline");
+  else if(gone) parts.push("expired");
+  else parts.push((top.sent_at?"live until ":"until ")+shortDate(top.expires_at));
+  if(!top.sent_at && sentOne)
+    parts.push("rev "+(sentOne.revision||1)+" sent "+shortDate(sentOne.sent_at));
+  return {tone, text:parts.join(" &middot; "),
+          edited: list.some(s=>s.customer_changed_at && !s.revoked_at)};
+}
 function renderQuotes(){
   const el=document.getElementById("quotesBody");
-  const m=quoteMeta();
 
-  el.innerHTML=`<h2>Quotes</h2>
-    <div class="docsub">Quotes and the catalogue live in the cloud, shared with your whole team.</div>
-
-    <div class="qcur">
-      <div class="qcurhead">On screen now</div>
-      <div class="qcurbody">
-        <b>${esc(m.quoteNumber||"no number")}</b>
-        <span>${esc(m.customer||"no customer yet")}</span>
-        <span>${esc(m.model||"")}</span>
-        <span class="num">${m.total?fmt(m.total):"—"}</span>
+  el.innerHTML=`
+    <div class="qhead">
+      <div>
+        <h2>Quotes</h2>
+        <div class="docsub">Quotes and the catalogue live in the cloud, shared with your whole team.</div>
       </div>
-      <div class="qcuracts">
-        ${/* This screen is where the tool now opens, so the way onward has
-              to be on it. Three things you can want here: carry on with
-              what is open, begin something new, or pick one from the list
-              below. */""}
-        <button class="btn primary" id="qContinue">Continue this quote</button>
-        ${cloudQuoteId?`<button class="btn" id="qLink">${
-          shareIsSent()?`New revision (rev ${shareRevision()+1})`
-          :(quoteShare?"Update the customer link":"Share with customer")}</button>`:""}
-        <button class="btn" id="qNew" title="Start an empty quote. This one is saved first, and the catalogue stays as it is.">New quote</button>
-        ${!cloudQuoteId?`<button class="btn" id="qSaveNew" title="This quote only exists in this browser so far">Save as new quote</button>`:""}
-        <button class="btn" id="qExportCur">Export file</button>
-        <label class="btn" for="qImport">Import file</label>
+      <div class="qheadacts">
+        <input class="in qsearch" id="qSearch" type="search" placeholder="Search number or customer"
+               value="${esc(quoteFilter)}" autocomplete="off">
+        <button class="btn primary" id="qNew" title="Start an empty quote. Whatever is on screen is saved first, and the catalogue stays as it is.">+ New quote</button>
+        <label class="btn" for="qImport" title="Open a quote from a .json file">Import</label>
         <input type="file" id="qImport" accept=".json,application/json" class="hidden">
       </div>
     </div>
 
-    <div class="qshared">
-      <div class="shhead">
-        <div class="shtitle">Catalogue <span class="shsub">steps, options, prices, templates, format parts</span></div>
-        <button class="btn sm" id="qPublishCat">Publish new version</button>
-        <button class="btn sm" id="qLoadCat">Load latest</button>
-      </div>
-      <div class="meta" id="qCatInfo">Checking…</div>
-    </div>
+    <div id="qListWrap"><div class="meta">Loading quotes…</div></div>
 
-    <div class="tablewrap" id="qListWrap"><div class="meta">Loading quotes…</div></div>`;
+    <div class="qcat">
+      <div class="qcattext">
+        <b>Catalogue</b> <span class="meta">steps, options, prices, templates, format parts</span>
+        <div class="meta" id="qCatInfo">Checking…</div>
+      </div>
+      <button class="btn sm" id="qPublishCat">Publish new version</button>
+      <button class="btn sm" id="qLoadCat">Load latest</button>
+    </div>`;
 
   const wire=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
-  wire("qExportCur", ()=>exportQuote(null));
-  wire("qContinue", ()=>setMode("configure"));
-  wire("qLink", ()=>{
-    if(shareIsSent())      askRevisionCatalogue(cloudQuoteId,
-                             quoteCatVersion || quoteShare.catalogue_version || null,
-                             shareRevision()+1);
-    else if(quoteShare)    pushShareNow();
-    else                   createRevisionOn(null, cloudQuoteId);
-  });
-  wire("qSaveNew", async ()=>{
-    try{ await cloudCreateQuote(); flagSaved("Saved as new quote"); renderQuotes(); }
-    catch(err){ alert("Could not save: "+(err&&err.message||err)); }
-  });
   wire("qNew", ()=>{ newQuote(); });
   wire("qPublishCat", async ()=>{
-    /* no label prompt here either — see the Admin bar's publish button */
     try{ const v=await cloudPublishCatalogue(null); flagSaved("Published version "+v); renderQuotes(); }
     catch(err){ alert("Could not publish: "+(err&&err.message||err)); }
   });
   wire("qLoadCat", async ()=>{
     if(!confirm("Load the latest published catalogue? This replaces the catalogue on screen — your quote selections stay.")) return;
-    if(await cloudLoadLatestCatalogue()){ flagSaved("Catalogue updated"); }
+    if(await cloudLoadLatestCatalogue()){ flagSaved("Catalogue updated"); renderQuotes(); }
     else alert("Could not load a catalogue — has one ever been published?");
   });
   const imp=document.getElementById("qImport");
   if(imp) imp.onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f) importJsonFile(f); };
+  const search=document.getElementById("qSearch");
+  if(search) search.oninput=()=>{
+    quoteFilter=search.value;
+    const w=document.getElementById("qListWrap");
+    if(w && w._quotes) paintQuoteCards(w._quotes, w._shares);
+  };
 
   if(!supa){
     document.getElementById("qCatInfo").textContent="Cloud storage isn't available right now.";
@@ -12658,135 +12753,186 @@ function renderQuotes(){
   supa.from("catalogue_versions").select("version,label,created_at")
     .order("version",{ascending:false}).limit(1).maybeSingle().then(({data})=>{
       const span=document.getElementById("qCatInfo"); if(!span) return;
-      /* The thirteen versions published before the label prompt was removed
-         all carry the publish date as their label, so showing it would read
-         "Version 13 — 20260831, published 31-8-2026". A label that only
-         repeats the date it sits next to is not worth the words. */
       const dateish = data && data.label
         && data.label.replace(/\D/g,"")===data.created_at.slice(0,10).replace(/-/g,"");
       span.textContent = data
-        ? `Version ${data.version}${(data.label&&!dateish)?" — "+data.label:""}, published ${new Date(data.created_at).toLocaleString()}`
+        ? `Version ${data.version}${(data.label&&!dateish)?" — "+data.label:""}, published ${new Date(data.created_at).toLocaleDateString()}`
         : "No catalogue published yet.";
     }).catch(()=>{});
 
   Promise.all([cloudListQuotes(), cloudActiveShares()]).then(([quotes, shares])=>{
     const wrap=document.getElementById("qListWrap"); if(!wrap) return;
-    if(!quotes.length){ wrap.innerHTML='<div class="meta">No quotes saved yet.</div>'; return; }
-    wrap.innerHTML=`<table class="quotestable">
-      <tr><th>Quote</th><th>Customer</th><th>Updated</th><th>Share link</th><th></th></tr>
-      ${quotes.map(q=>{
-        const share=shares.get(q.id);
-        return `<tr class="${q.id===cloudQuoteId?"iscur":""}" data-qid="${esc(q.id)}">
-          <td class="qname"><b>${esc(q.number||"—")}</b>${q.id===cloudQuoteId?'<span class="curpill">open</span>':""}</td>
-          <td>${esc(q.customer||"—")}</td>
-          <td class="when">${q.updated_at?new Date(q.updated_at).toLocaleString():""}</td>
-          <td class="qshare">${(share&&share.length)
-            ? share.map(sh=>{
-                const sent=!!sh.sent_at, off=!!sh.revoked_at,
-                      gone=sh.expires_at && new Date(sh.expires_at)<new Date(),
-                      live=!off && !gone;
-                return `<div class="revline">
-                  <span class="revpill ${sent?"is-sent":""}" title="${sent
-                    ? "Sent on "+new Date(sh.sent_at).toLocaleDateString()+" — this is the record of what the customer was given"
-                    : "Not sent yet, so this one is still yours to change"}">rev ${sh.revision||1} &middot; ${
-                    sent?"sent "+new Date(sh.sent_at).toLocaleDateString():"draft"}</span>
-                  ${sh.catalogue_version?`<span class="meta" title="This link keeps showing catalogue version ${sh.catalogue_version}; publishing new prices does not change it">v${sh.catalogue_version}</span>`:""}
-                  ${off?`<span class="meta">offline</span>`:(gone?`<span class="meta">expired</span>`:
-                     `<span class="meta">until ${new Date(sh.expires_at).toLocaleDateString()}</span>`)}
-                  ${sh.customer_changed_at?`<span class="meta" title="The customer changed his own selection in this link">customer edited</span>`:""}
-                  ${live?`<button class="pbtn" data-copyshare="${esc(sh.token)}">Copy link</button>`:""}
-                  ${sent
-                    ? `<button class="pbtn" data-shoffline="${esc(sh.id)}" data-off="${off?"0":"1"}">${off?"Put online":"Take offline"}</button>`
-                    : `<button class="pbtn" data-shsend="${esc(sh.id)}" title="From then on this link is the record: it cannot be changed or deleted, only taken offline">Mark as sent</button>
-                       <button class="x" data-shdel="${esc(sh.id)}" title="Delete this draft link">&times;</button>`}
-                </div>`;
-              }).join("")
-            : `<span class="meta">Not shared</span>`}
-            <div class="revline">${(()=>{
-              const top=(share&&share.length)?share[0]:null;
-              if(!top) return `<button class="pbtn" data-shnew="${esc(q.id)}" title="Make the first link for this quote">Share with customer</button>`;
-              if(top.sent_at) return `<button class="pbtn" data-shnew="${esc(q.id)}" title="Revision ${top.revision||1} has been sent and stays as it is. The next revision gets its own link, and its own catalogue.">New revision (rev ${(top.revision||1)+1})</button>`;
-              return `<button class="pbtn" data-shpush="${esc(top.id)}" title="Revision ${top.revision||1} has not been sent, so it is still yours to change — this puts the quote as it stands into that link">Update rev ${top.revision||1}</button>`;
-            })()}</div></td>
-          <td class="qacts">
-            ${/* Before Open, deliberately: on an older catalogue, opening is
-                 the destructive move and looking is the safe one. */""}
-            <button class="btn sm" data-qact="peek" title="Read this quote against the catalogue it was made on — in scope, optional, alternative — and see what moving it to the newest catalogue would change, without opening it">Compare catalogue to newest version</button>
-            <button class="btn sm" data-qact="open">Open</button>
-            <button class="btn sm" data-qact="dup">Copy</button>
-            <button class="x" data-qact="del" title="Delete">&times;</button>
-          </td>
-        </tr>`;
-      }).join("")}
-    </table>`;
-
-    wrap.querySelectorAll("[data-qact]").forEach(b=>{
-      const id=b.closest("tr").dataset.qid, act=b.dataset.qact;
-      b.onclick=async ()=>{
-        if(act==="peek"){
-          await showQuoteBreakdown(id, b);
-        } else if(act==="open"){
-          if(!confirm("Open this quote? Anything unsaved on screen is replaced.")) return;
-          if(await cloudOpenQuote(id)){ setMode("configure"); flagSaved("Opened"); }
-          else alert("Could not open that quote.");
-        } else if(act==="dup"){
-          try{ await cloudDuplicateQuote(id); flagSaved("Duplicated"); renderQuotes(); }
-          catch(err){ alert("Could not duplicate: "+(err&&err.message||err)); }
-        } else if(act==="del"){
-          if(!confirm("Delete this quote? This cannot be undone.")) return;
-          try{ await cloudDeleteQuote(id); renderQuotes(); }
-          catch(err){ alert("Could not delete: "+(err&&err.message||err)); }
-        }
-      };
-    });
-    wrap.querySelectorAll("[data-copyshare]").forEach(b=>{
-      b.onclick=()=>{
-        const url=`${location.origin}${location.pathname}?share=${b.dataset.copyshare}`;
-        navigator.clipboard.writeText(url).then(()=>flagSaved("Link copied"));
-      };
-    });
-    wrap.querySelectorAll("[data-shdel]").forEach(b=>{
-      b.onclick=async ()=>{
-        if(!confirm("Delete this draft link? Nothing has been sent from it, so nothing is lost.")) return;
-        const {error}=await supa.from("quote_shares").delete().eq("id", b.dataset.shdel);
-        if(error) return alert("Could not delete it: "+error.message);
-        if(cloudQuoteId) await loadQuoteMeta();
-        renderQuotes(); renderQuoteBar();
-      };
-    });
-    wrap.querySelectorAll("[data-shpush]").forEach(b=>{
-      b.onclick=async ()=>{
-        try{
-          /* if it happens to be the open quote, its edits go in first */
-          if(cloudQuoteId) await flushQuoteNow();
-          const {error}=await supa.rpc("push_quote_share",{p_share_id:b.dataset.shpush});
-          if(error) throw error;
-          if(cloudQuoteId) await loadQuoteMeta();
-          flagSaved("Link updated");
-          renderQuotes(); renderQuoteBar();
-        }catch(err){ alert("Could not update that link: "+(err&&err.message||err)); }
-      };
-    });
-    wrap.querySelectorAll("[data-shsend]").forEach(b=>{
-      b.onclick=()=>markShareSent(b.dataset.shsend);
-    });
-    wrap.querySelectorAll("[data-shoffline]").forEach(b=>{
-      b.onclick=()=>setShareOffline(b.dataset.off==="1", b.dataset.shoffline);
-    });
-    wrap.querySelectorAll("[data-shnew]").forEach(b=>{
-      b.onclick=async ()=>{
-        const id=b.dataset.shnew;
-        const list=shares.get(id)||[];
-        const newest=list[0];
-        if(!newest || !newest.sent_at){ await createRevisionOn(null, id); return; }
-        askRevisionCatalogue(id, newest.catalogue_version||null, (newest.revision||1)+1);
-      };
-    });
+    wrap._quotes=quotes; wrap._shares=shares;
+    paintQuoteCards(quotes, shares);
+    fillMissingTotals(quotes);
   }).catch(()=>{
-    const wrap=document.getElementById("qListWrap"); if(wrap) wrap.innerHTML='<div class="meta">Could not load quotes.</div>';
+    const wrap=document.getElementById("qListWrap");
+    if(wrap) wrap.innerHTML='<div class="meta">Could not load quotes.</div>';
   });
 }
+/* Quotes saved before the total travelled with them show nothing in the
+   money column, and an empty column is the one thing you cannot scan. They
+   are worked out here instead — capped, and one at a time with the thread
+   handed back in between, because each one clones the catalogue. */
+async function fillMissingTotals(quotes){
+  const todo=quotes.filter(q=>q.data && typeof q.data.total!=="number").slice(0,12);
+  for(const q of todo){
+    await new Promise(r=>setTimeout(r,0));
+    let t=null;
+    try{ t=readQuoteAgainst(q.data, null).total; }catch(err){ continue; }
+    q.data.total=t;
+    const cell=document.querySelector(`[data-qtotal="${q.id}"]`);
+    if(cell) cell.textContent=fmt(t);
+  }
+}
+function paintQuoteCards(quotes, shares){
+  const wrap=document.getElementById("qListWrap"); if(!wrap) return;
+  const needle=quoteFilter.trim().toLowerCase();
+  let list=quotes;
+  if(needle) list=list.filter(q=>
+    (q.number||"").toLowerCase().includes(needle) ||
+    (q.customer||"").toLowerCase().includes(needle));
+  /* the open quote first, wherever it sits by date: it is the one you are
+     most likely to have come here to carry on with */
+  list=list.slice().sort((a,b)=>(b.id===cloudQuoteId)-(a.id===cloudQuoteId));
 
+  if(!quotes.length){ wrap.innerHTML='<div class="qempty">No quotes yet. <b>+ New quote</b> starts one.</div>'; return; }
+  if(!list.length){ wrap.innerHTML=`<div class="qempty">Nothing matches “${esc(quoteFilter)}”.</div>`; return; }
+
+  wrap.innerHTML=list.map(q=>{
+    const revs=shares.get(q.id)||[];
+    const st=linkStateOf(revs);
+    const isOpen=q.id===cloudQuoteId;
+    const shown=!!quoteOpenCards[q.id];
+    const top=revs[0]||null;
+    const live=top && !top.revoked_at && !(top.expires_at && new Date(top.expires_at)<new Date());
+    const status=(q.status||"draft");
+    const total=(q.data && typeof q.data.total==="number") ? q.data.total : null;
+    return `<div class="qcard ${isOpen?"is-open":""}" data-qid="${esc(q.id)}">
+      <div class="qcmain">
+        <div class="qcid">
+          <b class="qcnum">${esc(q.number||"—")}</b>
+          ${isOpen?`<span class="qcopen">open</span>`:""}
+          <span class="qcstat is-${esc(status)}">${esc(QSTATUS_WORDS[status]||status)}</span>
+        </div>
+        <div class="qcwho">${esc(q.customer||"No customer yet")}${
+          q.title?`<span class="meta"> &middot; ${esc(q.title)}</span>`:""}</div>
+        <div class="qcstate">
+          <span class="qcdot is-${st.tone}"></span>${st.text}
+          ${st.edited?`<span class="qcflag" title="The customer changed his own selection in his link">customer edited</span>`:""}
+        </div>
+      </div>
+      <div class="qcright">
+        <div class="qcmoney" data-qtotal="${esc(q.id)}">${total!==null?fmt(total):"…"}</div>
+        <div class="meta">${esc(agoWords(q.updated_at))}</div>
+      </div>
+      <div class="qcacts">
+        <button class="btn sm primary" data-qact="${isOpen?"continue":"open"}">${isOpen?"Continue":"Open"}</button>
+        ${live?`<button class="btn sm" data-copyshare="${esc(top.token)}">Copy link</button>`:""}
+        ${(()=>{
+          if(!top) return `<button class="btn sm" data-shnew="${esc(q.id)}" title="Make the first link for this quote">Share</button>`;
+          if(top.sent_at) return `<button class="btn sm" data-shnew="${esc(q.id)}" title="Revision ${top.revision||1} has been sent and stays as it is. The next revision gets its own link, and its own catalogue.">New revision</button>`;
+          return `<button class="btn sm" data-shpush="${esc(top.id)}" title="Revision ${top.revision||1} has not been sent, so it is still yours to change — this puts the quote as it stands into that link">Update link</button>`;
+        })()}
+        <button class="btn sm qcmore" data-more="${esc(q.id)}">${shown?"Less &#9652;":"More &#9662;"}</button>
+      </div>
+      ${shown?`<div class="qcdetail">
+        <div class="qcsub">Revisions</div>
+        ${revs.length?revs.map(sh=>{
+          const sent=!!sh.sent_at, off=!!sh.revoked_at,
+                gone=sh.expires_at && new Date(sh.expires_at)<new Date(),
+                alive=!off && !gone;
+          return `<div class="revline">
+            <span class="revpill ${sent?"is-sent":""}" title="${sent
+              ? "Sent on "+new Date(sh.sent_at).toLocaleDateString()+" — the record of what the customer was given: it cannot be changed or deleted"
+              : "Not sent yet, so this one is still yours to change"}">rev ${sh.revision||1} &middot; ${
+              sent?"sent "+shortDate(sh.sent_at):"draft"}</span>
+            ${sh.catalogue_version?`<span class="meta" title="This link keeps showing catalogue version ${sh.catalogue_version}; publishing new prices does not change it">catalogue v${sh.catalogue_version}</span>`:""}
+            <span class="meta">${off?"offline":(gone?"expired":"until "+shortDate(sh.expires_at))}</span>
+            ${sh.customer_changed_at?`<span class="qcflag">customer edited</span>`:""}
+            <span class="spacer"></span>
+            ${alive?`<button class="pbtn" data-copyshare="${esc(sh.token)}">Copy link</button>`:""}
+            ${sent
+              ? `<button class="pbtn" data-shoffline="${esc(sh.id)}" data-off="${off?"0":"1"}">${off?"Put online":"Take offline"}</button>`
+              : `<button class="pbtn" data-shsend="${esc(sh.id)}" title="From then on this link is the record: it cannot be changed or deleted, only taken offline">Mark as sent</button>
+                 <button class="x" data-shdel="${esc(sh.id)}" title="Delete this draft link">&times;</button>`}
+          </div>`;
+        }).join(""):`<div class="meta">This quote has never been shared.</div>`}
+        <div class="qcsub">This quote</div>
+        <div class="revline">
+          <button class="btn sm" data-qact="peek" title="Read it against the catalogue it was made on — in scope, optional, alternative — and see what moving it to the newest catalogue would change, without opening it">Compare catalogue to newest version</button>
+          <button class="btn sm" data-qact="dup">Duplicate</button>
+          <span class="spacer"></span>
+          <button class="btn sm danger" data-qact="del">Delete quote</button>
+        </div>
+      </div>`:""}
+    </div>`;
+  }).join("");
+
+  /* ---- wiring ---- */
+  const qid=b=>b.closest(".qcard").dataset.qid;
+  wrap.querySelectorAll("[data-more]").forEach(b=>{
+    b.onclick=()=>{ const id=b.dataset.more;
+      quoteOpenCards[id]=!quoteOpenCards[id]; paintQuoteCards(quotes, shares); };
+  });
+  wrap.querySelectorAll("[data-qact]").forEach(b=>{
+    const id=qid(b), act=b.dataset.qact;
+    b.onclick=async ()=>{
+      if(act==="continue"){ setMode("configure"); }
+      else if(act==="peek"){ await showQuoteBreakdown(id, b); }
+      else if(act==="open"){
+        if(!confirm("Open this quote? Anything unsaved on screen is replaced.")) return;
+        if(await cloudOpenQuote(id)){ setMode("configure"); flagSaved("Opened"); }
+        else alert("Could not open that quote.");
+      } else if(act==="dup"){
+        try{ await cloudDuplicateQuote(id); flagSaved("Duplicated"); renderQuotes(); }
+        catch(err){ alert("Could not duplicate: "+(err&&err.message||err)); }
+      } else if(act==="del"){
+        if(!confirm("Delete this quote? This cannot be undone.")) return;
+        try{ await cloudDeleteQuote(id); renderQuotes(); }
+        catch(err){ alert("Could not delete: "+(err&&err.message||err)); }
+      }
+    };
+  });
+  wrap.querySelectorAll("[data-copyshare]").forEach(b=>{
+    b.onclick=()=>{
+      const url=`${location.origin}${location.pathname}?share=${b.dataset.copyshare}`;
+      navigator.clipboard.writeText(url).then(()=>flagSaved("Link copied"));
+    };
+  });
+  wrap.querySelectorAll("[data-shdel]").forEach(b=>{
+    b.onclick=async ()=>{
+      if(!confirm("Delete this draft link? Nothing has been sent from it, so nothing is lost.")) return;
+      const {error}=await supa.from("quote_shares").delete().eq("id", b.dataset.shdel);
+      if(error) return alert("Could not delete it: "+error.message);
+      if(cloudQuoteId) await loadQuoteMeta();
+      renderQuotes(); renderQuoteBar();
+    };
+  });
+  wrap.querySelectorAll("[data-shpush]").forEach(b=>{
+    b.onclick=async ()=>{
+      try{
+        if(cloudQuoteId) await flushQuoteNow();
+        const {error}=await supa.rpc("push_quote_share",{p_share_id:b.dataset.shpush});
+        if(error) throw error;
+        if(cloudQuoteId) await loadQuoteMeta();
+        flagSaved("Link updated");
+        renderQuotes(); renderQuoteBar();
+      }catch(err){ alert("Could not update that link: "+(err&&err.message||err)); }
+    };
+  });
+  wrap.querySelectorAll("[data-shsend]").forEach(b=>{ b.onclick=()=>markShareSent(b.dataset.shsend); });
+  wrap.querySelectorAll("[data-shoffline]").forEach(b=>{
+    b.onclick=()=>setShareOffline(b.dataset.off==="1", b.dataset.shoffline);
+  });
+  wrap.querySelectorAll("[data-shnew]").forEach(b=>{
+    b.onclick=async ()=>{
+      const id=b.dataset.shnew, newest=(shares.get(id)||[])[0];
+      if(!newest || !newest.sent_at){ await createRevisionOn(null, id); return; }
+      askRevisionCatalogue(id, newest.catalogue_version||null, (newest.revision||1)+1);
+    };
+  });
+}
 /* ======================================================================
    SHARED FOLDER
    The quote lives as a JSON file in a SharePoint library that OneDrive
