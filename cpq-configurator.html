@@ -11020,7 +11020,7 @@ function diffSection(label, count, rowsHtml, open){
   </div>`;
 }
 /* the frame both comparisons sit in: a title, a way out, and folding */
-function diffPanel(id, title, bodyHtml){
+function diffPanel(id, title, bodyHtml, anchor){
   const old=document.getElementById(id); if(old) old.remove();
   const el=document.createElement("div");
   el.id=id; el.className="qbpanel diffpanel";
@@ -11038,7 +11038,9 @@ function diffPanel(id, title, bodyHtml){
   });
   const x=el.querySelector("[data-diffclose]");
   if(x) x.onclick=()=>el.remove();
-  document.getElementById("notices").insertAdjacentElement("afterend", el);
+  /* by default under the notices, where the two comparisons belong; a
+     caller with a better place for it says so */
+  (anchor||document.getElementById("notices")).insertAdjacentElement("afterend", el);
   return el;
 }
 async function showCatalogueDiff(){
@@ -11240,6 +11242,150 @@ async function showShareDiff(){
     bar.insertBefore(b, bar.querySelector("[data-diffclose]"));
     b.onclick=restoreCustomerVersion;
   }
+}
+/* ============================================================
+   WHAT IS IN A QUOTE, WITHOUT OPENING IT
+   A quote built on an older catalogue is the one you least want to open
+   to find out: opening it runs reconcile(), which quietly drops whatever
+   the catalogue no longer has, and the first thing you touch saves that
+   loss over the original. So it is read here instead — against the
+   catalogue it belongs to — and what moving it would cost is worked out
+   beside it.
+
+   Same technique as the link comparison: its state and its catalogue go
+   into the globals for the length of the measurement and yours go back in
+   a finally. Nothing in here renders, saves, or touches the open quote.
+   ============================================================ */
+function scopeOfNode(n){
+  if(n.o.alt) return "alt";
+  if(n.o.optional) return "opt";
+  return "in";
+}
+function quoteItemsNow(){
+  const items=[];
+  for(const n of scopeNodes()){
+    items.push({id:n.o.id, name:n.o.name||n.o.id, step:(n.root&&n.root.title)||"",
+                price:+n.o.price||0, scope:scopeOfNode(n)});
+  }
+  return {items, total:priceRowsTotal(buildPriceRows(false))};
+}
+/* Read one quote payload against one catalogue. cat null means "the
+   catalogue you have on screen". */
+function readQuoteAgainst(payload, cat){
+  const keepState=state, keepLang=docLang, keepIncl=includedSteps, keepCfg={};
+  for(const k of CATALOGUE_KEYS.concat(QUOTE_KEYS)) keepCfg[k]=CONFIG[k];
+  try{
+    /* clone even when using your own catalogue: the flags below are written
+       onto the option objects, and keepCfg holds references, not copies */
+    if(cat){ for(const k of CATALOGUE_KEYS) if(cat[k]!==undefined) CONFIG[k]=clone(cat[k]); }
+    else   { for(const k of CATALOGUE_KEYS) if(CONFIG[k]!==undefined) CONFIG[k]=clone(CONFIG[k]); }
+    const q=payload.quote||{};
+    for(const k of QUOTE_KEYS) if(q[k]!==undefined) CONFIG[k]=clone(q[k]);
+    state=clone(payload.state||{});
+    if(Array.isArray(payload.includedSteps)) includedSteps=clone(payload.includedSteps);
+    if(payload.docLang) docLang=payload.docLang;
+    if(payload.scope) applyScopeFlags(payload.scope);
+    return quoteItemsNow();
+  } finally {
+    state=keepState; docLang=keepLang; includedSteps=keepIncl;
+    for(const k of CATALOGUE_KEYS.concat(QUOTE_KEYS)) CONFIG[k]=keepCfg[k];
+  }
+}
+const _catCache=new Map();
+async function catalogueVersionData(v){
+  if(!v || !supa) return null;
+  if(_catCache.has(v)) return _catCache.get(v);
+  try{
+    const {data}=await supa.from("catalogue_versions").select("data").eq("version",v).maybeSingle();
+    const d=(data&&data.data)||null;
+    _catCache.set(v,d);
+    return d;
+  }catch(err){ return null; }
+}
+async function quoteBreakdown(quoteId){
+  if(!supa) return null;
+  const {data:q}=await supa.from("quotes").select("id,number,customer,data").eq("id",quoteId).maybeSingle();
+  if(!q || !q.data) return null;
+  /* which catalogue does this quote belong to? Its link is pinned to one;
+     without a link the only honest answer is the one you have now. */
+  const {data:shs}=await supa.from("quote_shares").select("catalogue_version,revision,sent_at,created_at")
+    .eq("quote_id",quoteId).order("created_at",{ascending:false}).limit(8);
+  const share=(shs||[]).find(s=>s.catalogue_version) || null;
+  const own=share?share.catalogue_version:null;
+  const ownCat=await catalogueVersionData(own);
+  const asBuilt=readQuoteAgainst(q.data, ownCat);
+  const asNow=readQuoteAgainst(q.data, null);
+  const nowIds=new Set(asNow.items.map(i=>i.id));
+  const lost=asBuilt.items.filter(i=>!nowIds.has(i.id));
+  const builtIds=new Set(asBuilt.items.map(i=>i.id));
+  const gained=asNow.items.filter(i=>!builtIds.has(i.id));
+  const repriced=[];
+  for(const i of asNow.items){
+    const b=asBuilt.items.find(x=>x.id===i.id);
+    if(b && b.price!==i.price) repriced.push({step:i.step, name:i.name, from:b.price, to:i.price});
+  }
+  const by=s=>asBuilt.items.filter(i=>i.scope===s);
+  return {number:q.number, customer:q.customer,
+          version:own, versionKnown:!!ownCat, onCurrent:!own,
+          inScope:by("in"), optional:by("opt"), alternative:by("alt"),
+          total:asBuilt.total, totalNow:asNow.total,
+          lost, gained, repriced, sameCatalogue:!own || (own===publishedVersion)};
+}
+async function showQuoteBreakdown(quoteId, btn){
+  const open=document.getElementById("qBreakdown");
+  if(open && open.dataset.qid===quoteId){ open.remove(); return; }
+  const label=btn?btn.textContent:null;
+  if(btn){ btn.disabled=true; btn.textContent="Reading…"; }
+  let s=null;
+  try{ s=await quoteBreakdown(quoteId); }catch(err){ }
+  if(btn){ btn.disabled=false; btn.textContent=label; }
+  if(!s){ alert("Could not read that quote."); return; }
+  const money=n=>fmt(+n||0);
+  const rows=(list,cls)=>list.map(i=>`<div class="qbrow ${cls||""}"><span class="when"></span>
+      <span class="who">${esc(i.step)}</span>
+      <span class="what">${esc(i.name)}</span>
+      <span class="qbnum">${money(i.price)}</span></div>`).join("");
+  const sum=list=>list.reduce((t,i)=>t+i.price,0);
+  const delta=s.totalNow-s.total;
+  const body=`
+    <div class="qbrow"><span class="who">read against</span><span class="what">${
+      s.onCurrent
+        ? `the catalogue you have now &mdash; this quote has no link pinning it to a version`
+        : (s.versionKnown
+           ? `catalogue version <b>${s.version}</b>, the one its link is pinned to`
+           : `catalogue version ${s.version}, which is no longer on the shelf &mdash; the catalogue you have now was used instead`)}</span></div>
+    <div class="qbrow"><span class="who">total</span><span class="what"><b>${money(s.total)}</b>
+      <i>in scope only; optional items are quoted beside it</i></span></div>
+    ${diffSection("in scope", `${s.inScope.length} item${s.inScope.length===1?"":"s"} &middot; ${money(sum(s.inScope))}`,
+        rows(s.inScope), s.inScope.length<=3)}
+    ${s.optional.length?diffSection("optional",
+        `${s.optional.length} item${s.optional.length===1?"":"s"} &middot; ${money(sum(s.optional))}`,
+        rows(s.optional), s.optional.length<=3):""}
+    ${s.alternative.length?diffSection("alternative",
+        `${s.alternative.length} item${s.alternative.length===1?"":"s"} &middot; ${money(sum(s.alternative))}`,
+        rows(s.alternative), s.alternative.length<=3):""}
+    ${s.sameCatalogue
+      ? `<div class="qbrow"><span class="who">on today's catalogue</span>
+          <span class="what">Nothing to weigh up &mdash; this quote is already on the catalogue in use.</span></div>`
+      : `<div class="qbrow"><span class="who">if moved to v${publishedVersion||"the current catalogue"}</span>
+          <span class="what">${money(s.total)} &rarr; <b>${money(s.totalNow)}</b>${
+          delta?` <b style="color:var(--${delta>0?"warn":"bad"})">${delta>0?"+":"&minus;"} ${money(Math.abs(delta))}</b>`:" (unchanged)"}</span></div>
+        ${s.lost.length?diffSection("would be dropped",
+            `${s.lost.length} item${s.lost.length===1?"":"s"} &middot; ${money(sum(s.lost))}`,
+            rows(s.lost,"is-gone"), s.lost.length<=3):""}
+        ${s.gained.length?diffSection("would be added",
+            `${s.gained.length} item${s.gained.length===1?"":"s"} &middot; ${money(sum(s.gained))}`,
+            rows(s.gained), s.gained.length<=3):""}
+        ${s.repriced.length?diffSection("price changes", `${s.repriced.length}`,
+            s.repriced.map(p=>`<div class="qbrow"><span class="when"></span>
+              <span class="who">${esc(p.step)}</span>
+              <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b></span></div>`).join(""),
+            s.repriced.length<=3):""}
+        ${s.lost.length?`<div class="qbrow"><span class="what"><i>Opening this quote applies that straight away: what the catalogue no longer has is dropped, and the first thing you touch saves it. Look here first.</i></span></div>`:""}`}`;
+  const panel=diffPanel("qBreakdown",
+    `What is in ${esc(s.number||"this quote")}${s.customer?" &mdash; "+esc(s.customer):""}`,
+    body, document.getElementById("qListWrap"));
+  panel.dataset.qid=quoteId;
 }
 async function takeUpstreamCatalogue(){
   if(!catUpstream) return;
@@ -12381,6 +12527,9 @@ function renderQuotes(){
                <button class="x" data-revokeshare="${esc(share.id)}" title="Revoke">&times;</button>`
             : `<span class="meta">Not shared</span>`}</td>
           <td class="qacts">
+            ${/* Before Open, deliberately: on an older catalogue, opening is
+                 the destructive move and looking is the safe one. */""}
+            <button class="btn sm" data-qact="peek" title="See what is in this quote — in scope, optional, alternative — read against the catalogue it was made on, without opening it">What's in it</button>
             <button class="btn sm" data-qact="open">Open</button>
             <button class="btn sm" data-qact="dup">Copy</button>
             <button class="x" data-qact="del" title="Delete">&times;</button>
@@ -12392,7 +12541,9 @@ function renderQuotes(){
     wrap.querySelectorAll("[data-qact]").forEach(b=>{
       const id=b.closest("tr").dataset.qid, act=b.dataset.qact;
       b.onclick=async ()=>{
-        if(act==="open"){
+        if(act==="peek"){
+          await showQuoteBreakdown(id, b);
+        } else if(act==="open"){
           if(!confirm("Open this quote? Anything unsaved on screen is replaced.")) return;
           if(await cloudOpenQuote(id)){ setMode("configure"); flagSaved("Opened"); }
           else alert("Could not open that quote.");
