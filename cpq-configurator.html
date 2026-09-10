@@ -2318,6 +2318,12 @@ const supa = (window.supabase && window.supabase.createClient)
   : null;
 let cloudQuoteId = null;      // set once the open quote has a row in `quotes`
 let restoredQuoteId = null;   // that row's id as remembered across a refresh
+/* Which catalogue the OPEN QUOTE belongs to. Deliberately not "whichever
+   catalogue is on screen": you can step away to the shared catalogue and
+   back without that being a decision about this quote. It changes when the
+   quote is opened, when a new one is started, and when you actually move
+   this one forward — and at no other time. */
+let quoteCatVersion = null;
 let cloudQuoteRev = null;     // the rev we last read/wrote — used to spot a colleague's save
 let cloudConflictPaused = false;  // true while a rev conflict banner is waiting on a choice
 /* the quote bar's own state: the row's status, the active share (if any) and
@@ -11402,6 +11408,7 @@ async function takeUpstreamCatalogue(){
     : await cloudLoadCatalogueDraft();
   if(!ok){ alert("Could not load the newer catalogue."); return; }
   catUpstream=null; catUpstreamSnoozed=null;
+  if(loadedCatalogueVersion) quoteCatVersion=loadedCatalogueVersion;
   const p=document.getElementById("catDiffPanel"); if(p) p.remove();
   /* the open quote now belongs to the catalogue it was just moved to, and
      reconcile may have dropped what the new one no longer has — both have
@@ -11622,7 +11629,10 @@ function renderCatalogueBar(){
       <button class="btn sm" id="catToDraft" title="Leave this quote's catalogue and work in the one the team shares">Back to the shared catalogue</button>`;
     const home=document.getElementById("catToDraft");
     if(home) home.onclick=async ()=>{
-      if(dirty && !confirm("Your edits to this frozen version are lost when you leave it. Continue?")) return;
+      if(!confirm("Go back to the catalogue the team shares?"+
+         (dirty?" Your edits to this frozen version are lost.":"")+
+         (quoteCatVersion?"\n\nThe open quote stays marked as version "+quoteCatVersion+
+          " — reopening it brings that catalogue back. Use \"Update to the new version\" if you mean to move it forward.":""))) return;
       loadedCatalogueVersion=null;
       if(await cloudLoadCatalogueDraft()){
         catUpstream=null; catUpstreamSnoozed=null;
@@ -11697,7 +11707,7 @@ function quotePayload(name){
              version that is the version; while working from the shared
              draft the closest true anchor is the newest published one,
              which is also what a customer link would pin to. */
-          catalogueVersion: loadedCatalogueVersion || publishedVersion || null,
+          catalogueVersion: quoteCatVersion || loadedCatalogueVersion || publishedVersion || null,
           docLang, cursor, includedSteps:clone(includedSteps), navWidth, partsColW:clone(partsColW)};
 }
 /* the catalogue lands on top of whatever quote is open */
@@ -12169,11 +12179,15 @@ async function cloudOpenQuote(id){
       /* off the shared draft: nothing typed here may be written back to the
          catalogue everyone else is editing */
       draftRev=null; draftConflict=null;
-      markCataloguePublished();
       flagSaved("Opened on catalogue version "+want);
     }
   }
+  quoteCatVersion=want||null;
   if(!applyAnyFile(data.data)) return false;
+  /* after the quote, not before: applying it normalises the catalogue
+     (ensureParts, ensureProps, seeded defaults), and taking the baseline
+     first made the bar report unpublished edits nobody had made */
+  if(want && loadedCatalogueVersion===want) markCataloguePublished();
   cloudQuoteId=id; cloudQuoteRev=data.rev; cloudConflictPaused=false;
   cloudSavedSig=quoteContentSig(data.data);
   removeCloudConflictBanner();
@@ -12218,6 +12232,7 @@ async function reattachCloudQuote(){
        leaves no empty version behind, while genuinely unsaved work still
        goes up. */
     cloudSavedSig=quoteContentSig(data.data);
+    quoteCatVersion=(data.data&&data.data.catalogueVersion)||null;
     return true;
   }catch(err){ return false; }
 }
@@ -12259,7 +12274,7 @@ function clearQuoteSide(){
   cloudQuoteId=null; cloudQuoteRev=null; cloudConflictPaused=false; cloudSavedSig=null;
   removeCloudConflictBanner();
   quoteShare=null; quoteStatus="draft"; quoteEvents=[]; quoteVersions=[];
-  quoteUpdatedAt=null; linkBarSnoozed=null;
+  quoteUpdatedAt=null; linkBarSnoozed=null; quoteCatVersion=null;
   /* No number yet, on purpose: next_quote_number() is a shared counter, so
      handing one out before the quote is saved would burn numbers on quotes
      that never happen. "Save as new quote" draws the number. */
