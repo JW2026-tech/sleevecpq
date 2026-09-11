@@ -1785,6 +1785,11 @@
   .propcard .top{align-items:center}
   .propcard .punit{max-width:70px}
   .propcount{font-size:11.5px;color:var(--txt-dim);white-space:nowrap}
+  .clstoggle{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--txt-faint);
+    border:1px solid var(--line);border-radius:20px;padding:2px 10px 2px 7px;cursor:pointer;white-space:nowrap}
+  .clstoggle:hover{border-color:var(--line-strong);color:var(--txt-dim)}
+  .clstoggle.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);font-weight:500}
+  .clstoggle input{margin:0}
   .pmatrixscroll{overflow-x:auto;margin:12px 0 4px}
   .pmatrix{border-collapse:collapse;width:100%;min-width:520px}
   .pmatrix th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.6px;
@@ -3457,6 +3462,7 @@ function mergeTypesIntoClasses(p){
     if(!cl){ cl={id:specUid(partClasses().map(c=>c.id),"cls"), name:x.className}; partClasses().push(cl); }
     clsOf[x.v.id]=cl.id;
   }
+  p.useClasses=true;
   keep.byClass=keep.byClass||{};
   for(const x of plan) keep.byClass[clsOf[x.v.id]]={price:x.price, name:x.className};
   /* every part that was pinned to one of the merged types now carries its
@@ -8334,8 +8340,9 @@ function renderPropsAdmin(){
     <section class="pclswrap">
       <div class="pclshead">
         <b>Part classes</b>
-        <span class="meta">What kind of section a part is. Tagged once on the option itself, and shared
-          by every property &mdash; a bend is a bend whether you are pricing its cable tray or its drain.</span>
+        <span class="meta">What kind of section a part is. Tagged once on the option itself; a bend is a bend
+          whether you are pricing its cable tray or its drain. Only the properties you switch
+          <b>price per class</b> on actually use them.</span>
       </div>
       <div class="pclsrow">
         ${cls.map((c,ci)=>`<span class="pcls" data-ci="${ci}">
@@ -8355,9 +8362,14 @@ function renderPropsAdmin(){
     const priced=vars.some(v=>v.byClass && Object.keys(v.byClass).length);
     const loose=untaggedParts(p);
     const unit=esc(p.unit||"");
-    /* the matrix: a column for parts with no class, then one per class */
-    const cols=[{id:"", name:"Any part", hint:"What a part with no class pays"}]
-      .concat(cls.map(c=>({id:c.id, name:c.name, hint:"Price for a "+c.name.toLowerCase()})));
+    /* Classes are for the handful of properties whose price depends on
+       which section carries them — cable tray, drip tray, central drain.
+       Feet and access doors cost what they cost, so they get one price
+       column and no columns they will never fill in. */
+    const useCls=!!p.useClasses && cls.length>0;
+    const cols=[{id:"", name:useCls?"Any part":"Price", hint:useCls
+                  ? "What a part with no class pays" : "Price per unit"}]
+      .concat(useCls?cls.map(c=>({id:c.id, name:c.name, hint:"Price for a "+c.name.toLowerCase()})):[]);
     return `
     <div class="ocard propcard" data-pi="${i}">
       <div class="top">
@@ -8365,6 +8377,10 @@ function renderPropsAdmin(){
         <input class="in oname" value="${esc(p.plural||"")}" data-pf="plural" placeholder="Plural, e.g. Adjustments">
         <input class="in punit" value="${unit}" data-pf="unit" placeholder="unit" title="pcs, m, kg…">
         <span class="spacer"></span>
+        ${cls.length?`<label class="clstoggle ${p.useClasses?"on":""}"
+          title="Turn on where the price depends on which section carries it — cable tray, drip tray, central drain. Leave off and this property has one price, as most do.">
+          <input type="checkbox" data-pcls ${p.useClasses?"checked":""}> price per class
+        </label>`:""}
         <span class="propcount" title="How many this configuration calls for, added up from every option">${n} ${esc(p.plural||p.label||"")}</span>
         <button class="btn sm" data-pact="up" ${i===0?"disabled":""}>&#9650;</button>
         <button class="btn sm" data-pact="down" ${i===CONFIG.props.length-1?"disabled":""}>&#9660;</button>
@@ -8465,6 +8481,24 @@ function renderPropsAdmin(){
   ed.querySelectorAll("[data-pf]").forEach(el=>{
     const p=CONFIG.props[+el.closest(".ocard").dataset.pi];
     el.oninput=()=>{ p[el.dataset.pf]=el.value; };
+  });
+  ed.querySelectorAll("[data-pcls]").forEach(el=>{
+    const p=CONFIG.props[+el.closest(".ocard").dataset.pi];
+    el.onchange=()=>{
+      if(el.checked){ p.useClasses=true; }
+      else {
+        /* leaving the per-class prices behind would price parts by a rule
+           the screen no longer shows, so they go with the switch */
+        const had=(p.variants||[]).filter(v=>v.byClass && Object.keys(v.byClass).length);
+        if(had.length && !confirm("Turn off price per class for \""+p.label+"\"?\n\n"+
+            "The prices you set per class are removed and every part pays the single price again.")){
+          el.checked=true; return;
+        }
+        for(const v of (p.variants||[])) delete v.byClass;
+        delete p.useClasses;
+      }
+      invalidateQtyCache(); renderConfigureQuiet(); renderAdmin();
+    };
   });
   ed.querySelectorAll("[data-pact]").forEach(btn=>{
     const i=+btn.closest(".ocard").dataset.pi, L=CONFIG.props;
