@@ -522,6 +522,9 @@
   /* the catalogue notice is about your own tools, the link notice about
      something a customer can see — the second is the louder of the two */
   .notice.is-cat .catdot{background:var(--txt-faint)}
+  /* work that is being lost while you look at it */
+  .notice.is-stray .catdot{background:var(--bad)}
+  .notice.is-stray code{background:var(--panel-2,rgba(127,127,127,.15));padding:1px 5px;border-radius:4px}
   #catDiffPanel .qbrow.is-gone .what,#shareDiffPanel .qbrow.is-gone .what{color:var(--bad)}
   #catDiffPanel .qbrow .who,#shareDiffPanel .qbrow .who{flex:0 0 190px}
   /* A comparison is read once. It must not take the screen hostage: a third
@@ -11074,7 +11077,42 @@ function pickKeys(src, keys){
   for(const k of keys) if(src && src[k]!==undefined) out[k]=clone(src[k]);
   return out;
 }
+/* ============================================================
+   NOTHING IN ADMIN MAY FALL OUTSIDE THE TWO LISTS
+   Everything the app remembers lives on CONFIG, and CONFIG only ever
+   leaves this browser through the two lists above: CATALOGUE_KEYS into the
+   shared catalogue and into every published version, QUOTE_KEYS into the
+   quote. A key on neither list can be edited on screen and auto-saved
+   here, and still be gone the moment a colleague loads the catalogue — it
+   is what happened to partClasses, where prices pointed at classes that
+   existed in one browser only.
+   So the lists are checked against CONFIG rather than remembered: build a
+   new Admin screen that keeps its settings somewhere new, and the first
+   save says so instead of losing them quietly months later. */
+let strayConfigKeys=[];
+let _strayShape="";
+function checkConfigKeys(){
+  const keys=Object.keys(CONFIG).filter(k=>CONFIG[k]!==undefined);
+  const shape=keys.join(",");
+  if(shape===_strayShape) return strayConfigKeys;   // same keys, same answer
+  _strayShape=shape;
+  const known=new Set(CATALOGUE_KEYS.concat(QUOTE_KEYS));
+  const was=strayConfigKeys.join(",");
+  strayConfigKeys=keys.filter(k=>!known.has(k));
+  if(strayConfigKeys.length && strayConfigKeys.join(",")!==was){
+    console.warn("CPQ: saved nowhere — add to CATALOGUE_KEYS or QUOTE_KEYS:", strayConfigKeys);
+    /* the empty half of the same question: a list naming something that
+       does not exist is usually a typo, and it would go unnoticed because
+       pickKeys simply skips it */
+    const missing=CATALOGUE_KEYS.concat(QUOTE_KEYS).filter(k=>CONFIG[k]===undefined);
+    if(missing.length) console.warn("CPQ: listed but not in CONFIG:", missing);
+  }
+  return strayConfigKeys;
+}
 function cataloguePayload(){
+  /* every save of the shared catalogue and every publish comes through
+     here, so this is the one place the check cannot be forgotten */
+  checkConfigKeys();
   return {kind:"cpq-catalogue", v:1, savedAt:Date.now(), catalogue:pickKeys(CONFIG, CATALOGUE_KEYS)};
 }
 /* ============================================================
@@ -11458,6 +11496,19 @@ function renderNotices(){
     box.classList.add("hidden"); box.innerHTML=""; syncTopbar(); return;
   }
   const rows=[];
+
+  /* ---- 0. something on this screen is saved nowhere ---- */
+  if(checkConfigKeys().length){
+    rows.push(`<div class="notice is-stray">
+      <span class="catdot"></span>
+      <span class="catmsg"><b>Some settings are not being saved.</b>
+        <code>${esc(strayConfigKeys.join(", "))}</code> ${strayConfigKeys.length>1?"are":"is"}
+        edited here but ${strayConfigKeys.length>1?"belong":"belongs"} to neither the catalogue
+        nor the quote, so ${strayConfigKeys.length>1?"they":"it"} will be gone for everyone else
+        and after the next catalogue load. Add ${strayConfigKeys.length>1?"them":"it"} to
+        CATALOGUE_KEYS or QUOTE_KEYS.</span>
+    </div>`);
+  }
 
   /* ---- 1. the catalogue on screen is not the newest one ---- */
   if(catUpstream){
