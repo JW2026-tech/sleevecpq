@@ -2477,6 +2477,8 @@ const supa = (window.supabase && window.supabase.createClient)
   : null;
 let cloudQuoteId = null;      // set once the open quote has a row in `quotes`
 let restoredQuoteId = null;   // that row's id as remembered across a refresh
+let restoredDraftBase = null; // the shared catalogue as this browser last knew it
+let restoredDraftRev = null;
 /* Which catalogue the OPEN QUOTE belongs to. Deliberately not "whichever
    catalogue is on screen": you can step away to the shared catalogue and
    back without that being a decision about this quote. It changes when the
@@ -12400,22 +12402,6 @@ function renderCatalogueBar(){
   const held=heldCloudCatalogue
     ? ` The team's version ${heldCloudCatalogue.version?`(${heldCloudCatalogue.version}) `:""}was <b>not</b> loaded, so it can't overwrite them.`
     : "";
-  /* A colleague saved the shared draft while you were editing. Nothing is
-     written until this is answered, so neither version is lost. */
-  if(draftConflict){
-    bar.classList.add("dirty");
-    bar.innerHTML=`
-      <span class="catdot"></span>
-      <span class="catmsg"><b>${esc(draftConflict.updated_by||"A colleague")} changed the catalogue
-        while you were editing.</b> Nothing of yours has been saved since, so pick one — the other is lost.</span>
-      <button class="btn primary sm" id="catKeepMine">Keep mine</button>
-      <button class="btn sm" id="catTakeTheirs">Take theirs</button>`;
-    const km=document.getElementById("catKeepMine");
-    if(km) km.onclick=()=>draftKeepMine();
-    const tt=document.getElementById("catTakeTheirs");
-    if(tt) tt.onclick=()=>draftTakeTheirs();
-    return;
-  }
   /* Working from a pinned version rather than the shared catalogue. That
      happens when a quote is opened on the catalogue it was written against.
      It has to be said plainly: edits here are not going to the catalogue
@@ -12629,7 +12615,22 @@ async function cloudLoadCatalogueDraft(){
     const {data, error}=await supa.from("catalogue_draft").select("data,rev,updated_at,updated_by")
       .eq("id",1).maybeSingle();
     if(error || !data) return false;            // not installed, or no draft yet
-    if(!applyCatalogue({catalogue:data.data})) return false;
+    /* A reload with catalogue work that never went up: merge it in rather
+       than let the shared copy land on top of it. Same three documents as
+       a live update — what we last agreed on, what the database holds, and
+       what is on screen. */
+    let incoming=data.data;
+    if(restoredDraftBase && restoredDraftRev!==null && restoredDraftRev!==data.rev){
+      try{
+        const mine=cataloguePayload().catalogue;
+        const report=mergeReport(restoredDraftBase, data.data, mine);
+        if(report.theirs || report.structural || report.both){
+          incoming=mergeTrees(restoredDraftBase, data.data, mine);
+        }
+      }catch(err){ incoming=data.data; }
+    }
+    restoredDraftBase=null; restoredDraftRev=null;
+    if(!applyCatalogue({catalogue:incoming})) return false;
     draftRev=data.rev;
     watchDraft();                 // from here on, their changes come to us
     catKnownRev=data.rev;         // this screen matches that revision
@@ -12637,9 +12638,14 @@ async function cloudLoadCatalogueDraft(){
     draftSavedSig=catalogueSig();
     /* what the database holds right now — every later save is expressed as
        the difference against this */
-    draftBase=clone(cataloguePayload().catalogue);
-    /* the draft IS the shared truth, so what is on screen matches it — the
-       "unpublished changes" bar measures against the published version */
+    draftBase=clone(data.data);
+    /* what is on screen may carry work the database has not seen; the
+       signature says so and the next save sends exactly that difference */
+    draftSavedSig=catalogueSig();
+    if(stableStringify(data.data)!==stableStringify(cataloguePayload().catalogue)){
+      draftSavedSig=null;
+      draftSaveSoon();
+    }
     return true;
   }catch(err){ return false; }
 }
@@ -12697,6 +12703,7 @@ async function cloudSaveCatalogueDraft(){
   const sig=catalogueSig();
   if(sig===draftSavedSig) return null;          // nothing changed
   draftSaving=true;
+  const cur_rev_at_start=draftRev;
   try{
     const cur=cataloguePayload().catalogue;
     const diff = draftBase ? catalogueDiff(draftBase, cur) : {structural:true, patches:[]};
@@ -12728,10 +12735,21 @@ async function cloudSaveCatalogueDraft(){
       {p_data: cur, p_rev: draftRev});
     if(error) throw error;
     if(data && data.ok===false){
-      /* a colleague saved in between — stop writing and say so rather than
-         overwriting their work, same contract as the quote conflict */
-      draftConflict={rev:data.rev, updated_by:data.updated_by, updated_at:data.updated_at};
-      renderCatalogueBar();
+      /* A colleague wrote in between. This used to stop and put up a
+         banner, which meant a whole new step or property sat unsaved in
+         one browser and nobody else ever saw it — and a banner above the
+         fold is easy to walk past. Their work is pulled in, merged with
+         mine, and the save goes again with the revision that is now
+         current. Nothing waits for an answer. */
+      draftSaving=false;
+      await pullDraftChanges();
+      if(draftRev!==null && draftRev!==cur_rev_at_start){
+        draftSavedSig=null;
+        return await cloudSaveCatalogueDraft();   // once, with the revision that now holds
+      }
+      /* the pull did not move us: say so rather than failing quietly */
+      flagSaved("Catalogue not saved — trying again", true);
+      setTimeout(()=>draftSaveSoon(), 3000);
       return null;
     }
     draftRev=(data&&data.rev)||draftRev;
@@ -13148,7 +13166,12 @@ function snapshot(){
      obvious next move made a duplicate. */
   return JSON.stringify({v:1, savedAt:Date.now(), CONFIG, state, docLang, cursor, includedSteps,
                          navWidth, partsColW, mode, docsTab, adminSection, sel, publishedSig,
-                         cloudQuoteId});
+                         cloudQuoteId,
+                         /* what the shared catalogue held when this browser last
+                            agreed with it. Without it a reload has no base to
+                            merge against, and loading the draft would drop
+                            whatever catalogue work had not gone up yet. */
+                         draftBase, draftRev});
 }
 function saveNow(){
   if(!storageOK) return;
@@ -13221,6 +13244,8 @@ function applySnapshot(raw){
        checks the row is still there and reads its revision before anything
        is written to it */
     restoredQuoteId=(typeof d.cloudQuoteId==="string")?d.cloudQuoteId:null;
+    restoredDraftBase=(d.draftBase && typeof d.draftBase==="object")?d.draftBase:null;
+    restoredDraftRev=(typeof d.draftRev==="number")?d.draftRev:null;
     _sigCache={at:0, sig:null};
     /* pick up where the last session left off — the screen that was open,
        which document tab, and which Admin section */
