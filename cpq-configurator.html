@@ -11639,15 +11639,27 @@ let catUpstream=null;            // {kind, rev|version, updated_by, at}
 let catUpstreamSnoozed=null;
 const catUpstreamKey=u=>u?(u.kind+":"+(u.rev||u.version)):null;
 function noteUpstream(u){
-  if(!u || catUpstreamKey(u)===catUpstreamSnoozed) return;
+  if(!u) return;
+  /* The shared catalogue merges by itself now — pullDraftChanges takes
+     their change, keeps yours, and says in the save line what moved. A
+     notice offering "update to the new version" was left over from when
+     that was a decision; it asked about work that had already arrived,
+     and it came up for your own writes often enough to be noise. A
+     published VERSION is still a decision — that one stays. */
+  if(u.kind==="draft"){ pullDraftChanges(); return; }
+  if(catUpstreamKey(u)===catUpstreamSnoozed) return;
   catUpstream=u;
   renderNotices();
 }
 /* Called after every successful patch write: the rev the server hands back
    tells you whether you were the only one writing. */
 function noteDraftRevAfterWrite(newRev){
-  if(catKnownRev!==null && newRev>catKnownRev+1)
-    noteUpstream({kind:"draft", rev:newRev, updated_by:null, at:new Date().toISOString()});
+  if(catKnownRev!==null && newRev>catKnownRev+1){
+    catKnownRev=newRev;
+    /* after the save that is still finishing around us, not inside it */
+    setTimeout(()=>pullDraftChanges(true), 0);
+    return;
+  }
   catKnownRev=newRev;
 }
 async function checkCatalogueUpstream(){
@@ -12360,16 +12372,28 @@ function mergeReport(base, theirs, mine){
   const both=their.patches.filter(x=>minePaths.has(key(x))).length;
   return {theirs:their.patches.length, structural:their.structural||my.structural, both};
 }
-async function pullDraftChanges(){
+/* `force` is for the one case where the revision cannot answer the
+   question: your own patch came back several revisions higher, so somebody
+   wrote in between, but the number now matches yours exactly. Their change
+   is in the database and not on your screen, and the usual "same rev,
+   nothing to do" would walk straight past it. */
+async function pullDraftChanges(force){
   if(!supa || draftRev===null) return;
   let row=null;
   try{
     const {data}=await supa.from("catalogue_draft").select("data,rev,updated_by").eq("id",1).maybeSingle();
     row=data;
   }catch(err){ return; }
-  if(!row || row.rev===draftRev) return;            // nothing new, or it was us
+  if(!row || (row.rev===draftRev && !force)) return;   // nothing new, or it was us
   const theirs=row.data;
   const mine=cataloguePayload().catalogue;
+  if(stableStringify(theirs)===stableStringify(mine)){
+    /* the same document on both sides — say so by moving the baseline, and
+       do not mark anything as still to send */
+    draftBase=clone(theirs); draftRev=row.rev; catKnownRev=row.rev;
+    draftSavedSig=catalogueSig();
+    return;
+  }
   const base=draftBase || clone(theirs);
   const report=mergeReport(base, theirs, mine);
   /* both sets of changes, in one document */
@@ -13274,11 +13298,64 @@ async function flushQuoteNow(){
   }
 }
 window.addEventListener("online", ()=>{ if(supa) cloudSaveQuote().catch(()=>{}); });
+/* ============================================================
+   NOTHING IS WRITTEN WHILE YOU ARE STILL IN THE FIELD
+   A save is not a small thing here. It stringifies the whole
+   configuration to localStorage, writes the quote, works out whether the
+   customer's link still matches, and sets the catalogue diff going — and
+   the catalogue carries base64 pictures, so that last one copies and
+   stringifies roughly a megabyte. With a 400ms pause counting as "done
+   typing", an ordinary sentence set all of that off a dozen times and the
+   field stuttered under your hands.
+   So it waits for the cursor to leave. Nothing is at risk in the
+   meantime: the value went into CONFIG on the keystroke itself, and
+   leaving the field, clicking anything, switching tabs or closing the
+   page all send it. A long-stop of fifteen seconds covers typing that
+   never leaves the field at all.
+   ============================================================ */
+let savePending=false, idleSaveTimer=null;
+function editingAField(){
+  const el=document.activeElement;
+  if(!el || el===document.body) return false;
+  if(el.isContentEditable) return true;
+  if(el.tagName==="TEXTAREA") return true;
+  if(el.tagName!=="INPUT") return false;
+  /* a tickbox or a colour picker is one decision, not typing: those save
+     straight away like every other click */
+  return !["checkbox","radio","button","submit","reset","file","color","range"]
+            .includes((el.type||"text").toLowerCase());
+}
+function flushPendingSave(){
+  if(!savePending) return;
+  savePending=false;
+  clearTimeout(idleSaveTimer); idleSaveTimer=null;
+  saveNow();
+}
 function saveSoon(){
   if(!storageOK) return;
   clearTimeout(saveTimer);
+  if(editingAField()){
+    savePending=true;
+    /* set once and left to run, so continuous typing still reaches the
+       database — resetting it on every keystroke would mean a long spell
+       in one field was never saved at all */
+    if(!idleSaveTimer) idleSaveTimer=setTimeout(()=>{ idleSaveTimer=null; flushPendingSave(); }, 15000);
+    return;
+  }
   saveTimer=setTimeout(saveNow, 400);
 }
+/* leaving the field — by tabbing, or by clicking anything at all */
+document.addEventListener("focusout", ()=>{
+  /* one turn later: focus is between two elements at this moment, and
+     clicking straight into another field should not force a write */
+  setTimeout(()=>{ if(!editingAField()) flushPendingSave(); }, 0);
+});
+document.addEventListener("visibilitychange", ()=>{ if(document.hidden) flushPendingSave(); });
+window.addEventListener("pagehide", ()=>{
+  /* the page is going: no time for the network, but the local copy still
+     fits — a refresh in mid-sentence keeps what was typed */
+  if(savePending && storageOK){ savePending=false; try{ localStorage.setItem(SAVE_KEY, snapshot()); }catch(err){} }
+});
 function clearSaved(){
   try{ localStorage.removeItem(SAVE_KEY); }catch(err){}
   flagSaved("Reset");
