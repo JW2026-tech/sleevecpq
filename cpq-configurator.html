@@ -12413,9 +12413,26 @@ async function pullDraftChanges(force){
     flagSaved(who+" changed "+(report.structural?"the catalogue":report.theirs+" thing"+(report.theirs===1?"":"s"))
       + (report.both?" — "+report.both+" you had changed too, yours stands":""));
   }
-  renderCatalogueBar(); refreshView();
-  if(mode==="admin") renderAdmin();
+  /* Their change is in the data already, and what you have typed is in
+     CONFIG, so the merge is safe at any moment. Drawing it is not:
+     renderAdmin builds the whole screen again, the field under your hands
+     included, and the cursor is not put back — you lose your place
+     mid-word. So the picture waits for the same moment the save does, and
+     their change appears when you look up. */
+  if(editingAField()) redrawPending=true;
+  else redrawAfterMerge();
   draftSaveSoon();
+}
+let redrawPending=false;
+function redrawAfterMerge(){
+  renderCatalogueBar();
+  refreshView();
+  if(mode==="admin") renderAdmin();
+}
+function flushPendingRedraw(){
+  if(!redrawPending) return;
+  redrawPending=false;
+  redrawAfterMerge();
 }
 /* Realtime when the table is published for it, a poll when it is not.
    The poll is cheap: rev only, and it stops while the tab is hidden. */
@@ -13347,8 +13364,10 @@ function saveSoon(){
 /* leaving the field — by tabbing, or by clicking anything at all */
 document.addEventListener("focusout", ()=>{
   /* one turn later: focus is between two elements at this moment, and
-     clicking straight into another field should not force a write */
-  setTimeout(()=>{ if(!editingAField()) flushPendingSave(); }, 0);
+     clicking straight into another field should not force a write. A
+     click lands before this runs, so a button still acts on the screen it
+     was drawn on. */
+  setTimeout(()=>{ if(editingAField()) return; flushPendingSave(); flushPendingRedraw(); }, 0);
 });
 document.addEventListener("visibilitychange", ()=>{ if(document.hidden) flushPendingSave(); });
 /* switching to another program leaves the tab visible, so the line above
