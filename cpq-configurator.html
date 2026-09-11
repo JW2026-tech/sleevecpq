@@ -1769,18 +1769,42 @@
 
   /* per-item type assignment screen */
   .assignwrap{margin-top:2px}
-  /* price classes in Admin */
-  .clslist{display:flex;flex-direction:column;gap:5px;margin:8px 0 10px}
-  .clsrow{display:flex;align-items:center;gap:9px}
-  .clsrow .in{max-width:260px}
-  .clsrow .meta{white-space:nowrap}
-  .vclasses{margin:2px 0 12px 12px;border-left:2px solid var(--line);padding-left:12px}
-  .vclasses summary{font-size:11.5px;color:var(--txt-dim);cursor:pointer;padding:3px 0}
-  .vclasses .sublbl{margin:4px 0 8px}
-  .vclsrow{display:flex;align-items:center;gap:9px;padding:2px 0}
-  .vclsname{flex:0 0 150px;font-size:12px;color:var(--txt)}
-  .vclsrow .oprice{max-width:110px}
-  .vclsrow .in:not(.oprice){flex:1;max-width:280px}
+  /* ---- Option properties: classes as chips, prices as a matrix ---- */
+  .pclswrap{border:1px solid var(--line);border-radius:12px;background:var(--rail);
+    padding:12px 14px;margin-bottom:16px}
+  .pclshead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:9px}
+  .pclshead .meta{flex:1;min-width:260px;line-height:1.5}
+  .pclsrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .pcls{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-strong);
+    border-radius:20px;background:var(--panel);padding:2px 4px 2px 10px}
+  .pclsname{border:0;background:none;color:var(--txt);font:inherit;font-size:12.5px;
+    padding:2px 0;min-width:60px}
+  .pclsname:focus{outline:none;border-bottom:1px solid var(--accent)}
+  .pclscount{font-size:10.5px;color:var(--txt-faint);background:var(--track);
+    border-radius:20px;padding:1px 6px}
+  .propcard .top{align-items:center}
+  .propcard .punit{max-width:70px}
+  .propcount{font-size:11.5px;color:var(--txt-dim);white-space:nowrap}
+  .pmatrixscroll{overflow-x:auto;margin:12px 0 4px}
+  .pmatrix{border-collapse:collapse;width:100%;min-width:520px}
+  .pmatrix th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.6px;
+    color:var(--txt-faint);font-weight:600;padding:0 10px 6px 0;white-space:nowrap}
+  .pmatrix th.mprice{text-align:right;padding-right:0;min-width:104px}
+  .pmatrix th.mprice.is-any{color:var(--txt-dim)}
+  .pmatrix td{padding:5px 10px 5px 0;border-top:1px solid var(--line-soft);vertical-align:top}
+  .pmatrix td.mtype{min-width:200px}
+  .pmatrix tr.is-base td{background:var(--panel-2)}
+  .pmatrix .vname{font-weight:500}
+  .pmatrix .vnote{margin-top:4px;font-size:11.5px;color:var(--txt-dim)}
+  .pmatrix td.mprice{padding-right:0}
+  .pmatrix td.mprice .oprice{width:100px;text-align:right}
+  .pmatrix td.mprice.is-any .oprice{border-style:dashed}
+  .pmatrix .vcname{width:100px;margin-top:4px;font-size:11px;padding:4px 7px}
+  .pmatrix td.mtools{white-space:nowrap;text-align:right;padding-right:0}
+  .basepill{display:inline-block;font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;
+    color:var(--accent);border:1px solid var(--accent);border-radius:20px;padding:0 6px;margin-left:6px}
+  .propfoot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .propfoot .meta{line-height:1.5}
   .clspick select{max-width:150px}
   .clswarn{font-size:11.5px;color:var(--warn);border:1px solid var(--warn);border-radius:8px;
     padding:7px 10px;margin:8px 0;line-height:1.5;background:var(--warn-softer)}
@@ -8287,105 +8311,148 @@ function renderPartsAdmin(){
     renderAdmin();
   };
 }
+/* ======================================================================
+   OPTION PROPERTIES
+   Two ideas, and the screen should make both visible without a paragraph
+   explaining them:
+
+     a property is a countable thing an option brings with it, and it has
+     TYPES — the first one is what anything unset gets;
+
+     a price can depend on WHICH part carries it, so the types are rows and
+     the part classes are columns, and the price lives in the cell.
+
+   That is the shape of the spreadsheet this came from, so it is the shape
+   of the screen.
+   ====================================================================== */
 function renderPropsAdmin(){
   ensureProps();
   const ed=document.getElementById("editor");
-  const rows=CONFIG.props.map((p,i)=>`
-    <div class="ocard" data-pi="${i}">
+  const cls=partClasses();
+
+  const classStrip=`
+    <section class="pclswrap">
+      <div class="pclshead">
+        <b>Part classes</b>
+        <span class="meta">What kind of section a part is. Tagged once on the option itself, and shared
+          by every property &mdash; a bend is a bend whether you are pricing its cable tray or its drain.</span>
+      </div>
+      <div class="pclsrow">
+        ${cls.map((c,ci)=>`<span class="pcls" data-ci="${ci}">
+          <input class="pclsname" value="${esc(c.name)}" data-clf="name" size="${Math.max(8,(c.name||"").length)}">
+          <span class="pclscount">${allOptions(CONFIG.modules).filter(o=>o.cls===c.id).length}</span>
+          <button class="x" data-clact="del" title="Remove this class">&times;</button>
+        </span>`).join("")}
+        <button class="btn sm" id="addPartClass">+ Class</button>
+      </div>
+      ${cls.length?"":`<div class="meta" style="margin-top:6px">None yet. Without classes every part pays the
+        same price for a type &mdash; which is all most properties need.</div>`}
+    </section>`;
+
+  const cards=CONFIG.props.map((p,i)=>{
+    const vars=p.variants||[];
+    const n=propCount(p.id);
+    const priced=vars.some(v=>v.byClass && Object.keys(v.byClass).length);
+    const loose=untaggedParts(p);
+    const unit=esc(p.unit||"");
+    /* the matrix: a column for parts with no class, then one per class */
+    const cols=[{id:"", name:"Any part", hint:"What a part with no class pays"}]
+      .concat(cls.map(c=>({id:c.id, name:c.name, hint:"Price for a "+c.name.toLowerCase()})));
+    return `
+    <div class="ocard propcard" data-pi="${i}">
       <div class="top">
         <input class="in oname" value="${esc(p.label)}" data-pf="label" placeholder="Singular, e.g. Adjustment">
         <input class="in oname" value="${esc(p.plural||"")}" data-pf="plural" placeholder="Plural, e.g. Adjustments">
-        <input class="in" style="max-width:80px" value="${esc(p.unit||"")}" data-pf="unit" placeholder="unit">
+        <input class="in punit" value="${unit}" data-pf="unit" placeholder="unit" title="pcs, m, kg…">
+        <span class="spacer"></span>
+        <span class="propcount" title="How many this configuration calls for, added up from every option">${n} ${esc(p.plural||p.label||"")}</span>
         <button class="btn sm" data-pact="up" ${i===0?"disabled":""}>&#9650;</button>
         <button class="btn sm" data-pact="down" ${i===CONFIG.props.length-1?"disabled":""}>&#9660;</button>
         <button class="x" data-pact="del" title="Delete property">&times;</button>
       </div>
-      <div class="sublbl" style="margin-top:8px">Key <code>${esc(p.id)}</code> &middot; this configuration calls for <b>${propCount(p.id)}</b></div>
-      <section class="blk" style="margin-top:12px">
-        <h4>Types on offer</h4>
-        <div class="sublbl">Once something in the quote needs one, a step appears in Configure listing every item that does, so a type can be picked per item. Price is per unit and is charged on the item that needs it. The first type listed is the default for anything not set.</div>
-        ${(p.variants||[]).map((v,vi)=>`
-          <div class="vrow" data-vi="${vi}">
-            <input class="in" value="${esc(v.name)}" data-vf="name" placeholder="Type name, e.g. Hygienic feet">
-            <input class="in" value="${esc(v.note||"")}" data-vf="note" placeholder="Short description">
-            <input class="in oprice" type="number" step="10" value="${+v.unitPrice||0}" data-vf="unitPrice" title="Price per unit for a part with no class of its own">
-            <span class="vcalc">${propCount(p.id)&&+v.unitPrice?`= ${fmt((+v.unitPrice||0)*propCount(p.id))}`:""}</span>
-            <button class="btn sm" data-vact="up" ${vi===0?"disabled":""}>&#9650;</button>
-            <button class="btn sm" data-vact="down" ${vi===(p.variants.length-1)?"disabled":""}>&#9660;</button>
-            <button class="x" data-vact="del" title="Remove type">&times;</button>
-          </div>
-          ${partClasses().length?`<details class="vclasses" data-vi="${vi}" ${
-            (v.byClass&&Object.keys(v.byClass).length)?"open":""}>
-            <summary>Price per class${(v.byClass&&Object.keys(v.byClass).length)
-              ? ` &mdash; ${esc(variantRateWords(p,v))}` : " &mdash; same for every part"}</summary>
-            <div class="sublbl">A corner piece costs a different amount from a plain section, and the
-              applicator section different again. Fill in only the classes that differ; the rest pay the
-              price above. Give a class its own name and the quote line says which part it is.</div>
-            ${(()=>{ const loose=untaggedParts(p);
-              return (loose.length && v.byClass && Object.keys(v.byClass).length)
-                ? `<div class="clswarn"><b>${loose.length} part${loose.length===1?"":"s"} carry no class</b>
-                   and so pay this type&rsquo;s own price of ${fmt(+v.unitPrice||0)}:
-                   ${esc(loose.slice(0,6).map(o=>o.name).join(", "))}${loose.length>6?" and "+(loose.length-6)+" more":""}.
-                   Tag them, or give this type a price of its own.</div>` : ""; })()}
-            ${partClasses().map(cl=>{
-              const cell=(v.byClass&&v.byClass[cl.id])||{};
-              return `<div class="vclsrow" data-cls="${esc(cl.id)}">
-                <span class="vclsname">${esc(cl.name)}</span>
-                <input class="in oprice" type="number" step="10" placeholder="${+v.unitPrice||0}"
-                  value="${cell.price===undefined||cell.price===null?"":cell.price}" data-vcf="price"
-                  title="Leave empty to use ${fmt(+v.unitPrice||0)}">
-                <input class="in" placeholder="${esc(v.name)}" value="${esc(cell.name||"")}" data-vcf="name"
-                  title="What the quote line calls it for this class. Empty means the type's own name.">
-              </div>`;
-            }).join("")}
-          </details>`:""}`).join("") || '<div class="meta">No types yet — add one to make this property configurable.</div>'}
-        ${((p.variants||[]).length>2)?`<button class="btn sm" data-pact="tocls"
-          title="Turn the extra types into one choice with a price per class">Merge types into price classes…</button>`:""}
+
+      ${vars.length?`
+      <div class="pmatrixscroll"><table class="pmatrix">
+        <thead>
+          <tr>
+            <th class="mtype">Type</th>
+            ${cols.map(c=>`<th class="mprice ${c.id?"":"is-any"}" title="${esc(c.hint)}">${esc(c.name)}</th>`).join("")}
+            <th class="mtools"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${vars.map((v,vi)=>{
+            const isBase=vi===0;
+            return `<tr class="${isBase?"is-base":""}" data-vi="${vi}">
+              <td class="mtype">
+                <input class="in vname" value="${esc(v.name)}" data-vf="name" placeholder="Type name">
+                ${isBase?`<span class="basepill" title="Anything not set gets this one">standard</span>`:""}
+                <input class="in vnote" value="${esc(v.note||"")}" data-vf="note" placeholder="Short description, shown to the customer">
+              </td>
+              ${cols.map(c=>{
+                const cell=c.id ? ((v.byClass&&v.byClass[c.id])||{}) : null;
+                const val=c.id ? (cell.price===undefined||cell.price===null?"":cell.price) : (+v.unitPrice||0);
+                return `<td class="mprice ${c.id?"":"is-any"}">
+                  <input class="in oprice" type="number" step="10" value="${val}"
+                    ${c.id?`data-vcf="price" data-cls="${esc(c.id)}" placeholder="${+v.unitPrice||0}"`:`data-vf="unitPrice"`}
+                    title="${c.id?`Leave empty and a ${esc(c.name.toLowerCase())} pays ${fmt(+v.unitPrice||0)}`:"What a part with no class pays"}">
+                  ${c.id?`<input class="in vcname" value="${esc(cell.name||"")}" data-vcf="name" data-cls="${esc(c.id)}"
+                    placeholder="${esc(v.name)}" title="What the quote line calls it for this class. Empty means the type's own name.">`:""}
+                </td>`;
+              }).join("")}
+              <td class="mtools">
+                <button class="btn sm" data-vact="up" ${vi===0?"disabled":""}>&#9650;</button>
+                <button class="btn sm" data-vact="down" ${vi===vars.length-1?"disabled":""}>&#9660;</button>
+                <button class="x" data-vact="del" title="Remove type">&times;</button>
+              </td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table></div>`
+      : `<div class="meta" style="margin:10px 0">No types yet. A property with fewer than two types is
+         just a count &mdash; add a second and a step appears in Configure to choose between them.</div>`}
+
+      ${(priced && loose.length)?`<div class="clswarn"><b>${loose.length} part${loose.length===1?"":"s"} carry no class</b>
+        and so pay the “Any part” price: ${esc(loose.slice(0,6).map(o=>o.name).join(", "))}${
+        loose.length>6?" and "+(loose.length-6)+" more":""}. Tag them on the option, under “Adds to the machine”.</div>`:""}
+
+      <div class="propfoot">
         <button class="btn sm" data-vact="add">+ Add type</button>
-      </section>
-    </div>`).join("");
+        ${vars.length>2?`<button class="btn sm" data-pact="tocls"
+          title="Turn the extra types into one choice with a price per class">Merge types into classes…</button>`:""}
+        ${vars.length>1?`<span class="meta">Per unit, charged on the item that needs it${
+          n?` &mdash; ${n} ${esc(unit||"in this configuration")}`:""}.</span>`:""}
+      </div>
+    </div>`;
+  }).join("");
+
   ed.innerHTML=`
     <div class="ed-head"><h2 style="margin:0;font-size:21px;font-weight:600">Option properties</h2></div>
-    <div class="sublbl" style="margin:2px 0 18px">Countable things the machine ends up with — adjustments, feet, and so on. Each option says how many it adds. Give a property two or more <b>types</b> and a step appears automatically in Configure once the count is above zero, letting you pick the standard type or a costlier one for however many the configuration worked out.</div>
-
-    ${/* Classes are shared by every property on purpose: a bend is a bend
-         whether you are pricing its cable tray, its drip tray or its
-         central drain, so it is tagged once on the option itself. */""}
-    <section class="blk" style="margin-bottom:18px">
-      <h4>Price classes</h4>
-      <div class="sublbl">What kind of section a part is — a corner, an applicator section, a plain one.
-        Tag an option once with its class (on the option itself, under “Adds to the machine”) and every
-        property can charge a different price for it. Leave this empty and nothing changes: every part
-        pays the type's own price.</div>
-      <div class="clslist">
-        ${partClasses().map((cl,ci)=>`<div class="clsrow" data-ci="${ci}">
-          <input class="in" value="${esc(cl.name)}" data-clf="name" placeholder="e.g. Corner piece">
-          <span class="meta">${allOptions(CONFIG.modules).filter(o=>o.cls===cl.id).length} parts</span>
-          <button class="x" data-clact="del" title="Remove class">&times;</button>
-        </div>`).join("") || '<div class="meta">No classes yet.</div>'}
-      </div>
-      <button class="btn sm" id="addPartClass">+ Add class</button>
-    </section>
-    ${rows || '<div class="meta">No properties yet.</div>'}
+    <div class="sublbl" style="margin:2px 0 16px">Countable things the machine ends up with &mdash; feet,
+      adjustments, metres of cable tray. Each option says how many it adds; give a property two or more
+      types and a step appears in Configure to choose between them.</div>
+    ${classStrip}
+    ${cards || '<div class="meta">No properties yet.</div>'}
     <button class="btn" id="addPropAdmin">+ Add property</button>`;
 
-  /* the shared class list */
+  /* ---- part classes ---- */
   ed.querySelectorAll("[data-clf]").forEach(el=>{
-    const cl=partClasses()[+el.closest(".clsrow").dataset.ci];
-    el.oninput=()=>{ cl[el.dataset.clf]=el.value; };
+    const c=partClasses()[+el.closest(".pcls").dataset.ci];
+    el.oninput=()=>{ c[el.dataset.clf]=el.value; };
+    el.onchange=()=>renderAdmin();
   });
   ed.querySelectorAll("[data-clact]").forEach(btn=>{
-    const ci=+btn.closest(".clsrow").dataset.ci;
+    const ci=+btn.closest(".pcls").dataset.ci;
     btn.onclick=()=>{
-      const cl=partClasses()[ci];
-      const used=allOptions(CONFIG.modules).filter(o=>o.cls===cl.id);
-      if(!confirm(`Remove the class "${cl.name}"?` + (used.length
-        ? ` ${used.length} part${used.length===1?"":"s"} carry it and fall back to the plain price.` : ""))) return;
+      const c=partClasses()[ci];
+      const used=allOptions(CONFIG.modules).filter(o=>o.cls===c.id);
+      if(!confirm(`Remove the class "${c.name}"?`+(used.length
+        ? ` ${used.length} part${used.length===1?"":"s"} carry it and go back to the “Any part” price.`:""))) return;
       for(const o of used) delete o.cls;
       for(const pr of (CONFIG.props||[])) for(const v of (pr.variants||[]))
-        if(v.byClass) delete v.byClass[cl.id];
+        if(v.byClass) delete v.byClass[c.id];
       partClasses().splice(ci,1);
-      renderConfigureQuiet(); renderAdmin();
+      invalidateQtyCache(); renderConfigureQuiet(); renderAdmin();
     };
   });
   const addCls=document.getElementById("addPartClass");
@@ -8393,26 +8460,11 @@ function renderPropsAdmin(){
     partClasses().push({id:specUid(partClasses().map(c=>c.id),"cls"), name:"New class"});
     renderAdmin();
   };
-  /* a price, and optionally a name, for one class of one type */
-  ed.querySelectorAll("[data-vcf]").forEach(el=>{
-    const pr=CONFIG.props[+el.closest(".ocard").dataset.pi];
-    const v=pr.variants[+el.closest(".vclasses").dataset.vi];
-    const cls=el.closest(".vclsrow").dataset.cls, f=el.dataset.vcf;
-    const write=()=>{
-      v.byClass=v.byClass||{};
-      const cell=v.byClass[cls]=v.byClass[cls]||{};
-      if(f==="price"){ if(el.value==="") delete cell.price; else cell.price=+el.value||0; }
-      else { if(!el.value.trim()) delete cell.name; else cell.name=el.value; }
-      if(!Object.keys(cell).length) delete v.byClass[cls];
-      if(!Object.keys(v.byClass).length) delete v.byClass;
-    };
-    el.oninput=write;
-    if(f==="price") el.onchange=()=>{ write(); renderConfigureQuiet(); renderAdmin(); };
-  });
+
+  /* ---- a property's own fields ---- */
   ed.querySelectorAll("[data-pf]").forEach(el=>{
     const p=CONFIG.props[+el.closest(".ocard").dataset.pi];
-    const f=el.dataset.pf;
-    el.oninput=()=>{ p[f]=el.value; };
+    el.oninput=()=>{ p[el.dataset.pf]=el.value; };
   });
   ed.querySelectorAll("[data-pact]").forEach(btn=>{
     const i=+btn.closest(".ocard").dataset.pi, L=CONFIG.props;
@@ -8428,22 +8480,33 @@ function renderPropsAdmin(){
       renderAdmin();
     };
   });
-  /* the types on offer for a property — these become the options of its
-     generated step, so editing one re-renders to refresh the "= total" hint */
-  ed.querySelectorAll("[data-pchk]").forEach(el=>{
-    const p=CONFIG.props[+el.closest(".ocard").dataset.pi];
-    el.onchange=()=>{ p[el.dataset.pchk]=el.checked; renderConfigureQuiet(); renderAdmin(); };
-  });
+
+  /* ---- the matrix: a type's own fields, and a cell per class ---- */
   ed.querySelectorAll("[data-vf]").forEach(el=>{
     const p=CONFIG.props[+el.closest(".ocard").dataset.pi];
-    const v=p.variants[+el.closest(".vrow").dataset.vi];
+    const v=p.variants[+el.closest("tr").dataset.vi];
     const f=el.dataset.vf;
-    if(f==="unitPrice"){ el.oninput=()=>{ v.unitPrice=+el.value||0; }; el.onchange=()=>renderAdmin(); }
+    if(f==="unitPrice"){ el.oninput=()=>{ v.unitPrice=+el.value||0; }; el.onchange=()=>{ renderConfigureQuiet(); renderAdmin(); }; }
     else el.oninput=()=>{ v[f]=el.value; };
+  });
+  ed.querySelectorAll("[data-vcf]").forEach(el=>{
+    const p=CONFIG.props[+el.closest(".ocard").dataset.pi];
+    const v=p.variants[+el.closest("tr").dataset.vi];
+    const clsId=el.dataset.cls, f=el.dataset.vcf;
+    const write=()=>{
+      v.byClass=v.byClass||{};
+      const cell=v.byClass[clsId]=v.byClass[clsId]||{};
+      if(f==="price"){ if(el.value==="") delete cell.price; else cell.price=+el.value||0; }
+      else { if(!el.value.trim()) delete cell.name; else cell.name=el.value; }
+      if(!Object.keys(cell).length) delete v.byClass[clsId];
+      if(v.byClass && !Object.keys(v.byClass).length) delete v.byClass;
+    };
+    el.oninput=write;
+    if(f==="price") el.onchange=()=>{ write(); renderConfigureQuiet(); renderAdmin(); };
   });
   ed.querySelectorAll("[data-vact]").forEach(btn=>{
     const p=CONFIG.props[+btn.closest(".ocard").dataset.pi];
-    const row=btn.closest(".vrow");
+    const row=btn.closest("tr");
     btn.onclick=()=>{
       p.variants=p.variants||[];
       const a=btn.dataset.vact;
@@ -8460,9 +8523,10 @@ function renderPropsAdmin(){
           L.splice(vi,1);
         }
       }
-      renderConfigureQuiet(); renderAdmin();
+      invalidateQtyCache(); renderConfigureQuiet(); renderAdmin();
     };
   });
+
   document.getElementById("addPropAdmin").onclick=()=>{
     CONFIG.props.push({id:specUid(CONFIG.props.map(x=>x.id),"prop"), label:"New property", plural:"", unit:"pcs", variants:[]});
     renderAdmin();
