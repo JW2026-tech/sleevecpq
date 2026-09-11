@@ -500,8 +500,6 @@
   .catbar.dirty .catdot{background:var(--warn)}
   .catbar .btn{white-space:nowrap}
   .catbar .catmeta{font-size:11px;color:var(--txt-faint);white-space:nowrap}
-  .clashline{display:block;font-size:11.5px;margin-top:3px}
-  .clashline b{color:var(--txt)}
   /* The notices. One sticky block above the screens; each notice is its own
      row with its own subject and its own button, because "the catalogue
      moved on" and "the customer's link is behind" are different questions
@@ -12225,106 +12223,109 @@ function wireQuoteBar(){
    draftBase is what the database held when we last agreed, so the two
    diffs against it say exactly who touched what.
    ============================================================ */
-let draftWatch=null, draftPollTimer=null, draftClash=null;
-function pathKey(pathArr){ return (pathArr||[]).join(""); }
-/* apply one id-addressed patch to a document in memory */
-function applyPatchTo(doc, patch){
-  const seg=patch.path||[];
-  let cur=doc;
-  for(let i=0;i<seg.length-1;i++){
-    if(cur==null) return false;
-    if(Array.isArray(cur)){
-      const idx=cur.findIndex(x=>x && (x.id===seg[i] || x.code===seg[i]));
-      if(idx<0) return false;
-      cur=cur[idx];
-    } else cur=cur[seg[i]];
+let draftWatch=null, draftPollTimer=null;
+/* ============================================================
+   MERGING TWO PEOPLE'S WORK
+   The rule is simple and it is the one you would say out loud: save
+   everything that was changed, and where we both changed the same thing,
+   the last one written wins. Nobody is asked anything.
+
+   Three documents go in — what the database held when we last agreed
+   (base), what it holds now (theirs), and what is on my screen (mine) —
+   and one comes out with both sets of changes in it.
+
+     a field only they touched   → theirs
+     a field only I touched      → mine
+     a field we both touched     → mine, because I am still typing and my
+                                    save goes up after theirs
+     an option they added        → kept
+     an option I added           → kept
+     an option I deleted         → stays deleted
+
+   Lists of steps and options are matched on id, never on position, so
+   neither side has to care what order the other put things in.
+   ============================================================ */
+const _mid=o=>(o && typeof o==="object" && !Array.isArray(o)) ? (o.id||o.code||null) : null;
+const _idList=a=>Array.isArray(a) && a.length>0 && a.every(x=>_mid(x));
+function mergeTrees(base, theirs, mine){
+  /* one side untouched: nothing to weigh up */
+  if(mine===undefined) return clone(theirs);
+  if(theirs===undefined) return clone(mine);
+  const same=(a,b)=>{ try{ return stableStringify(a)===stableStringify(b); }catch(e){ return a===b; } };
+  if(same(mine, base)) return clone(theirs);        // only they changed it
+  if(same(theirs, base)) return clone(mine);        // only I changed it
+  /* both changed it */
+  if(_idList(base) && _idList(theirs) && _idList(mine)){
+    const byId=l=>{ const m={}; for(const x of l) m[_mid(x)]=x; return m; };
+    const B=byId(base), T=byId(theirs), M=byId(mine);
+    const out=[];
+    /* their order first, minus what I deleted, each item merged */
+    for(const t of theirs){
+      const id=_mid(t);
+      if(id in B && !(id in M)) continue;            // I deleted it
+      out.push((id in M) ? mergeTrees(B[id], t, M[id]) : clone(t));
+    }
+    /* then what I added and they have not seen */
+    for(const m of mine){
+      const id=_mid(m);
+      if(!(id in T) && !(id in B)) out.push(clone(m));
+    }
+    return out;
   }
-  if(cur==null) return false;
-  const last=seg[seg.length-1];
-  if(Array.isArray(cur)){
-    const idx=cur.findIndex(x=>x && (x.id===last || x.code===last));
-    if(idx<0) return false;
-    if(patch.op==="del") cur.splice(idx,1); else cur[idx]=patch.value;
-  } else {
-    if(patch.op==="del") delete cur[last]; else cur[last]=patch.value;
+  if(base && theirs && mine && typeof mine==="object" && typeof theirs==="object"
+     && !Array.isArray(mine) && !Array.isArray(theirs)){
+    const out={};
+    for(const k of new Set([...Object.keys(theirs), ...Object.keys(mine)])){
+      const b=base?base[k]:undefined;
+      if(!(k in mine))   { if(!(k in base||{})) out[k]=clone(theirs[k]); continue; }  // I removed it
+      if(!(k in theirs)) { if(!(k in (base||{}))) out[k]=clone(mine[k]); continue; }  // they removed it
+      out[k]=mergeTrees(b, theirs[k], mine[k]);
+    }
+    return out;
   }
-  return true;
+  /* a plain value we both changed: mine stands and is written last */
+  return clone(mine);
 }
-/* a short, human way to name what a patch touched */
-function patchWords(patch){
-  const seg=(patch.path||[]).slice();
-  const field=seg[seg.length-1];
-  const names=[];
-  let cur={modules:CONFIG.modules, props:CONFIG.props, templates:CONFIG.templates,
-           parts:CONFIG.parts, partClasses:CONFIG.partClasses};
-  for(let i=0;i<seg.length-1;i++){
-    const s=seg[i];
-    if(Array.isArray(cur)){
-      const it=cur.find(x=>x && (x.id===s || x.code===s));
-      if(!it) break;
-      if(it.name||it.title||it.label) names.push(it.name||it.title||it.label);
-      cur=it;
-    } else cur=cur?cur[s]:null;
-  }
-  return (names.slice(-2).join(" › ") || "the catalogue") + " · " + field;
+/* what to say afterwards, without opening a dialog about it */
+function mergeReport(base, theirs, mine){
+  const their=catalogueDiff(base, theirs), my=catalogueDiff(base, mine);
+  const key=x=>(x.path||[]).join("");
+  const minePaths=new Set(my.patches.map(key));
+  const both=their.patches.filter(x=>minePaths.has(key(x))).length;
+  return {theirs:their.patches.length, structural:their.structural||my.structural, both};
 }
 async function pullDraftChanges(){
-  if(!supa || draftRev===null || draftClash) return;
+  if(!supa || draftRev===null) return;
   let row=null;
   try{
     const {data}=await supa.from("catalogue_draft").select("data,rev,updated_by").eq("id",1).maybeSingle();
     row=data;
   }catch(err){ return; }
   if(!row || row.rev===draftRev) return;            // nothing new, or it was us
-  const theirs=row.data, base=draftBase;
+  const theirs=row.data;
   const mine=cataloguePayload().catalogue;
-  if(!base){ /* nothing to merge against: take theirs whole */
-    applyCatalogue({catalogue:theirs});
-    draftRev=row.rev; catKnownRev=row.rev; draftBase=clone(cataloguePayload().catalogue);
-    draftSavedSig=catalogueSig();
-    flagSaved("Catalogue updated by "+(row.updated_by||"a colleague"));
-    renderCatalogueBar(); refreshView(); if(mode==="admin") renderAdmin();
-    return;
-  }
-  const theirDiff=catalogueDiff(base, theirs);
-  const myDiff=catalogueDiff(base, mine);
-  /* structural changes — a step or option added, removed or moved — cannot
-     be expressed as patches, so there is nothing to merge field by field */
-  if(theirDiff.structural || myDiff.structural){
-    if(myDiff.patches.length || myDiff.structural){
-      draftClash={who:row.updated_by||"A colleague", rev:row.rev, structural:true, data:theirs};
-      renderCatalogueBar();
-      return;
-    }
-    applyCatalogue({catalogue:theirs});
-    draftRev=row.rev; catKnownRev=row.rev; draftBase=clone(cataloguePayload().catalogue);
-    draftSavedSig=catalogueSig();
-    flagSaved((row.updated_by||"A colleague")+" changed the catalogue");
-    renderCatalogueBar(); refreshView(); if(mode==="admin") renderAdmin();
-    return;
-  }
-  const minePaths=new Set(myDiff.patches.map(x=>pathKey(x.path)));
-  const clashes=theirDiff.patches.filter(x=>minePaths.has(pathKey(x.path)));
-  const clean=theirDiff.patches.filter(x=>!minePaths.has(pathKey(x.path)));
-  /* their changes to things I have not touched land straight away */
-  let applied=0;
-  for(const patch of clean) if(applyPatchTo(CONFIG, patch)) applied++;
-  /* the base moves to what the database now holds, plus what is still mine
-     to send, so my pending edits are not re-sent as if they were new */
-  const newBase=clone(theirs);
-  for(const patch of myDiff.patches) applyPatchTo(newBase, patch);
-  draftBase=newBase;
-  draftRev=row.rev; catKnownRev=row.rev;
+  const base=draftBase || clone(theirs);
+  const report=mergeReport(base, theirs, mine);
+  /* both sets of changes, in one document */
+  const merged=mergeTrees(base, theirs, mine);
+  for(const k of CATALOGUE_KEYS) if(merged[k]!==undefined) CONFIG[k]=merged[k];
+  CONFIG.languages=CONFIG.templates;
+  ensureLanguages(); ensureSpecs(); ensureProps(); ensureParts(); ensureCustomer(); ensureSymmetricConflicts();
   invalidateQtyCache(); reconcile();
-  if(clashes.length){
-    draftClash={who:row.updated_by||"A colleague", rev:row.rev, patches:clashes,
-                mineValues:clashes.map(x=>{
-                  const m=myDiff.patches.find(y=>pathKey(y.path)===pathKey(x.path));
-                  return m?m.value:undefined; })};
-  } else if(applied){
-    flagSaved((row.updated_by||"A colleague")+" changed "+applied+" thing"+(applied===1?"":"s"));
+  /* the database now holds theirs; what is still mine to send is the
+     difference between that and the merged screen, and the next save
+     works that out by itself */
+  draftBase=clone(theirs);
+  draftRev=row.rev; catKnownRev=row.rev;
+  draftSavedSig=null;                    // there is something of mine to write
+  const who=(row.updated_by && row.updated_by!=="unknown") ? row.updated_by : "A colleague";
+  if(report.theirs || report.structural){
+    flagSaved(who+" changed "+(report.structural?"the catalogue":report.theirs+" thing"+(report.theirs===1?"":"s"))
+      + (report.both?" — "+report.both+" you had changed too, yours stands":""));
   }
-  renderCatalogueBar(); refreshView(); if(mode==="admin") renderAdmin();
+  renderCatalogueBar(); refreshView();
+  if(mode==="admin") renderAdmin();
+  draftSaveSoon();
 }
 /* Realtime when the table is published for it, a poll when it is not.
    The poll is cheap: rev only, and it stops while the tab is hidden. */
@@ -12399,49 +12400,6 @@ function renderCatalogueBar(){
   const held=heldCloudCatalogue
     ? ` The team's version ${heldCloudCatalogue.version?`(${heldCloudCatalogue.version}) `:""}was <b>not</b> loaded, so it can't overwrite them.`
     : "";
-  /* We both changed the same thing. Neither version is thrown away until
-     this is answered, and it names what was touched rather than saying
-     "a conflict". */
-  if(draftClash){
-    bar.classList.add("dirty");
-    const c=draftClash;
-    bar.innerHTML=`
-      <span class="catdot"></span>
-      <span class="catmsg"><b>${esc(c.who)} changed the same thing you did.</b>
-        ${c.structural
-          ? `A step or option was added, removed or moved, so this cannot be settled field by field.`
-          : c.patches.map((x,i)=>`<span class="clashline">${esc(patchWords(x))}:
-              <b>yours</b> ${esc(String(c.mineValues[i]))} &middot;
-              <b>theirs</b> ${esc(String(x.value))}</span>`).join("")}</span>
-      <button class="btn primary sm" id="clashMine">Keep mine</button>
-      <button class="btn sm" id="clashTheirs">Take theirs</button>`;
-    const mine=document.getElementById("clashMine");
-    if(mine) mine.onclick=()=>{
-      /* mine is already on screen; saying so sends it and moves on */
-      draftClash=null;
-      draftSavedSig=null;                 // force the next save to go up
-      cloudSaveCatalogueDraft().catch(()=>{});
-      flagSaved("Your version kept");
-      renderCatalogueBar();
-    };
-    const theirs=document.getElementById("clashTheirs");
-    if(theirs) theirs.onclick=()=>{
-      if(c.structural && c.data){
-        applyCatalogue({catalogue:c.data});
-        draftBase=clone(cataloguePayload().catalogue);
-      } else {
-        for(const x of c.patches) applyPatchTo(CONFIG, x);
-        for(const x of c.patches) applyPatchTo(draftBase, x);
-      }
-      draftClash=null;
-      draftRev=c.rev; catKnownRev=c.rev;
-      draftSavedSig=catalogueSig();
-      invalidateQtyCache(); reconcile();
-      flagSaved("Their version taken");
-      renderCatalogueBar(); refreshView(); if(mode==="admin") renderAdmin();
-    };
-    return;
-  }
   /* A colleague saved the shared draft while you were editing. Nothing is
      written until this is answered, so neither version is lost. */
   if(draftConflict){
@@ -12690,7 +12648,7 @@ async function cloudLoadCatalogueDraft(){
    point sending one per keystroke. Only writes when the catalogue actually
    differs from what we last stored. */
 function draftSaveSoon(){
-  if(!supa || draftRev===null || draftConflict || draftClash) return;
+  if(!supa || draftRev===null || draftConflict) return;
   clearTimeout(draftTimer);
   draftTimer=setTimeout(()=>{ cloudSaveCatalogueDraft().catch(()=>{}); }, 1500);
 }
@@ -12736,7 +12694,6 @@ function catalogueDiff(base, cur){
 }
 async function cloudSaveCatalogueDraft(){
   if(!supa || draftRev===null || draftConflict || draftSaving) return null;
-  if(draftClash && draftSavedSig!==null) return null;   // waiting on an answer
   const sig=catalogueSig();
   if(sig===draftSavedSig) return null;          // nothing changed
   draftSaving=true;
