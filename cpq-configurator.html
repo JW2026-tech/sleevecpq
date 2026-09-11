@@ -85,6 +85,18 @@
   .hdrquote{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;
     padding-left:12px;border-left:1px solid var(--line)}
   .hdrquote:empty{display:none}
+  /* which catalogue is on screen, said once in the header instead of only
+     inside Admin */
+  .cattabs{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);
+    border-radius:8px;padding:2px;background:var(--track)}
+  .cattabs:empty{display:none}
+  .cattab{display:inline-flex;align-items:center;gap:5px;background:none;border:0;
+    color:var(--txt-faint);font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer;
+    white-space:nowrap}
+  .cattab:hover{color:var(--txt-dim)}
+  .cattab.on{background:var(--track-on);color:var(--txt);box-shadow:0 1px 2px var(--shadow)}
+  .catdotlive{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+  .cattab:not(.on) .catdotlive{background:var(--line-strong)}
   .hdrquote .btn{white-space:nowrap}
   .hdrquote b{font-variant-numeric:tabular-nums}
   /* Configure's own sub-tabs: format parts and services are steps in the
@@ -483,6 +495,8 @@
   .catbar.dirty .catdot{background:var(--warn)}
   .catbar .btn{white-space:nowrap}
   .catbar .catmeta{font-size:11px;color:var(--txt-faint);white-space:nowrap}
+  .clashline{display:block;font-size:11.5px;margin-top:3px}
+  .clashline b{color:var(--txt)}
   /* The notices. One sticky block above the screens; each notice is its own
      row with its own subject and its own button, because "the catalogue
      moved on" and "the customer's link is behind" are different questions
@@ -2288,6 +2302,11 @@
   </div>
   <button id="mFormats" class="hidden"></button>
   <button id="mService" class="hidden"></button>
+  <!-- Which catalogue is on screen. There are only ever two answers: the
+       live one the whole team edits, or the frozen version an opened quote
+       was written against. It was only said inside Admin, which is the one
+       place you already know where you are — renderCatTabs() fills it in. -->
+  <span class="cattabs" id="catTabs"></span>
   <span class="sub" id="modelName"></span>
   <!-- the quote as a document, merged into the header: it used to be its own
        bar, which meant three stacked bars before any content began -->
@@ -12164,7 +12183,191 @@ function wireQuoteBar(){
   on("qbLog", ()=>{ quoteBarPanel=quoteBarPanel==="log"?null:"log"; renderQuoteBar(); });
   on("qbVers", ()=>{ quoteBarPanel=quoteBarPanel==="versions"?null:"versions"; renderQuoteBar(); });
 }
+/* ============================================================
+   TWO PEOPLE IN THE LIVE CATALOGUE
+   Field edits go up as id-addressed patches with no revision check, so
+   two people editing different things never block each other. The price
+   of that was silence: a colleague's change landed in the database and
+   never appeared on screen, and the first person to write a whole
+   document won.
+
+   So the draft is watched, and when it moves the change is brought down
+   and merged rather than announced:
+
+     what they changed and I did not   → applied to my screen at once
+     what I changed and they did not   → left alone, mine is still pending
+     what we BOTH changed              → I am asked which one to keep
+
+   draftBase is what the database held when we last agreed, so the two
+   diffs against it say exactly who touched what.
+   ============================================================ */
+let draftWatch=null, draftPollTimer=null, draftClash=null;
+function pathKey(pathArr){ return (pathArr||[]).join(""); }
+/* apply one id-addressed patch to a document in memory */
+function applyPatchTo(doc, patch){
+  const seg=patch.path||[];
+  let cur=doc;
+  for(let i=0;i<seg.length-1;i++){
+    if(cur==null) return false;
+    if(Array.isArray(cur)){
+      const idx=cur.findIndex(x=>x && (x.id===seg[i] || x.code===seg[i]));
+      if(idx<0) return false;
+      cur=cur[idx];
+    } else cur=cur[seg[i]];
+  }
+  if(cur==null) return false;
+  const last=seg[seg.length-1];
+  if(Array.isArray(cur)){
+    const idx=cur.findIndex(x=>x && (x.id===last || x.code===last));
+    if(idx<0) return false;
+    if(patch.op==="del") cur.splice(idx,1); else cur[idx]=patch.value;
+  } else {
+    if(patch.op==="del") delete cur[last]; else cur[last]=patch.value;
+  }
+  return true;
+}
+/* a short, human way to name what a patch touched */
+function patchWords(patch){
+  const seg=(patch.path||[]).slice();
+  const field=seg[seg.length-1];
+  const names=[];
+  let cur={modules:CONFIG.modules, props:CONFIG.props, templates:CONFIG.templates,
+           parts:CONFIG.parts, partClasses:CONFIG.partClasses};
+  for(let i=0;i<seg.length-1;i++){
+    const s=seg[i];
+    if(Array.isArray(cur)){
+      const it=cur.find(x=>x && (x.id===s || x.code===s));
+      if(!it) break;
+      if(it.name||it.title||it.label) names.push(it.name||it.title||it.label);
+      cur=it;
+    } else cur=cur?cur[s]:null;
+  }
+  return (names.slice(-2).join(" › ") || "the catalogue") + " · " + field;
+}
+async function pullDraftChanges(){
+  if(!supa || draftRev===null || draftClash) return;
+  let row=null;
+  try{
+    const {data}=await supa.from("catalogue_draft").select("data,rev,updated_by").eq("id",1).maybeSingle();
+    row=data;
+  }catch(err){ return; }
+  if(!row || row.rev===draftRev) return;            // nothing new, or it was us
+  const theirs=row.data, base=draftBase;
+  const mine=cataloguePayload().catalogue;
+  if(!base){ /* nothing to merge against: take theirs whole */
+    applyCatalogue({catalogue:theirs});
+    draftRev=row.rev; catKnownRev=row.rev; draftBase=clone(cataloguePayload().catalogue);
+    draftSavedSig=catalogueSig();
+    flagSaved("Catalogue updated by "+(row.updated_by||"a colleague"));
+    renderCatalogueBar(); refreshView(); if(mode==="admin") renderAdmin();
+    return;
+  }
+  const theirDiff=catalogueDiff(base, theirs);
+  const myDiff=catalogueDiff(base, mine);
+  /* structural changes — a step or option added, removed or moved — cannot
+     be expressed as patches, so there is nothing to merge field by field */
+  if(theirDiff.structural || myDiff.structural){
+    if(myDiff.patches.length || myDiff.structural){
+      draftClash={who:row.updated_by||"A colleague", rev:row.rev, structural:true, data:theirs};
+      renderCatalogueBar();
+      return;
+    }
+    applyCatalogue({catalogue:theirs});
+    draftRev=row.rev; catKnownRev=row.rev; draftBase=clone(cataloguePayload().catalogue);
+    draftSavedSig=catalogueSig();
+    flagSaved((row.updated_by||"A colleague")+" changed the catalogue");
+    renderCatalogueBar(); refreshView(); if(mode==="admin") renderAdmin();
+    return;
+  }
+  const minePaths=new Set(myDiff.patches.map(x=>pathKey(x.path)));
+  const clashes=theirDiff.patches.filter(x=>minePaths.has(pathKey(x.path)));
+  const clean=theirDiff.patches.filter(x=>!minePaths.has(pathKey(x.path)));
+  /* their changes to things I have not touched land straight away */
+  let applied=0;
+  for(const patch of clean) if(applyPatchTo(CONFIG, patch)) applied++;
+  /* the base moves to what the database now holds, plus what is still mine
+     to send, so my pending edits are not re-sent as if they were new */
+  const newBase=clone(theirs);
+  for(const patch of myDiff.patches) applyPatchTo(newBase, patch);
+  draftBase=newBase;
+  draftRev=row.rev; catKnownRev=row.rev;
+  invalidateQtyCache(); reconcile();
+  if(clashes.length){
+    draftClash={who:row.updated_by||"A colleague", rev:row.rev, patches:clashes,
+                mineValues:clashes.map(x=>{
+                  const m=myDiff.patches.find(y=>pathKey(y.path)===pathKey(x.path));
+                  return m?m.value:undefined; })};
+  } else if(applied){
+    flagSaved((row.updated_by||"A colleague")+" changed "+applied+" thing"+(applied===1?"":"s"));
+  }
+  renderCatalogueBar(); refreshView(); if(mode==="admin") renderAdmin();
+}
+/* Realtime when the table is published for it, a poll when it is not.
+   The poll is cheap: rev only, and it stops while the tab is hidden. */
+function watchDraft(){
+  if(!supa || draftWatch) return;
+  try{
+    draftWatch=supa.channel("catalogue-draft")
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"catalogue_draft"},
+          ()=>pullDraftChanges())
+      .subscribe();
+  }catch(err){ draftWatch=null; }
+  clearInterval(draftPollTimer);
+  draftPollTimer=setInterval(()=>{ if(!document.hidden) pullDraftChanges(); }, 20000);
+  window.addEventListener("focus", ()=>pullDraftChanges());
+}
+/* WHICH CATALOGUE AM I IN?
+   Two answers, always: the live one everybody edits, or the frozen
+   version the open quote was written against. The second only exists
+   while such a quote is open, so the strip is one tab most of the time
+   and two when it matters. */
+function renderCatTabs(){
+  const el=document.getElementById("catTabs");
+  if(!el) return;
+  if(document.body.classList.contains("share-mode")){ el.innerHTML=""; return; }
+  const pinned=quoteCatVersion || null;
+  const onVersion=draftRev===null && !!loadedCatalogueVersion;
+  el.innerHTML=`
+    <button class="cattab ${onVersion?"":"on"}" id="catTabLive"
+      title="${draftRev!==null
+        ? "The catalogue the whole team works in. What you change here is saved for everyone."
+        : "Switch to the catalogue the whole team works in"}">
+      <span class="catdotlive"></span>Live catalogue</button>
+    ${pinned?`<button class="cattab ${(onVersion&&loadedCatalogueVersion===pinned)?"on":""}" id="catTabVer"
+      title="The frozen catalogue this quote was written against. Its prices cannot move.">v${pinned}</button>`:""}`;
+  const live=document.getElementById("catTabLive");
+  if(live) live.onclick=async ()=>{
+    if(draftRev!==null) return;                       // already there
+    const dirty=catalogueChanged();
+    if(!confirm("Go to the live catalogue?"+(dirty?" Your edits to the frozen version are lost.":"")+
+        (quoteCatVersion?"\n\nThe open quote stays marked as version "+quoteCatVersion+
+         " — reopening it brings that catalogue back.":""))) return;
+    loadedCatalogueVersion=null;
+    if(await cloudLoadCatalogueDraft()){
+      catUpstream=null; catUpstreamSnoozed=null;
+      flagSaved("On the live catalogue");
+      renderCatTabs(); renderCatalogueBar(); renderNotices(); refreshView();
+      if(mode==="admin") renderAdmin();
+    } else alert("Could not load the live catalogue.");
+  };
+  const ver=document.getElementById("catTabVer");
+  if(ver) ver.onclick=async ()=>{
+    if(draftRev===null && loadedCatalogueVersion===pinned) return;
+    if(!confirm("Go back to catalogue version "+pinned+", the one this quote was written against?"+
+        "\n\nIt is frozen, so editing there changes nothing for the team.")) return;
+    const cat=await catalogueVersionData(pinned);
+    if(cat && applyCatalogue({catalogue:cat})){
+      loadedCatalogueVersion=pinned; draftRev=null; draftConflict=null;
+      markCataloguePublished();
+      catUpstream=null; catUpstreamSnoozed=null;
+      flagSaved("On catalogue version "+pinned);
+      renderCatTabs(); renderCatalogueBar(); renderNotices(); refreshView();
+      if(mode==="admin") renderAdmin();
+    } else alert("Could not load version "+pinned+" — it may no longer be on the shelf.");
+  };
+}
 function renderCatalogueBar(){
+  renderCatTabs();
   const bar=document.getElementById("catBar");
   if(!bar) return;
   const dirty=catalogueChanged();
@@ -12172,6 +12375,49 @@ function renderCatalogueBar(){
   const held=heldCloudCatalogue
     ? ` The team's version ${heldCloudCatalogue.version?`(${heldCloudCatalogue.version}) `:""}was <b>not</b> loaded, so it can't overwrite them.`
     : "";
+  /* We both changed the same thing. Neither version is thrown away until
+     this is answered, and it names what was touched rather than saying
+     "a conflict". */
+  if(draftClash){
+    bar.classList.add("dirty");
+    const c=draftClash;
+    bar.innerHTML=`
+      <span class="catdot"></span>
+      <span class="catmsg"><b>${esc(c.who)} changed the same thing you did.</b>
+        ${c.structural
+          ? `A step or option was added, removed or moved, so this cannot be settled field by field.`
+          : c.patches.map((x,i)=>`<span class="clashline">${esc(patchWords(x))}:
+              <b>yours</b> ${esc(String(c.mineValues[i]))} &middot;
+              <b>theirs</b> ${esc(String(x.value))}</span>`).join("")}</span>
+      <button class="btn primary sm" id="clashMine">Keep mine</button>
+      <button class="btn sm" id="clashTheirs">Take theirs</button>`;
+    const mine=document.getElementById("clashMine");
+    if(mine) mine.onclick=()=>{
+      /* mine is already on screen; saying so sends it and moves on */
+      draftClash=null;
+      draftSavedSig=null;                 // force the next save to go up
+      cloudSaveCatalogueDraft().catch(()=>{});
+      flagSaved("Your version kept");
+      renderCatalogueBar();
+    };
+    const theirs=document.getElementById("clashTheirs");
+    if(theirs) theirs.onclick=()=>{
+      if(c.structural && c.data){
+        applyCatalogue({catalogue:c.data});
+        draftBase=clone(cataloguePayload().catalogue);
+      } else {
+        for(const x of c.patches) applyPatchTo(CONFIG, x);
+        for(const x of c.patches) applyPatchTo(draftBase, x);
+      }
+      draftClash=null;
+      draftRev=c.rev; catKnownRev=c.rev;
+      draftSavedSig=catalogueSig();
+      invalidateQtyCache(); reconcile();
+      flagSaved("Their version taken");
+      renderCatalogueBar(); refreshView(); if(mode==="admin") renderAdmin();
+    };
+    return;
+  }
   /* A colleague saved the shared draft while you were editing. Nothing is
      written until this is answered, so neither version is lost. */
   if(draftConflict){
@@ -12403,6 +12649,7 @@ async function cloudLoadCatalogueDraft(){
     if(error || !data) return false;            // not installed, or no draft yet
     if(!applyCatalogue({catalogue:data.data})) return false;
     draftRev=data.rev;
+    watchDraft();                 // from here on, their changes come to us
     catKnownRev=data.rev;         // this screen matches that revision
     loadedCatalogueVersion=null;  // working from the draft, not a version
     draftSavedSig=catalogueSig();
@@ -12419,7 +12666,7 @@ async function cloudLoadCatalogueDraft(){
    point sending one per keystroke. Only writes when the catalogue actually
    differs from what we last stored. */
 function draftSaveSoon(){
-  if(!supa || draftRev===null || draftConflict) return;
+  if(!supa || draftRev===null || draftConflict || draftClash) return;
   clearTimeout(draftTimer);
   draftTimer=setTimeout(()=>{ cloudSaveCatalogueDraft().catch(()=>{}); }, 1500);
 }
@@ -12465,6 +12712,7 @@ function catalogueDiff(base, cur){
 }
 async function cloudSaveCatalogueDraft(){
   if(!supa || draftRev===null || draftConflict || draftSaving) return null;
+  if(draftClash && draftSavedSig!==null) return null;   // waiting on an answer
   const sig=catalogueSig();
   if(sig===draftSavedSig) return null;          // nothing changed
   draftSaving=true;
@@ -14748,6 +14996,7 @@ async function boot(){
      empty after a refresh */
   await reattachCloudQuote();
   await loadQuoteMeta();
+  renderCatTabs();
   renderQuoteBar();
   /* Quotes is drawn during bootLocalOnly, before the quote has been picked
      back up, so it would still be offering to save a quote that is already
