@@ -64,6 +64,11 @@
   header .sub{color:var(--txt-faint);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .spacer{flex:1}
   button,input,select,textarea{font:inherit}
+  /* No spinners on a number field. They are a small target sitting on top
+     of the value, and in a price box the accidental press costs money. */
+  input[type=number]{-moz-appearance:textfield;appearance:textfield}
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   .btn{background:var(--panel-2);color:var(--txt);border:1px solid var(--line);padding:7px 13px;border-radius:8px;cursor:pointer;transition:.12s}
   .btn:hover{border-color:var(--line-strong);background:var(--panel-2)}
   .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
@@ -14755,6 +14760,15 @@ function shareSaveSoon(){
    edits anywhere in the app, including elements added by later renders */
 document.addEventListener("input", saveSoon, true);
 document.addEventListener("change", saveSoon, true);
+/* A number field changes its value when the wheel turns over it — but only
+   while it has focus. So scrolling the page after clicking in a price box
+   silently repriced whatever you had just touched, and the save went up
+   with it. Letting go of the focus stops that, and scrolling the page is
+   what you meant anyway. */
+document.addEventListener("wheel", e=>{
+  const el=document.activeElement;
+  if(el && el.tagName==="INPUT" && el.type==="number" && el===e.target) el.blur();
+}, {passive:true});
 /* last-chance flush so an edit made in the final 400ms isn't lost */
 window.addEventListener("beforeunload", (e)=>{
   clearTimeout(saveTimer); saveNow();
