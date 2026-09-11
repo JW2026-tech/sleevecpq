@@ -1782,6 +1782,9 @@
   .vclsrow .oprice{max-width:110px}
   .vclsrow .in:not(.oprice){flex:1;max-width:280px}
   .clspick select{max-width:150px}
+  .clswarn{font-size:11.5px;color:var(--warn);border:1px solid var(--warn);border-radius:8px;
+    padding:7px 10px;margin:8px 0;line-height:1.5;background:var(--warn-softer)}
+  .pmodewarn{font-size:11.5px;color:var(--warn);margin-top:9px;line-height:1.5}
   /* One decision for the whole line, with what it costs on it. Sits above
      the per-item table because it settles almost every row underneath. */
   .pmode{border:1px solid var(--line);border-radius:12px;background:var(--panel);
@@ -3489,6 +3492,9 @@ function variantPriceRange(p, v){
   for(const c of propContributors(p)) seen.add(variantPriceFor(v, c.o.id));
   const list=[...seen].sort((a,b)=>a-b);
   return {min:list[0], max:list[list.length-1], varies:list.length>1};
+}
+function untaggedParts(p){
+  return propContributors(p).filter(c=>!classOfOption(c.o.id)).map(c=>c.o);
 }
 function variantRateWords(p, v){
   const r=variantPriceRange(p, v);
@@ -8314,6 +8320,12 @@ function renderPropsAdmin(){
             <div class="sublbl">A corner piece costs a different amount from a plain section, and the
               applicator section different again. Fill in only the classes that differ; the rest pay the
               price above. Give a class its own name and the quote line says which part it is.</div>
+            ${(()=>{ const loose=untaggedParts(p);
+              return (loose.length && v.byClass && Object.keys(v.byClass).length)
+                ? `<div class="clswarn"><b>${loose.length} part${loose.length===1?"":"s"} carry no class</b>
+                   and so pay this type&rsquo;s own price of ${fmt(+v.unitPrice||0)}:
+                   ${esc(loose.slice(0,6).map(o=>o.name).join(", "))}${loose.length>6?" and "+(loose.length-6)+" more":""}.
+                   Tag them, or give this type a price of its own.</div>` : ""; })()}
             ${partClasses().map(cl=>{
               const cell=(v.byClass&&v.byClass[cl.id])||{};
               return `<div class="vclsrow" data-cls="${esc(cl.id)}">
@@ -8916,6 +8928,12 @@ function assignScreenHtml(m){
         <span class="arrow">&rarr;</span> <b>${esc(x.type)}</b>
         <span class="meta">${x.each?fmt(x.each)+" each":"included"}</span>
       </div>`).join("")}</div>
+      ${(()=>{ const loose=untaggedParts(p);
+        const anyByClass=(p.variants||[]).some(v=>v.byClass&&Object.keys(v.byClass).length);
+        return (loose.length && anyByClass)
+          ? `<div class="pmodewarn">${loose.length} part${loose.length===1?"":"s"} in this quote carry no class,
+             so they are priced at the type's own rate: ${esc(loose.slice(0,4).map(o=>o.name).join(", "))}${
+             loose.length>4?" and "+(loose.length-4)+" more":""}.</div>` : ""; })()}
       <div class="pmodefoot">Each part is priced by its class, so one press moves the whole line and
         a corner still costs what a corner costs. A single item can be set differently in the table below.</div>
     </div>`;
@@ -10940,7 +10958,12 @@ document.getElementById("btnReset").onclick=()=>{
    customer's job — selections, quantities, customer details, documents.
    Keeping them apart means editing a price can't overwrite a colleague's
    quote, and opening a quote can't drag an old price list in with it. */
-const CATALOGUE_KEYS=["modules","templates","languages","props","parts","formatQs","specFields","termsDefaults","folderPaths","service","electrical","commercial"];
+/* partClasses belongs here with the rest of the catalogue. Leaving it out
+   meant the classes lived only in the browser that made them: the prices
+   keyed on them travelled fine inside props, so a colleague — or you after
+   a reload — got prices pointing at classes that were not there, and every
+   part quietly fell back to the type's own price. */
+const CATALOGUE_KEYS=["modules","templates","languages","props","parts","partClasses","formatQs","specFields","termsDefaults","folderPaths","service","electrical","commercial"];
 const QUOTE_KEYS=["model","currency","quoteNumber","customer","customerInfo","validity","docs","specColumns","specValues","sharedBase","discount"];
 function pickKeys(src, keys){
   const out={};
