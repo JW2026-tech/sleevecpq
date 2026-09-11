@@ -3718,7 +3718,15 @@ function propUpgradeId(p, optionId){
   const vars=p.variants||[];
   return vars.length===2 ? vars[1].id : null;
 }
+/* The line switch is for properties where the price depends on WHICH part
+   carries it — cable tray, drip tray, central drain. A plain two-way
+   property like feet or a disconnect switch is a per-item question and
+   gets the table on its own, the way it always did: a band offering
+   "upgraded, no extra cost" is three buttons saying nothing. */
 function propHasModes(p){
+  const classPriced=(p.variants||[]).some(v=>v.byClass && Object.keys(v.byClass).length);
+  const pinned=propContributors(p).some(c=>optPropVarId(p, c.o.id));
+  if(!classPriced && !pinned) return false;
   return propContributors(p).some(c=>propUpgradeId(p, c.o.id));
 }
 /* Where the line stands, read back from what is actually set rather than
