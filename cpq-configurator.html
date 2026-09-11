@@ -1810,7 +1810,8 @@
     color:var(--accent);border:1px solid var(--accent);border-radius:20px;padding:0 6px;margin-left:6px}
   .propfoot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
   .propfoot .meta{line-height:1.5}
-  .clspick select{max-width:150px}
+  .clspick select{min-width:190px;max-width:260px}
+  .proprow{flex-wrap:wrap;row-gap:8px}
   .clswarn{font-size:11.5px;color:var(--warn);border:1px solid var(--warn);border-radius:8px;
     padding:7px 10px;margin:8px 0;line-height:1.5;background:var(--warn-softer)}
   .pmodewarn{font-size:11.5px;color:var(--warn);margin-top:9px;line-height:1.5}
@@ -3465,14 +3466,12 @@ function mergeTypesIntoClasses(p){
   p.useClasses=true;
   keep.byClass=keep.byClass||{};
   for(const x of plan) keep.byClass[clsOf[x.v.id]]={price:x.price, name:x.className};
-  /* every part that was pinned to one of the merged types now carries its
-     class instead, and points at the surviving choice */
+  /* every part that was pinned to one of the merged types carries its
+     class instead — the pin itself has no meaning any more */
   for(const o of allOptions(CONFIG.modules)){
     const pinned=o.propVar && o.propVar[p.id];
-    if(pinned && clsOf[pinned]){
-      o.cls=clsOf[pinned];
-      o.propVar[p.id]=keep.id;
-    }
+    if(pinned && clsOf[pinned]) o.cls=clsOf[pinned];
+    if(o.propVar){ delete o.propVar[p.id]; if(!Object.keys(o.propVar).length) delete o.propVar; }
   }
   /* and the same for anything a quote already assigned */
   p.variants=[base, keep];
@@ -3723,30 +3722,31 @@ function propContributors(p){
 }
 /* An item starts with NO type chosen: a new option must be dealt with
    deliberately rather than quietly inheriting the first type in the list. */
-/* ---------- ONE CHOICE, A DIFFERENT PRICE PER MODULE ----------
+/* ---------- ONE CHOICE, A DIFFERENT PRICE PER PART ----------
    Open cable tray or closed is a single decision about the line, but what
    closed COSTS is not one number: the applicator conveyor takes a heavier
-   tray than a plain section, and a bend takes a corner piece. So the
-   catalogue says, per option, which type that option gets when the
-   upgrade is taken (propVar, set in Admin), and the quote makes the one
-   choice that decides whether it is taken.
+   tray than a plain section, and a bend takes a corner piece. The class on
+   the part settles the price; this switch settles the choice.
 
-   Properties where no option carries a propVar are untouched by all of
-   this: feet and access doors are still a per-item question, answered in
-   the table below the switch. */
+   Only properties priced by class get it. Feet and access doors are still
+   a per-item question, answered in the table on its own. */
 const PROPMODE_KEY="__propmode";
-function optPropVarId(p, optionId){
-  const o=(function(){ for(const x of allOptions(CONFIG.modules)) if(x.id===optionId) return x; })();
-  const id=o && o.propVar && o.propVar[p.id];
-  return (id && (p.variants||[]).some(v=>v.id===id)) ? id : null;
+/* Does this property price by class at all? The switch, and everything
+   that follows from it, only applies to those — pinning a type per option
+   was the earlier shape of this and is gone: the class decides the price,
+   the switch decides the type. */
+function propUsesClasses(p){
+  return !!(p && p.useClasses) && (p.variants||[]).some(v=>v.byClass && Object.keys(v.byClass).length);
 }
 /* does this property work as one switch at all? only if the catalogue has
    said, somewhere, what the upgrade means */
-function propUpgradeId(p, optionId){
-  const pinned=optPropVarId(p, optionId);
-  if(pinned) return pinned;
+function propUpgradeId(p){
+  if(!propUsesClasses(p)) return null;
   const vars=p.variants||[];
-  return vars.length===2 ? vars[1].id : null;
+  /* the type that carries the per-class prices is the upgrade; with a
+     plain pair it is simply the second one */
+  const withCls=vars.find(v=>v.byClass && Object.keys(v.byClass).length);
+  return withCls ? withCls.id : (vars.length===2 ? vars[1].id : null);
 }
 /* The line switch is for properties where the price depends on WHICH part
    carries it — cable tray, drip tray, central drain. A plain two-way
@@ -3754,10 +3754,7 @@ function propUpgradeId(p, optionId){
    gets the table on its own, the way it always did: a band offering
    "upgraded, no extra cost" is three buttons saying nothing. */
 function propHasModes(p){
-  const classPriced=(p.variants||[]).some(v=>v.byClass && Object.keys(v.byClass).length);
-  const pinned=propContributors(p).some(c=>optPropVarId(p, c.o.id));
-  if(!classPriced && !pinned) return false;
-  return propContributors(p).some(c=>propUpgradeId(p, c.o.id));
+  return !!propUpgradeId(p) && propContributors(p).length>0;
 }
 /* Where the line stands, read back from what is actually set rather than
    from a flag: offered on every part means "offered", and the switch says
@@ -3765,10 +3762,8 @@ function propHasModes(p){
 function propLineState(p){
   const items=propContributors(p);
   if(!items.length) return "base";
-  const allOffered=items.every(c=>{
-    const up=propUpgradeId(p, c.o.id);
-    return up && (assignEntry(p, c.o.id)[up]||[]).includes("opt");
-  });
+  const up=propUpgradeId(p);
+  const allOffered=!!up && items.every(c=>(assignEntry(p, c.o.id)[up]||[]).includes("opt"));
   if(allOffered) return "opt";
   return propMode(p)==="up" ? "up" : "base";
 }
@@ -3777,17 +3772,14 @@ function setPropLine(p, want){
   const items=propContributors(p);
   /* whatever was offered line-wide is cleared first, so the three states
      stay mutually exclusive instead of stacking */
+  const upId=propUpgradeId(p);
   for(const c of items){
-    const up=propUpgradeId(p, c.o.id);
-    if(up && (assignEntry(p, c.o.id)[up]||[]).includes("opt"))
-      setVariantScope(p, c.o.id, up, "opt");        // toggles it back off
+    if(upId && (assignEntry(p, c.o.id)[upId]||[]).includes("opt"))
+      setVariantScope(p, c.o.id, upId, "opt");      // toggles it back off
   }
   if(want==="opt"){
     setPropMode(p, "base");
-    for(const c of items){
-      const up=propUpgradeId(p, c.o.id);
-      if(up) setVariantScope(p, c.o.id, up, "opt");
-    }
+    if(upId) for(const c of items) setVariantScope(p, c.o.id, upId, "opt");
   } else {
     setPropMode(p, want);
   }
@@ -3807,14 +3799,14 @@ function propModeDelta(p){
   const base=propDefaultVariant(p), vars=p.variants||[];
   let n=0;
   for(const c of propContributors(p)){
-    const up=vars.find(v=>v.id===optPropVarId(p, c.o.id));
+    const up=vars.find(v=>v.id===propUpgradeId(p));
     if(!up) continue;
     n += c.qty*(variantPriceFor(up, c.o.id) - variantPriceFor(base, c.o.id));
   }
   return n;
 }
-function fixedVariantId(p, optionId){
-  const up=optPropVarId(p, optionId);
+function fixedVariantId(p){
+  const up=propUpgradeId(p);
   if(!up) return null;
   if(propMode(p)==="up") return up;
   const base=propDefaultVariant(p);
@@ -3826,11 +3818,12 @@ function assignedVariantId(p, optionId){
   /* a deliberate choice on one item still wins over the switch, so a
      single section can deviate from whatever the line is set to */
   if(id && (p.variants||[]).some(v=>v.id===id)) return id;
-  return fixedVariantId(p, optionId);
+  return fixedVariantId(p);
 }
 /* a row counts as dealt with once any type on it has been given a standing */
+/* a property the line switch settles is never an open question per item */
 const assignAnswered = (p, optionId) =>
-  Object.keys(assignEntry(p,optionId)).length>0 || !!optPropVarId(p, optionId);
+  Object.keys(assignEntry(p,optionId)).length>0 || !!propUpgradeId(p);
 function assignUnanswered(p){
   return propContributors(p).filter(c=>!assignAnswered(p,c.o.id));
 }
@@ -7572,12 +7565,7 @@ function renderAdmin(){
                   <input class="in" type="number" min="0" step="1" value="${n}" data-pq="${esc(p.id)}">
                   <span>${esc(p.plural||p.label+"s")}${p.unit?` <i>(${esc(p.unit)})</i>`:""}</span>
                 </label>
-                ${(n>0 && vs.length>1)?`<select class="in propvar" data-pv="${esc(p.id)}"
-                  title="Which one this step gets. Settle it here and the quote stops asking — the applicator conveyor can carry the expensive closed tray while a plain section carries the cheap one.">
-                  <option value="">ask in the quote</option>
-                  ${vs.map(v=>`<option value="${esc(v.id)}" ${((o.propVar||{})[p.id]===v.id)?"selected":""}>${esc(v.name)}${
-                    +v.unitPrice?` — ${fmt(+v.unitPrice)}/${esc(p.unit||"pc")}`:" — included"}</option>`).join("")}
-                </select>`:""}`;
+                `;
               }).join("")}
             </div>
             `:""}
@@ -8875,15 +8863,6 @@ function wireEditor(m,list,idx){
     el.onchange=()=>{
       if(el.value) o.cls=el.value; else delete o.cls;
       invalidateQtyCache();
-      reconcile(); renderConfigureQuiet(); renderAdmin();
-    };
-  });
-  ed.querySelectorAll("[data-pv]").forEach(el=>{
-    const o=m.options[+el.closest(".ocard").dataset.oi];
-    el.onchange=()=>{
-      o.propVar=o.propVar||{};
-      if(el.value) o.propVar[el.dataset.pv]=el.value; else delete o.propVar[el.dataset.pv];
-      if(!Object.keys(o.propVar).length) delete o.propVar;
       reconcile(); renderConfigureQuiet(); renderAdmin();
     };
   });
