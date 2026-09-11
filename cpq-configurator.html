@@ -13351,6 +13351,10 @@ document.addEventListener("focusout", ()=>{
   setTimeout(()=>{ if(!editingAField()) flushPendingSave(); }, 0);
 });
 document.addEventListener("visibilitychange", ()=>{ if(document.hidden) flushPendingSave(); });
+/* switching to another program leaves the tab visible, so the line above
+   does not cover it — and a browser that is not the focused window stops
+   sending focus events altogether. This is the one that catches it. */
+window.addEventListener("blur", ()=>flushPendingSave());
 window.addEventListener("pagehide", ()=>{
   /* the page is going: no time for the network, but the local copy still
      fits — a refresh in mid-sentence keeps what was typed */
