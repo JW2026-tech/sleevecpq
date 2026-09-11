@@ -11109,11 +11109,24 @@ function checkConfigKeys(){
   }
   return strayConfigKeys;
 }
+/* A property's step is not a catalogue fact. refreshPropStep builds it
+   from the quote that happens to be open — the count, and the sentence
+   "32 feet in this configuration" — and rewrites it on every render. It
+   sits on the property, so it was travelling with the catalogue: opening a
+   quote with different numbers marked the shared catalogue as changed,
+   saved it, and told everyone else the catalogue had moved on while nobody
+   had touched it. Every published version carried one person's quote
+   counts too. Left out here and rebuilt by ensureProps on the way in. */
+function catalogueForStorage(){
+  const c=pickKeys(CONFIG, CATALOGUE_KEYS);   // already a deep copy
+  if(Array.isArray(c.props)) for(const p of c.props) if(p) delete p.step;
+  return c;
+}
 function cataloguePayload(){
   /* every save of the shared catalogue and every publish comes through
      here, so this is the one place the check cannot be forgotten */
   checkConfigKeys();
-  return {kind:"cpq-catalogue", v:1, savedAt:Date.now(), catalogue:pickKeys(CONFIG, CATALOGUE_KEYS)};
+  return {kind:"cpq-catalogue", v:1, savedAt:Date.now(), catalogue:catalogueForStorage()};
 }
 /* ============================================================
    UNPUBLISHED CATALOGUE CHANGES
@@ -11146,7 +11159,7 @@ function catalogueSig(){
   const now=Date.now();
   if(_sigCache.sig!==null && (now-_sigCache.at)<400) return _sigCache.sig;
   let s;
-  try{ s=JSON.stringify(pickKeys(CONFIG, CATALOGUE_KEYS),
+  try{ s=JSON.stringify(catalogueForStorage(),
         (k,v)=>PERQUOTE_OPTION_FIELDS.has(k)?undefined:v); }
   catch(err){ return _sigCache.sig; }        // circular/oversized: keep the last answer
   let h=5381;
