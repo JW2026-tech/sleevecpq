@@ -1845,23 +1845,10 @@
   .proprow{flex-wrap:wrap;row-gap:8px}
   .clswarn{font-size:11.5px;color:var(--warn);border:1px solid var(--warn);border-radius:8px;
     padding:7px 10px;margin:8px 0;line-height:1.5;background:var(--warn-softer)}
-  .pmodewarn{font-size:11.5px;color:var(--warn);margin-top:9px;line-height:1.5}
-  /* One decision for the whole line, with what it costs on it. Sits above
-     the per-item table because it settles almost every row underneath. */
-  .pmode{border:1px solid var(--line);border-radius:12px;background:var(--panel);
-    padding:14px 16px;margin:0 0 14px}
-  .pmode.is-up{border-color:var(--accent)}
-  .pmodehead{font-size:13px;font-weight:600;margin-bottom:10px}
-  .pmodepick{display:flex;gap:10px;flex-wrap:wrap}
-  .pmodebtn{flex:1;min-width:190px;text-align:left;cursor:pointer;
-    border:1px solid var(--line-strong);border-radius:10px;background:var(--panel-2);
-    padding:10px 13px;transition:.12s}
-  .pmodebtn:hover{border-color:var(--accent)}
-  .pmodebtn.on{border-color:var(--accent);border-width:2px;padding:9px 12px;background:var(--accent-soft)}
-  .pmodebtn b{display:block;font-size:13px;color:var(--txt)}
-  .pmodebtn span{display:block;font-size:12px;color:var(--txt-dim);margin-top:2px;
-    font-variant-numeric:tabular-nums}
-  .pmodebtn.on span{color:var(--accent);font-weight:600}
+  /* what is left of the whole-line band: the one line of it that said
+     something the table below does not */
+  .pmodewarn{font-size:11.5px;color:var(--warn);line-height:1.5}
+  .pmodewarn.solo{margin:0 0 12px}
   .fxwrap{margin-top:2px}
   .fxtable{width:100%;border-collapse:collapse;font-size:12.5px}
   .fxtable th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;
@@ -3786,42 +3773,6 @@ function propUpgradeId(p){
   const withCls=vars.find(v=>v.byClass && Object.keys(v.byClass).length);
   return withCls ? withCls.id : (vars.length===2 ? vars[1].id : null);
 }
-/* The line switch is for properties where the price depends on WHICH part
-   carries it — cable tray, drip tray, central drain. A plain two-way
-   property like feet or a disconnect switch is a per-item question and
-   gets the table on its own, the way it always did: a band offering
-   "upgraded, no extra cost" is three buttons saying nothing. */
-function propHasModes(p){
-  return !!propUpgradeId(p) && propContributors(p).length>0;
-}
-/* Where the line stands, read back from what is actually set rather than
-   from a flag: offered on every part means "offered", and the switch says
-   so even if the offers were made one by one in the table. */
-function propLineState(p){
-  const items=propContributors(p);
-  if(!items.length) return "base";
-  const up=propUpgradeId(p);
-  const allOffered=!!up && items.every(c=>(assignEntry(p, c.o.id)[up]||[]).includes("opt"));
-  if(allOffered) return "opt";
-  return propMode(p)==="up" ? "up" : "base";
-}
-/* the three presses */
-function setPropLine(p, want){
-  const items=propContributors(p);
-  /* whatever was offered line-wide is cleared first, so the three states
-     stay mutually exclusive instead of stacking */
-  const upId=propUpgradeId(p);
-  for(const c of items){
-    if(upId && (assignEntry(p, c.o.id)[upId]||[]).includes("opt"))
-      setVariantScope(p, c.o.id, upId, "opt");      // toggles it back off
-  }
-  if(want==="opt"){
-    setPropMode(p, "base");
-    if(upId) for(const c of items) setVariantScope(p, c.o.id, upId, "opt");
-  } else {
-    setPropMode(p, want);
-  }
-}
 function propMode(p){
   const m=(state[PROPMODE_KEY]||{})[p.id];
   return m==="up" ? "up" : "base";        // the cheap side is where a quote starts
@@ -3830,18 +3781,6 @@ function setPropMode(p, mode){
   const m=Object.assign({}, state[PROPMODE_KEY]||{});
   if(mode==="up") m[p.id]="up"; else delete m[p.id];
   state[PROPMODE_KEY]=m;
-}
-/* what the switch costs: every contributor at its own upgrade price,
-   against the same items at the base type */
-function propModeDelta(p){
-  const base=propDefaultVariant(p), vars=p.variants||[];
-  let n=0;
-  for(const c of propContributors(p)){
-    const up=vars.find(v=>v.id===propUpgradeId(p));
-    if(!up) continue;
-    n += c.qty*(variantPriceFor(up, c.o.id) - variantPriceFor(base, c.o.id));
-  }
-  return n;
 }
 function fixedVariantId(p){
   const up=propUpgradeId(p);
@@ -4686,6 +4625,27 @@ function seedDefaults(){
     if(!added) break;
   }
 }
+/* A quote made while the line switch existed carries "this whole property
+   is on the upgrade" as a setting rather than as marks on the items. With
+   the switch gone nothing could change it back, so it is written out once
+   into the per-item marks it stood for — the same types, the same prices,
+   now editable in the table like everything else. Idempotent: after the
+   setting is cleared this never fires again. */
+function settleLineModes(){
+  const modes=state[PROPMODE_KEY];
+  if(!modes || !Object.keys(modes).length) return;
+  for(const p of (CONFIG.props||[])){
+    if(propMode(p)!=="up") continue;
+    const up=propUpgradeId(p);
+    const items=propContributors(p);
+    /* nothing to write it onto yet — leave the setting alone and try again
+       once the configuration has the items it applies to */
+    if(!up || !items.length) continue;
+    for(const c of items) if(!assignedVariantId(p,c.o.id) || assignedVariantId(p,c.o.id)!==up)
+      setAssignment(p, c.o.id, up);
+    setPropMode(p, "base");
+  }
+}
 function reconcile(){
   /* two things can go stale: a module drops out of the visible path (its key
      is pruned), or a module stays visible but its selected option id no
@@ -4738,6 +4698,9 @@ function reconcile(){
      handed to it here, instead of the property step reopening as an
      unanswered question */
   applyAllPropSkips();
+  /* last, with the tree settled: the items it writes onto are the ones
+     that are really there */
+  settleLineModes();
 }
 /* Decisions are keyed by option id, and an id can come back: delete an
    option in Admin and the next one added may be handed the same key. Then a
@@ -6956,14 +6919,6 @@ function renderConfigure(){
     </div>`;
   if(m.custom) wireCustomScreen();
   if(m.service) wireServiceScreen(document.getElementById("main"));
-  /* the one choice for the whole line, above the per-item table */
-  document.querySelectorAll("#main [data-pmode]").forEach(btn=>{
-    btn.onclick=()=>{
-      const p=(CONFIG.props||[]).find(x=>x.id===m.propId); if(!p) return;
-      setPropLine(p, btn.dataset.pmode);
-      reconcile(); saveSoon(); renderConfigure();
-    };
-  });
   document.querySelectorAll("#main [data-setall]").forEach(btn=>{
     btn.onclick=()=>{
       const p=(CONFIG.props||[]).find(x=>x.id===m.propId); if(!p) return;
@@ -9015,43 +8970,20 @@ function assignScreenHtml(m){
     </div>`;
   }
   if(!items.length) return `<div class="empty">Nothing in this quote needs ${lower} yet.</div>`;
-  /* The one choice, when the catalogue has said what the upgrade means.
-     Above the per-item table, because it is the decision that settles
-     almost every row underneath it. */
+  /* The three-button band that used to sit here — standard / upgraded /
+     upgraded as an option — set the whole line at once, and every item
+     without a mark of its own followed it. The table below says the same
+     thing per item, and that is the way it is actually used, so the band
+     was a second answer to a question already on the screen. Gone; the
+     warning it carried is not, because that one says something the table
+     does not. */
   const modeBand=(()=>{
-    if(!propHasModes(p)) return "";
-    const base=propDefaultVariant(p);
-    const state3=propLineState(p);
-    const delta=propModeDelta(p);
-    const money=n=>n>0?"+ "+fmt(n):(n<0?"&minus; "+fmt(-n):"no extra cost");
-    return `<div class="pmode ${state3==="base"?"":"is-up"}">
-      <div class="pmodehead">Which ${lower} for this line?</div>
-      <div class="pmodepick">
-        <button class="pmodebtn ${state3==="base"?"on":""}" data-pmode="base">
-          <b>${esc(base?base.name:"Standard")}</b>
-          <span>${+((base&&base.unitPrice)||0)?fmt(+base.unitPrice)+" each":"included"}</span>
-        </button>
-        <button class="pmodebtn ${state3==="up"?"on":""}" data-pmode="up">
-          <b>Upgraded, in scope</b>
-          <span>${money(delta)}</span>
-        </button>
-        ${/* the third column of the spreadsheet: same parts, same prices,
-             but offered rather than included */""}
-        <button class="pmodebtn ${state3==="opt"?"on":""}" data-pmode="opt">
-          <b>Upgraded, offered as an option</b>
-          <span>${money(delta)} &mdash; not in the total</span>
-        </button>
-      </div>
-      ${/* The per-module list that used to sit here is gone: it repeated,
-            line for line, the table immediately below it. The warning
-            stays — that one says something the table does not. */""}
-      ${(()=>{ const loose=untaggedParts(p);
-        const anyByClass=(p.variants||[]).some(v=>v.byClass&&Object.keys(v.byClass).length);
-        return (loose.length && anyByClass)
-          ? `<div class="pmodewarn">${loose.length} part${loose.length===1?"":"s"} in this quote carry no class,
-             so they are priced at the type's own rate: ${esc(loose.slice(0,4).map(o=>o.name).join(", "))}${
-             loose.length>4?" and "+(loose.length-4)+" more":""}.</div>` : ""; })()}
-    </div>`;
+    const loose=untaggedParts(p);
+    const anyByClass=(p.variants||[]).some(v=>v.byClass&&Object.keys(v.byClass).length);
+    if(!loose.length || !anyByClass) return "";
+    return `<div class="pmodewarn solo">${loose.length} part${loose.length===1?"":"s"} in this quote carry no class,
+      so they are priced at the type's own rate: ${esc(loose.slice(0,4).map(o=>o.name).join(", "))}${
+      loose.length>4?" and "+(loose.length-4)+" more":""}.</div>`;
   })();
   const vars=p.variants||[];
   const todo=assignUnanswered(p);
