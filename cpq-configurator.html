@@ -13959,7 +13959,16 @@ async function newQuoteRevision(id){
     if(!row || !row.data) return null;
     const {data:shs}=await supa.from("quote_shares").select("revision").eq("quote_id",id);
     const linkRev=(shs||[]).reduce((n,x)=>Math.max(n,+x.revision||0),0);
-    const next=Math.max(linkRev, +row.data.revision||0)+1;
+    const own=+row.data.revision||0;
+    /* You cannot be working in two unsent revisions at once. Pressing this
+       again while one is still waiting for its link only inflated the
+       number — one quote reached revision 11 with five of them that never
+       existed. It says which one you are in instead. */
+    if(own>linkRev){
+      flagSaved("Revision "+own+" has no link yet — that is the one you are in");
+      return own;
+    }
+    const next=Math.max(linkRev, own)+1;
     const d=Object.assign({}, row.data, {revision:next});
     const {data:up}=await supa.from("quotes").update({data:d})
       .eq("id",id).eq("rev",row.rev).select("id,rev").maybeSingle();
