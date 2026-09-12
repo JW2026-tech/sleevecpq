@@ -11565,9 +11565,12 @@ function renderNotices(){
       ${custEdited?`<button class="btn sm" id="lbPull" title="Take the selection he made in his link into this quote">Take their changes</button>`:""}
       <button class="btn sm" id="lbDiff">See what changed</button>
       ${sent
-        ? ((quoteRevision && quoteRevision>shareRevision())
-            ? `<button class="btn primary sm" id="lbRevise" title="Revision ${quoteRevision} has no link yet. This makes one, and asks which catalogue it should show.">Create link &middot; rev ${quoteRevision}</button>`
-            : `<button class="btn sm" id="lbNewRev" title="Revision ${shareRevision()} stays in the record exactly as it was sent. This starts revision ${shareRevision()+1}: nothing is shared and nothing gets a link — you simply carry on in the next one.">New revision</button>`)
+        ? (()=>{ const pend=quoteRevision && quoteRevision>shareRevision();
+            const next=pend ? quoteRevision : shareRevision()+1;
+            return `<button class="btn sm" id="lbNewRev" title="Revision ${shareRevision()} stays in the record exactly as it was sent. This starts revision ${pend?quoteRevision+1:shareRevision()+1}: nothing is shared and nothing gets a link — you simply carry on in the next one.">New revision</button>
+              <button class="btn primary sm" id="lbRevise" title="${pend
+                ? "Revision "+next+" has no link yet. This makes one, and asks which catalogue it should show."
+                : "This hands what is on your screen a link of its own, as revision "+next+" — and asks which catalogue it should show."}">Create link &middot; rev ${next}</button>`; })()
         : `<button class="btn primary sm" id="lbPush">Update the link</button>`}
       ${/* the opposite decision, in the same place as the one it is the
             opposite of: send yours, or take his back */""}
@@ -14008,11 +14011,16 @@ function paintQuoteCards(quotes, shares){
              until it is pressed. */
           if(top.sent_at){
             const rs=revStateOf(q, revs);
-            /* two separate acts, in the order they are done: raise the
-               revision, change what you need, then give it a link */
-            return rs.pending
-              ? `<button class="btn sm primary" data-shnew="${esc(q.id)}" title="Revision ${rs.rev} has no link yet. This makes one — and asks which catalogue it should show.">Create link &middot; rev ${rs.rev}</button>`
-              : `<button class="btn sm" data-newrev="${esc(q.id)}" title="Revision ${top.revision||1} has been sent and stays as it is. This starts revision ${(top.revision||1)+1}: nothing is shared, nothing gets a link, you simply carry on in the next one.">New revision</button>`;
+            /* Two separate acts, side by side rather than one replacing the
+               other: raising the revision and giving one a link are
+               different decisions, and which you want is not something the
+               screen can know. The link button names the revision it would
+               make, so the pair reads as one sentence. */
+            const next=rs.pending ? rs.rev : rs.linkRev+1;
+            return `<button class="btn sm" data-newrev="${esc(q.id)}" title="Revision ${top.revision||1} has been sent and stays as it is. This starts revision ${rs.pending?rs.rev+1:(top.revision||1)+1}: nothing is shared, nothing gets a link, you simply carry on in the next one.">New revision</button>
+              <button class="btn sm ${rs.pending?"primary":""}" data-shnew="${esc(q.id)}" title="${rs.pending
+                ? "Revision "+rs.rev+" has no link yet. This makes one, and asks which catalogue it should show."
+                : "This hands the quote as it stands a link of its own, as revision "+next+" — and asks which catalogue it should show."}">Create link &middot; rev ${next}</button>`;
           }
           /* Updating a draft link re-pins it to the newest published
              catalogue. It always did; it just never said so, and the line
