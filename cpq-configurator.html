@@ -13964,8 +13964,14 @@ function paintQuoteCards(quotes, shares){
   wrap.querySelectorAll("[data-shdel]").forEach(b=>{
     b.onclick=async ()=>{
       if(!confirm("Delete this draft link? Nothing has been sent from it, so nothing is lost.")) return;
-      const {error}=await supa.from("quote_shares").delete().eq("id", b.dataset.shdel);
+      /* .select() is not for the rows, it is for the count. A delete the
+         database refuses on a row policy removes nothing and reports no
+         error at all — so this said "done", drew the list again, and the
+         link was still there and still open to the customer. Asking which
+         rows went back is the only way to know one did. */
+      const {data:gone, error}=await supa.from("quote_shares").delete().eq("id", b.dataset.shdel).select("id");
       if(error) return alert("Could not delete it: "+error.message);
+      if(!gone || !gone.length) return alert("That link was not deleted — the database did not allow it, so it is still online. " + "Take it offline instead, or run supabase-link-verwijderen.sql to give the app the right to delete draft links.");
       if(cloudQuoteId) await loadQuoteMeta();
       renderQuotes(); renderQuoteBar();
     };
