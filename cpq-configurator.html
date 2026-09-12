@@ -800,6 +800,8 @@
   .revstate.is-on .revdot{background:var(--ok)}
   .revstate.is-off{color:var(--bad);border-color:var(--bad)}
   .revstate.is-off .revdot{background:var(--bad)}
+  .revstate.is-none{color:var(--txt-faint);border-color:var(--line-strong);border-style:dashed}
+  .revstate.is-none .revdot{background:var(--txt-faint)}
   .revstate.is-gone{color:var(--txt-faint);border-color:var(--line-strong)}
   .revstate.is-gone .revdot{background:var(--txt-faint)}
   .revline.is-down .revpill{opacity:.65}
@@ -13995,7 +13997,7 @@ function paintQuoteCards(quotes, shares){
   wrap.innerHTML=list.map(q=>{
     const revs=shares.get(q.id)||[];
     const st=linkStateOf(revs);
-    const rs=revStateOf(q, revs);
+    const rs=revStateOf(q, revs), rsCard=rs;
     if(rs.pending) st.text+=" &middot; <b>rev "+rs.rev+" has no link yet</b>";
     const isOpen=q.id===cloudQuoteId;
     const shown=!!quoteOpenCards[q.id];
@@ -14058,7 +14060,21 @@ function paintQuoteCards(quotes, shares){
       </div>
       ${shown?`<div class="qcdetail">
         <div class="qcsub">Revisions</div>
-        ${revs.length?`<table class="revtable"><tbody>${revs.map(sh=>{
+        ${/* rsCard is worked out once for the card and used by the list too */""}
+        ${(revs.length||rsCard.pending)?`<table class="revtable"><tbody>${
+          /* A revision that has no link yet is still a revision — it is the
+             one you are working in. Leaving it out of the list meant the
+             row you were actually standing on was the only one missing,
+             and the newest thing on show was the one you had moved past. */
+          rsCard.pending?`<tr class="revrow is-down">
+            <td class="rv-rev"><span class="revpill" title="This is the revision you are working in. It has no link, so nobody outside has seen it.">rev ${rsCard.rev} &middot; in progress</span></td>
+            <td class="rv-state"><span class="revstate is-none" title="No link has been made for this revision yet"><span class="revdot"></span>no link yet</span></td>
+            <td class="rv-total">${(q.data && typeof q.data.total==="number")?fmt(q.data.total):""}</td>
+            <td class="rv-cat">${quoteCatOfCard(q,revs)?`<span class="meta" title="The catalogue this quote is on — its link will show this version">catalogue v${quoteCatOfCard(q,revs)}</span>`:""}</td>
+            <td class="rv-copy"></td>
+            <td class="rv-live"><button class="pbtn" data-shnew="${esc(q.id)}" title="Give this revision a link, and choose which catalogue it shows">Create link</button></td>
+            <td class="rv-del"></td>
+          </tr>`:""}${revs.map(sh=>{
           const sent=!!sh.sent_at, off=!!sh.revoked_at,
                 gone=sh.expires_at && new Date(sh.expires_at)<new Date(),
                 alive=!off && !gone;
