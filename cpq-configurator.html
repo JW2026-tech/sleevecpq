@@ -848,9 +848,6 @@
   .qcdetail .revline .spacer{flex:1}
   .qempty{border:1px dashed var(--line-strong);border-radius:12px;padding:26px;
     text-align:center;color:var(--txt-dim);font-size:13px}
-  .qcat{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:22px;
-    padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--rail)}
-  .qcattext{flex:1;min-width:220px;font-size:12.5px}
   @media(max-width:820px){
     .qcard{grid-template-columns:1fr}
     .qcright{text-align:left}
@@ -12357,9 +12354,7 @@ function renderQuoteBar(){
       ${QUOTE_STATUSES.map(s=>`<option value="${s.id}" ${s.id===st.id?"selected":""}>${s.label}</option>`).join("")}
     </select>
     <span class="qbsep"></span>
-    ${!cloudQuoteId
-      ? `<button class="btn sm primary" id="qbSaveNew" title="This quote only exists in this browser so far">Save as new quote</button>`
-      : `<span class="qbmeta" id="qbSaved"></span>`}
+    <span class="qbmeta" id="qbSaved"></span>
     <button class="btn sm" id="qbNew" title="Start an empty quote. This one is saved first, and the catalogue stays as it is.">New quote</button>
     
     ${/* No PDF button: the customer makes their own from the link, and the
@@ -12432,10 +12427,6 @@ function wireQuoteBar(){
     }catch(err){ alert("Could not set the status: "+(err&&err.message||err)+"\n\nHas supabase-schema-quoteflow.sql been run?"); quoteStatus=was; }
     renderQuoteBar();
   };
-  on("qbSaveNew", async ()=>{
-    try{ await cloudCreateQuote(); await loadQuoteMeta(); flagSaved("Saved as new quote"); renderQuoteBar(); }
-    catch(err){ alert("Could not save: "+(err&&err.message||err)); }
-  });
   on("qbNew", ()=>{ newQuote().then(ok=>{ if(ok) refreshView(); }); });
   on("qbSent", markShareSent);
   on("qbRevise", createRevision);
@@ -13471,6 +13462,7 @@ async function cloudDeleteQuote(id){
 
 const SAVE_KEY="cpq-configurator/v1";
 let saveTimer=null, storageOK=true;
+let creatingQuote=false;        // one row, however many saves overlap
 
 function snapshot(){
   /* publishedSig travels with the snapshot: without it a reload has no
@@ -13500,7 +13492,19 @@ function saveNow(){
     storageOK=false;
     flagSaved("Not saved — use Download config", true);
   }
-  if(supa) cloudSaveQuote().catch(()=>flagSaved("Not synced — retrying", true));
+  /* A quote used to need a button pressed before it existed anywhere but
+     in this browser — and until it was pressed nothing was shared, nothing
+     was backed up, and a closed tab took it with it. It saves itself from
+     the moment it says anything: a name, a customer, a first choice. An
+     empty screen still makes no row, so opening the tool costs nothing. */
+  if(supa && !cloudQuoteId && !creatingQuote && quoteHasContent()){
+    creatingQuote=true;
+    cloudCreateQuote()
+      .then(()=>loadQuoteMeta()).then(()=>renderQuoteBar())
+      .catch(()=>flagSaved("Not saved to the cloud — retrying", true))
+      .finally(()=>{ creatingQuote=false; });
+  }
+  else if(supa) cloudSaveQuote().catch(()=>flagSaved("Not synced — retrying", true));
   /* also when the write above is skipped as a no-op, or when there is no
      cloud row at all: whether the customer's copy still matches is decided
      by what is on screen, not by whether anything was written */
@@ -13831,28 +13835,10 @@ function renderQuotes(){
       </div>
     </div>
 
-    <div id="qListWrap"><div class="meta">Loading quotes…</div></div>
-
-    <div class="qcat">
-      <div class="qcattext">
-        <b>Catalogue</b> <span class="meta">steps, options, prices, templates, format parts</span>
-        <div class="meta" id="qCatInfo">Checking…</div>
-      </div>
-      <button class="btn sm" id="qPublishCat">Publish new version</button>
-      <button class="btn sm" id="qLoadCat">Load latest</button>
-    </div>`;
+    <div id="qListWrap"><div class="meta">Loading quotes…</div></div>`;
 
   const wire=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
   wire("qNew", ()=>{ newQuote(); });
-  wire("qPublishCat", async ()=>{
-    try{ const v=await cloudPublishCatalogue(null); flagSaved("Published version "+v); renderQuotes(); }
-    catch(err){ alert("Could not publish: "+(err&&err.message||err)); }
-  });
-  wire("qLoadCat", async ()=>{
-    if(!confirm("Load the latest published catalogue? This replaces the catalogue on screen — your quote selections stay.")) return;
-    if(await cloudLoadLatestCatalogue()){ flagSaved("Catalogue updated"); renderQuotes(); }
-    else alert("Could not load a catalogue — has one ever been published?");
-  });
   const imp=document.getElementById("qImport");
   if(imp) imp.onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f) importJsonFile(f); };
   const search=document.getElementById("qSearch");
@@ -13863,21 +13849,18 @@ function renderQuotes(){
   };
 
   if(!supa){
-    document.getElementById("qCatInfo").textContent="Cloud storage isn't available right now.";
     document.getElementById("qListWrap").innerHTML='<div class="meta">Cloud storage isn\'t available right now.</div>';
     return;
   }
 
-  supa.from("catalogue_versions").select("version,label,created_at")
-    .order("version",{ascending:false}).limit(1).maybeSingle().then(({data})=>{
-      if(data && data.version) publishedVersion=data.version;
-      const span=document.getElementById("qCatInfo"); if(!span) return;
-      const dateish = data && data.label
-        && data.label.replace(/\D/g,"")===data.created_at.slice(0,10).replace(/-/g,"");
-      span.textContent = data
-        ? `Version ${data.version}${(data.label&&!dateish)?" — "+data.label:""}, published ${new Date(data.created_at).toLocaleDateString()}`
-        : "No catalogue published yet.";
-    }).catch(()=>{});
+  /* The catalogue block that used to sit under this list is gone —
+     publishing belongs in Admin, beside the edits it publishes. Which
+     version is newest is still wanted here: the cards say whether a link
+     would move, and the strip offers the quote a newer catalogue. */
+  supa.from("catalogue_versions").select("version")
+    .order("version",{ascending:false}).limit(1).maybeSingle()
+    .then(({data})=>{ if(data && data.version) publishedVersion=data.version; })
+    .catch(()=>{});
 
   Promise.all([cloudListQuotes(), cloudActiveShares()]).then(([quotes, shares])=>{
     const wrap=document.getElementById("qListWrap"); if(!wrap) return;
