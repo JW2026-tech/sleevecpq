@@ -6828,7 +6828,14 @@ function renderConfigure(){
     const hasOptSel = ids.length && (mm.options||[]).some(o=>ids.includes(o.id) && o.optional);
     const tk=trailKey(nd.trail);
     const newGroup = nd.depth>0 && tk!==lastVisibleTrailKey;
-    const branch = newGroup ? `<div class="branch-lbl">${guides(nd.depth)}<span class="txt">since ${esc(nd.trail[nd.trail.length-1])}</span></div>` : "";
+    /* The branch used to announce itself on a line of its own — "since
+       Applicator Frame HSSA2000" — above every group of sub-steps. In a
+       list this is mostly read by shape, the guide bars and the indent
+       already say a branch begins, and the line cost a row each time. It
+       is kept as the row's tooltip: the name is there when you want it,
+       and takes no height when you don't. */
+    const branch = "";
+    const since = newGroup ? nd.trail[nd.trail.length-1] : "";
     lastVisibleTrailKey=tk;
     const toggle = hasChildren
       ? `<span class="fold-toggle" data-fold="${esc(mm.id)}" title="${collapsed?"Expand":"Collapse"}">${collapsed?"&#9656;":"&#9662;"}</span>`
@@ -6836,7 +6843,8 @@ function renderConfigure(){
     /* per-step "open/shut everything beneath this" — see navFoldKeysUnder */
     const deepKeys=hasChildren?navFoldKeysUnder(visD,i):[];
     const allOpenBelow=deepKeys.length && deepKeys.every(k=>expandedNav.has(k));
-    return `${branch}<div class="step ${i===cursor?"active":""} ${done?"done":""} ${hasOptSel?"opt-sel":""} ${nd.depth?"nested":""} ${mm.generated?"generated":""}" data-i="${i}">
+    return `${branch}<div class="step ${i===cursor?"active":""} ${done?"done":""} ${hasOptSel?"opt-sel":""} ${nd.depth?"nested":""} ${mm.generated?"generated":""}" data-i="${i}"${
+      since?` title="since ${esc(since)}"`:""}>
       <div class="guides">${guides(nd.depth)}</div>
       ${toggle}
       <div class="dot">${done?"&#10003;":""}</div>
