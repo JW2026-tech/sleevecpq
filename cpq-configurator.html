@@ -72,6 +72,10 @@
   .btn{background:var(--panel-2);color:var(--txt);border:1px solid var(--line);padding:7px 13px;border-radius:8px;cursor:pointer;transition:.12s}
   .btn:hover{border-color:var(--line-strong);background:var(--panel-2)}
   .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+  /* a button that will also move a link to another catalogue: the same
+     button, wearing the warning colour of the thing it changes */
+  .btn.warn{border-color:var(--warn);color:var(--warn)}
+  .btn.warn:hover{border-color:var(--warn);background:var(--warn-softer)}
   .btn.primary:hover{background:var(--accent-hover)}
   .btn.sm{padding:4px 9px;font-size:12px;border-radius:6px}
   .btn.icon{padding:6px 10px;font-size:15px;line-height:1}
@@ -13158,14 +13162,25 @@ async function cloudActiveShares(){
    was shown. Older quotes have neither and stay where they are. */
 async function quoteCatalogueVersion(id, payload){
   const own=payload && payload.catalogueVersion;
-  if(own) return own;
-  if(!supa) return null;
+  if(!supa) return own||null;
+  let link=null;
   try{
     const {data}=await supa.from("quote_shares").select("catalogue_version,created_at")
       .eq("quote_id",id).not("catalogue_version","is",null)
       .order("created_at",{ascending:false}).limit(1).maybeSingle();
-    return (data&&data.catalogue_version)||null;
-  }catch(err){ return null; }
+    link=(data&&data.catalogue_version)||null;
+  }catch(err){ link=null; }
+  /* Two answers can disagree: the quote carries a stamp of its own, and its
+     newest link is pinned to a version. The stamp used to win outright, and
+     it is written again on every save from the stamp itself — so once it
+     fell behind it stayed behind. Quote 202848 opened on v27 while the link
+     the customer would get was on v28, which is the one number that has to
+     be right: it is what he sees.
+     Versions only go up, so the higher of the two is the later decision.
+     A stamp ahead of the link is a quote deliberately moved on and not yet
+     re-shared, and that still wins. */
+  if(link && (!own || link>own)) return link;
+  return own||null;
 }
 async function cloudOpenQuote(id){
   if(!supa) return false;
@@ -13717,6 +13732,7 @@ function renderQuotes(){
 
   supa.from("catalogue_versions").select("version,label,created_at")
     .order("version",{ascending:false}).limit(1).maybeSingle().then(({data})=>{
+      if(data && data.version) publishedVersion=data.version;
       const span=document.getElementById("qCatInfo"); if(!span) return;
       const dateish = data && data.label
         && data.label.replace(/\D/g,"")===data.created_at.slice(0,10).replace(/-/g,"");
@@ -13797,7 +13813,14 @@ function paintQuoteCards(quotes, shares){
         ${(()=>{
           if(!top) return `<button class="btn sm" data-shnew="${esc(q.id)}" title="Make the first link for this quote">Share</button>`;
           if(top.sent_at) return `<button class="btn sm" data-shnew="${esc(q.id)}" title="Revision ${top.revision||1} has been sent and stays as it is. The next revision gets its own link, and its own catalogue.">New revision</button>`;
-          return `<button class="btn sm" data-shpush="${esc(top.id)}" title="Revision ${top.revision||1} has not been sent, so it is still yours to change — this puts the quote as it stands into that link">Update link</button>`;
+          /* Updating a draft link re-pins it to the newest published
+             catalogue. It always did; it just never said so, and the line
+             above it still read "catalogue v28" — so the one thing the
+             button changes besides the quote was the one thing invisible. */
+          const moves=(publishedVersion && top.catalogue_version && publishedVersion>top.catalogue_version)
+            ? publishedVersion : null;
+          return `<button class="btn sm ${moves?"warn":""}" data-shpush="${esc(top.id)}" title="Revision ${top.revision||1} has not been sent, so it is still yours to change — this puts the quote as it stands into that link${
+            moves?", and moves it from catalogue v"+top.catalogue_version+" to v"+moves:""}">Update link${moves?" &rarr; v"+moves:""}</button>`;
         })()}
         <button class="btn sm qcmore" data-more="${esc(q.id)}">${shown?"Less &#9652;":"More &#9662;"}</button>
       </div>
