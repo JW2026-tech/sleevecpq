@@ -11787,7 +11787,8 @@ async function showCatalogueDiff(){
     ${s.priceChanges.length?diffSection("prices", `${s.priceChanges.length} changed`,
         catDiffRows(s.priceChanges, p=>`<div class="qbrow"><span class="when"></span>
           <span class="who">${esc(p.step)}</span>
-          <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b></span></div>`),
+          <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b>${
+            p.offered?' <span class="snote">offered — not in the total</span>':""}</span></div>`),
         few(s.priceChanges.length)):""}
     ${s.removedSteps.length?`<div class="qbrow is-gone"><span class="who">steps gone</span>
         <span class="what">${s.removedSteps.map(esc).join(", ")}</span></div>`:""}
@@ -11900,7 +11901,12 @@ async function shareDiffSummary(){
   for(const [id,m] of mine.items){
     const t=theirs.items.get(id);
     if(!t){ added.push(m); continue; }
-    if(t.price!==m.price) priced.push({step:m.step, name:m.name, from:t.price, to:m.price});
+    /* An offered line can change price too, and it is not counted in the
+       total — so without saying which is which, the changes listed add up
+       to more than the total moved, and a panel explaining arithmetic
+       looks like it cannot do any. */
+    if(t.price!==m.price) priced.push({step:m.step, name:m.name, from:t.price, to:m.price,
+                                       offered:!!(m.optional||m.alt)});
     if(t.optional!==m.optional)
       scoped.push({step:m.step, name:m.name, to:m.optional?"optional":"in scope"});
   }
@@ -11964,7 +11970,8 @@ async function showShareDiff(){
     ${s.priced.length?diffSection("price changes", `${s.priced.length}`,
         catDiffRows(s.priced, p=>`<div class="qbrow"><span class="when"></span>
           <span class="who">${esc(p.step)}</span>
-          <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b></span></div>`),
+          <span class="what">${esc(p.name)}: ${money(p.from)} &rarr; <b>${money(p.to)}</b>${
+            p.offered?' <span class="snote">offered — not in the total</span>':""}</span></div>`),
         few(s.priced.length)):""}
     ${s.scoped.length?diffSection("in or out of scope", `${s.scoped.length} changed`,
         catDiffRows(s.scoped, c=>`<div class="qbrow"><span class="when"></span>
@@ -12183,7 +12190,8 @@ async function quoteBreakdown(quoteId){
   const repriced=[];
   for(const i of asNow.items){
     const b=asBuilt.items.find(x=>x.id===i.id);
-    if(b && b.price!==i.price) repriced.push({step:i.step, name:i.name, from:b.price, to:i.price});
+    if(b && b.price!==i.price) repriced.push({step:i.step, name:i.name, from:b.price, to:i.price,
+                                              offered:i.scope==="opt"||i.scope==="alt"});
   }
   const by=s=>asBuilt.items.filter(i=>i.scope===s);
   return {number:q.number, customer:q.customer,
