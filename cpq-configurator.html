@@ -765,6 +765,16 @@
      glance rather than hidden behind a click. */
   .revline{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:3px 0}
   .revline + .revline{border-top:1px dotted var(--line-soft)}
+  /* The revisions were a stack of flex rows, so every pill began where the
+     one before it happened to end: four different left edges for the same
+     four things. A table gives each its own column, and the eye can run
+     down "which catalogue" without reading the rest of the line. */
+  .revtable{width:100%;border-collapse:collapse;margin:1px 0 3px}
+  .revtable td{padding:4px 12px 4px 0;vertical-align:middle;white-space:nowrap}
+  .revtable tr + tr td{border-top:1px dotted var(--line-soft)}
+  .revtable td.rv-acts{width:100%;padding-right:0;text-align:right}
+  .revtable td.rv-acts .pbtn,.revtable td.rv-acts .x{margin-left:6px}
+  .revrow.is-down .revpill{opacity:.65}
   .revpill{font-size:10.5px;padding:1px 7px;border-radius:20px;white-space:nowrap;
     border:1px dashed var(--line-strong);color:var(--txt-dim)}
   .revpill.is-sent{border-style:solid;border-color:#28338A;color:#28338A;
@@ -13826,33 +13836,32 @@ function paintQuoteCards(quotes, shares){
       </div>
       ${shown?`<div class="qcdetail">
         <div class="qcsub">Revisions</div>
-        ${revs.length?revs.map(sh=>{
+        ${revs.length?`<table class="revtable"><tbody>${revs.map(sh=>{
           const sent=!!sh.sent_at, off=!!sh.revoked_at,
                 gone=sh.expires_at && new Date(sh.expires_at)<new Date(),
                 alive=!off && !gone;
-          return `<div class="revline ${alive?"is-live":"is-down"}">
-            <span class="revpill ${sent?"is-sent":""}" title="${sent
+          return `<tr class="revrow ${alive?"is-live":"is-down"}">
+            <td class="rv-rev"><span class="revpill ${sent?"is-sent":""}" title="${sent
               ? "Sent on "+new Date(sh.sent_at).toLocaleDateString()+" — the record of what the customer was given: it cannot be changed or deleted"
               : "Not sent yet, so this one is still yours to change"}">rev ${sh.revision||1} &middot; ${
-              sent?"sent "+shortDate(sh.sent_at):"draft"}</span>
+              sent?"sent "+shortDate(sh.sent_at):"draft"}</span></td>
             ${/* Whether the customer can open it right now is the thing you
                  scan this list for, so it is a colour and not a word among
                  words: green can be opened, red cannot. */""}
-            <span class="revstate ${off?"is-off":(gone?"is-gone":"is-on")}" title="${off
+            <td class="rv-state"><span class="revstate ${off?"is-off":(gone?"is-gone":"is-on")}" title="${off
               ? "Taken offline — the customer gets “this link is no longer available”"
               : (gone ? "Past its expiry date, so it no longer opens"
                       : "The customer can open this link right now")}">
-              <span class="revdot"></span>${off?"offline":(gone?"expired":"online until "+shortDate(sh.expires_at))}</span>
-            ${sh.catalogue_version?`<span class="meta" title="This link keeps showing catalogue version ${sh.catalogue_version}; publishing new prices does not change it">catalogue v${sh.catalogue_version}</span>`:""}
-            ${sh.customer_changed_at?`<span class="qcflag">customer edited</span>`:""}
-            <span class="spacer"></span>
-            ${alive?`<button class="pbtn" data-copyshare="${esc(sh.token)}">Copy link</button>`:""}
+              <span class="revdot"></span>${off?"offline":(gone?"expired":"online until "+shortDate(sh.expires_at))}</span></td>
+            <td class="rv-cat">${sh.catalogue_version?`<span class="meta" title="This link keeps showing catalogue version ${sh.catalogue_version}; publishing new prices does not change it">catalogue v${sh.catalogue_version}</span>`:""}${
+              sh.customer_changed_at?` <span class="qcflag">customer edited</span>`:""}</td>
+            <td class="rv-acts">${alive?`<button class="pbtn" data-copyshare="${esc(sh.token)}">Copy link</button>`:""}
             ${sent
               ? `<button class="pbtn" data-shoffline="${esc(sh.id)}" data-off="${off?"0":"1"}">${off?"Put online":"Take offline"}</button>`
               : `<button class="pbtn" data-shsend="${esc(sh.id)}" title="From then on this link is the record: it cannot be changed or deleted, only taken offline">Mark as sent</button>
-                 <button class="x" data-shdel="${esc(sh.id)}" title="Delete this draft link">&times;</button>`}
-          </div>`;
-        }).join(""):`<div class="meta">This quote has never been shared.</div>`}
+                 <button class="x" data-shdel="${esc(sh.id)}" title="Delete this draft link">&times;</button>`}</td>
+          </tr>`;
+        }).join("")}</tbody></table>`:`<div class="meta">This quote has never been shared.</div>`}
         <div class="qcsub">This quote</div>
         <div class="revline">
           <button class="btn sm" data-qact="peek" title="Read it against the catalogue it was made on — in scope, optional, alternative — and see what moving it to the newest catalogue would change, without opening it">Compare catalogue to newest version</button>
