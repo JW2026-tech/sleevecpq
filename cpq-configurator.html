@@ -782,6 +782,7 @@
      down, delete — and the same action is in the same place on every row,
      whether or not the row above has one. The catalogue column takes the
      slack, so the group still sits right. */
+  .revtable td.rv-total{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
   .revtable td.rv-cat{width:100%}
   .revtable td.rv-copy,.revtable td.rv-live,.revtable td.rv-del{
     padding-right:0;padding-left:8px;text-align:left}
@@ -2343,7 +2344,6 @@
   <span class="whoami" id="whoAmI"></span>
   <button class="btn hidden" id="btnSignOut">Sign out</button>
   <button class="btn icon" id="btnTheme" title="Switch between light and dark"><span id="themeIcon">&#9788;</span></button>
-  <button class="btn" id="btnReset">Reset</button>
 </header>
 
 <!-- Configure's own sub-tabs: the steps themselves, plus the two screens
@@ -11009,18 +11009,6 @@ function importJsonFile(file){
   };
   rd.readAsText(file);
 }
-document.getElementById("btnReset").onclick=()=>{
-  if(mode==="admin"){
-    if(!confirm("Discard all changes and restore the demo configuration?\n\nThis also clears the auto-saved copy in this browser.")) return;
-    CONFIG=clone(DEFAULT_CONFIG); state={}; cursor=0; sel=[0]; includedSteps=[];
-    clearSaved();
-  } else {
-    state={}; cursor=0; includedSteps=[];
-    saveSoon();
-  }
-  renderCurrent();
-};
-
 /* ====================== 7. AUTO-SAVE =======================================
    Everything used to live in memory only, so a refresh threw away every
    Admin edit. The whole working set — the configuration tree, the quote's
@@ -12360,9 +12348,6 @@ function renderQuoteBar(){
     <span class="qbnum">${esc(num)}</span>
     ${cust?`<span class="qbcust">${esc(cust)}</span>`:""}
     <span class="qbsep"></span>
-    <select class="qbstatus is-${esc(st.id)}" id="qbStatus" title="Where this quote stands">
-      ${QUOTE_STATUSES.map(s=>`<option value="${s.id}" ${s.id===st.id?"selected":""}>${s.label}</option>`).join("")}
-    </select>
     <span class="qbsep"></span>
     <span class="qbmeta" id="qbSaved"></span>
     <button class="btn sm" id="qbNew" title="Start an empty quote. This one is saved first, and the catalogue stays as it is.">New quote</button>
@@ -12425,18 +12410,6 @@ function renderQuoteBarPanel(){
 }
 function wireQuoteBar(){
   const on=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
-  const stSel=document.getElementById("qbStatus");
-  if(stSel) stSel.onchange=async ()=>{
-    const was=quoteStatus;
-    quoteStatus=stSel.value;
-    if(!supa||!cloudQuoteId){ renderQuoteBar(); return; }
-    try{
-      await supa.from("quotes").update({status:quoteStatus}).eq("id",cloudQuoteId);
-      await logQuoteEvent("status_changed",{from:was,to:quoteStatus});
-      await loadQuoteMeta();
-    }catch(err){ alert("Could not set the status: "+(err&&err.message||err)+"\n\nHas supabase-schema-quoteflow.sql been run?"); quoteStatus=was; }
-    renderQuoteBar();
-  };
   on("qbNew", ()=>{ newQuote().then(ok=>{ if(ok) refreshView(); }); });
   on("qbSent", markShareSent);
   on("qbRevise", createRevision);
@@ -13990,6 +13963,10 @@ function paintQuoteCards(quotes, shares){
               : (gone ? "Past its expiry date, so it no longer opens"
                       : "The customer can open this link right now")}">
               <span class="revdot"></span>${off?"offline":(gone?"expired":"online until "+shortDate(sh.expires_at))}</span></td>
+            <td class="rv-total">${(()=>{ const t=sh.data && sh.data.total;
+              /* the copy frozen when the link was made — what that
+                 revision came to, not what the quote costs today */
+              return (typeof t==="number") ? fmt(t) : ""; })()}</td>
             <td class="rv-cat">${sh.catalogue_version?`<span class="meta" title="This link keeps showing catalogue version ${sh.catalogue_version}; publishing new prices does not change it">catalogue v${sh.catalogue_version}</span>`:""}${
               sh.customer_changed_at?` <span class="qcflag">customer edited</span>`:""}</td>
             <td class="rv-copy">${alive?`<button class="pbtn" data-copyshare="${esc(sh.token)}">Copy link</button>`:""}</td>
