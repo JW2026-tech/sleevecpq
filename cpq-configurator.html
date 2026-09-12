@@ -11351,6 +11351,7 @@ async function createRevisionOn(version, quoteId){
     if(version) args.p_version=version;
     const {data, error}=await supa.rpc("create_quote_share", args);
     if(error || !data) throw error||new Error("no link came back");
+    await giveShareItsOwnCatalogue(data.id);
     if(id===cloudQuoteId){
       /* the quote moves with the revision, or deliberately does not */
       if(data.catalogue_version) quoteCatVersion=data.catalogue_version;
@@ -11435,6 +11436,7 @@ async function pushShareNow(){
        save has to be in it before the copy is taken */
     await flushQuoteNow();
     await supa.rpc("push_quote_share",{p_share_id:quoteShare.id});
+    await giveShareItsOwnCatalogue(quoteShare.id);
     await loadQuoteMeta();
     const p=document.getElementById("shareDiffPanel"); if(p) p.remove();
     flagSaved("Customer link updated");
@@ -12041,6 +12043,114 @@ async function catalogueVersionData(v){
     return d;
   }catch(err){ return null; }
 }
+
+/* ============================================================
+   WHAT TRAVELS WITH A CUSTOMER LINK
+   get_shared_quote handed the customer the whole catalogue: every step,
+   every option, every format part, with its price — and the buying price
+   beside the selling one. His own page never showed any of that, but it
+   was all in the reply, a right-click away. He was reading our price list.
+
+   A link now carries its own copy of the catalogue, cut down to what his
+   page actually reads. Which prices those are is not guessed: the page is
+   built once with a recorder on every money field, and whatever is never
+   asked for is dropped. Buying prices go in every case — nothing the
+   customer sees has ever needed one.
+
+   Then it is checked, not assumed: his page is rendered against the copy
+   and against the original, and unless the two come out identical, down
+   to the character, the untouched catalogue is sent instead. Trimming may
+   never cost him a line of his own quotation.
+
+   Written once per link and never rewritten, so what has gone out stays
+   what it was.
+   ============================================================ */
+const SHARE_MONEY_FIELDS=["price","cost","unitPrice","byClass","rate","dayRate"];
+
+/* Read one quote payload against one catalogue, exactly as the customer's
+   browser would, and hand the result back — the same swap-and-restore as
+   readQuoteAgainst, but for anything rather than only the item list. The
+   catalogue goes in by reference on purpose: trimCatalogueForShare needs
+   the very objects it instrumented to be the ones that were read. */
+function withShareCatalogue(cat, payload, fn){
+  const keepState=state, keepLang=docLang, keepIncl=includedSteps, keepCfg={};
+  for(const k of CATALOGUE_KEYS.concat(QUOTE_KEYS)) keepCfg[k]=CONFIG[k];
+  try{
+    for(const k of CATALOGUE_KEYS) if(cat[k]!==undefined) CONFIG[k]=cat[k];
+    CONFIG.languages=CONFIG.templates;
+    const q=(payload&&payload.quote)||{};
+    for(const k of QUOTE_KEYS) if(q[k]!==undefined) CONFIG[k]=clone(q[k]);
+    state=clone((payload&&payload.state)||{});
+    if(payload && Array.isArray(payload.includedSteps)) includedSteps=clone(payload.includedSteps);
+    if(payload && payload.docLang) docLang=payload.docLang;
+    if(payload && payload.scope) applyScopeFlags(payload.scope);
+    ensureLanguages(); ensureSpecs(); ensureProps(); ensureParts(); ensureCustomer();
+    invalidateQtyCache(); reconcile();
+    return fn();
+  } finally {
+    state=keepState; docLang=keepLang; includedSteps=keepIncl;
+    for(const k of CATALOGUE_KEYS.concat(QUOTE_KEYS)) CONFIG[k]=keepCfg[k];
+    invalidateQtyCache(); reconcile();
+  }
+}
+/* his whole page, every section, as one string — the thing that must not
+   change when the catalogue is cut down */
+function shareRenderSig(cat, payload){
+  return withShareCatalogue(clone(cat), payload,
+    ()=>shareDocSections().map(x=>x.nav+" >> "+x.html).join(" || "));
+}
+function trimCatalogueForShare(cat, payload){
+  const work=clone(cat);
+  const asked=new Set(), fields=[];
+  (function walk(v){
+    if(Array.isArray(v)) return v.forEach(walk);
+    if(!v || typeof v!=="object") return;
+    for(const k of Object.keys(v)) walk(v[k]);
+    for(const k of SHARE_MONEY_FIELDS){
+      if(!Object.prototype.hasOwnProperty.call(v,k)) continue;
+      let val=v[k];
+      const mark={o:v, k};
+      fields.push(mark);
+      /* the setter keeps working: reconcile writes to the catalogue while
+         it renders, and a field that silently refused to change would make
+         the comparison below meaningless */
+      Object.defineProperty(v, k, {configurable:true, enumerable:true,
+        get(){ asked.add(mark); return val; }, set(nw){ val=nw; }});
+    }
+  })(work);
+  withShareCatalogue(work, payload, ()=>shareDocSections().map(x=>x.html).join(""));
+  for(const m of fields) if(m.k==="cost" || !asked.has(m)) delete m.o[m.k];
+  const out=clone(work);        // JSON resolves the recorders back to plain numbers
+  /* and the steps this quote never had: he cannot reach them, and their
+     names alone say what else we sell */
+  const his=new Set((payload&&payload.includedSteps)||[]);
+  out.modules=(out.modules||[]).filter(m=>m.always||his.has(m.id));
+  return out;
+}
+/* Give one link its own trimmed catalogue. A draft link is worked out
+   again every time it is refreshed, because the quote in it has just
+   changed and the trim follows the quote. A sent link is left exactly as
+   it went out. On any doubt at all the link keeps the whole catalogue,
+   which is what every link had until now — so the worst case is today. */
+async function giveShareItsOwnCatalogue(shareId){
+  if(!supa || !shareId) return false;
+  try{
+    const {data:sh, error}=await supa.from("quote_shares")
+      .select("id,sent_at,catalogue_version,catalogue_data,data").eq("id",shareId).maybeSingle();
+    if(error || !sh || !sh.data) return false;
+    if(sh.sent_at) return true;                 // a record, not a draft
+    const full=await catalogueVersionData(sh.catalogue_version);
+    if(!full) return false;
+    const trimmed=trimCatalogueForShare(full, sh.data);
+    if(shareRenderSig(trimmed, sh.data)!==shareRenderSig(full, sh.data)){
+      console.warn("CPQ: the trimmed catalogue would change the customer's page — sending it whole");
+      return false;
+    }
+    const {error:werr}=await supa.rpc("set_share_catalogue",{p_share_id:sh.id, p_catalogue:trimmed});
+    return !werr;
+  }catch(err){ return false; }
+}
+
 async function quoteBreakdown(quoteId){
   if(!supa) return null;
   const {data:q}=await supa.from("quotes").select("id,number,customer,data").eq("id",quoteId).maybeSingle();
@@ -13822,6 +13932,7 @@ function paintQuoteCards(quotes, shares){
         if(cloudQuoteId) await flushQuoteNow();
         const {error}=await supa.rpc("push_quote_share",{p_share_id:b.dataset.shpush});
         if(error) throw error;
+        await giveShareItsOwnCatalogue(b.dataset.shpush);
         if(cloudQuoteId) await loadQuoteMeta();
         flagSaved("Link updated");
         renderQuotes(); renderQuoteBar();
@@ -14998,6 +15109,7 @@ document.getElementById("btnShareLink").onclick=async ()=>{
     await flushQuoteNow();
     const {data, error}=await supa.rpc("create_quote_share", {p_quote_id: cloudQuoteId, p_days: 14});
     if(error || !data) throw error||new Error("no data");
+    await giveShareItsOwnCatalogue(data.id);
     loadQuoteMeta().then(()=>renderQuoteBar());
     const url=`${location.origin}${location.pathname}?share=${data.token}`;
     const panel=document.getElementById("sharePanel");
