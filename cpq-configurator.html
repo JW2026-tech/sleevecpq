@@ -3698,11 +3698,21 @@ function propOfferLines(){
       for(const v of p.variants){
         if(!(e[v.id]||[]).includes("opt")) continue;
         if(supplied && supplied.id===v.id) continue;
-        const each=+v.unitPrice||0;
+        /* v.unitPrice is the type's flat rate, and a type that is priced
+           per class does not have one — a closed cable tray costs one thing
+           on a corner and another on a straight run. Reading the flat rate
+           made every offered line come to nothing: the comparison card said
+           "+ 0.00" for a tray the table underneath was pricing at 5.000
+           and 9.000, and an optional one would have gone to a customer at
+           no charge. variantPriceFor answers per item, and falls back to
+           the flat rate when there are no classes — which is what every
+           other type keeps doing. */
+        const each=variantPriceFor(v, c.o.id);
         const swap = !!supplied && supplied.id!==v.id;
-        const diff = swap ? each-(+supplied.unitPrice||0) : each;
+        const instead = swap ? variantPriceFor(supplied, c.o.id) : 0;
+        const diff = swap ? each-instead : each;
         out.push({p, o:c.o, v, qty:c.qty, supplied:swap?supplied:null,
-                  each, price:c.qty*diff, full:c.qty*each});
+                  each, price:c.qty*diff, full:c.qty*each, instead:c.qty*instead});
       }
     }
   }
@@ -3715,8 +3725,11 @@ function groupOfferLines(list){
   for(const r of list){
     const key=r.p.id+"|"+r.v.id+"|"+(r.supplied?r.supplied.id:"");
     let g=out.find(x=>x.key===key);
-    if(!g) out.push(g={key, p:r.p, v:r.v, supplied:r.supplied, qty:0, price:0, full:0, items:[]});
-    g.qty+=r.qty; g.price+=r.price; g.full+=r.full;
+    if(!g) out.push(g={key, p:r.p, v:r.v, supplied:r.supplied, qty:0, price:0, full:0,
+                       instead:0, each:r.each, sameEach:true, items:[]});
+    g.qty+=r.qty; g.price+=r.price; g.full+=r.full; g.instead+=(+r.instead||0);
+    /* a rate that differs from item to item cannot be shown as "x each" */
+    if(r.each!==g.each) g.sameEach=false;
     if(!g.items.includes(r.o.name)) g.items.push(r.o.name);
   }
   return out;
@@ -5377,7 +5390,7 @@ function buildItemRows(forceTop, wantOptional){
       node:{ m:r.p.step, root:r.p.step, depth:0, trail:[],
              o:{ id:(want==="alt"?"__altprop_":"__optprop_")+r.p.id+"_"+r.v.id+"_"+(r.supplied?r.supplied.id:""),
                  name:r.v.name, qty:r.qty>1?r.qty:0,
-                 unitPrice:want==="alt"?0:(+r.v.unitPrice||0), isPropLine:true,
+                 unitPrice:(want==="alt"||!r.sameEach)?0:(+r.each||0), isPropLine:true,
                  optional:true, alt:want==="alt", isDiff:want==="alt",
                  fmtFor:offerFor(r), qnote:want==="opt"?PROP_QTY_NOTE:"" } }
     }));
@@ -5911,7 +5924,9 @@ function altOffers(){
     if(!g) propGroups.push(g={key, targetId:"", prefix:"__altprop_"+r.p.id+"_"+r.v.id+"_",
       target:`${r.qty}× ${r.supplied.name}`, diffOnly:true, note:PROP_QTY_NOTE,
       cmpKey:"prop:"+r.p.id+":"+r.supplied.id, cmpName:`${r.qty}× ${r.v.name}`, cmpVid:r.v.id,
-      targetPrice:r.qty*(+r.supplied.unitPrice||0), opts:[], rows:[], total:0, replaced:0});
+      /* what the items are getting now, at the price they are actually
+         getting it for — per class where the type says so */
+      targetPrice:+r.instead||0, opts:[], rows:[], total:0, replaced:0});
   }
   if(!optGroups.length && !propGroups.length) return [];
   const groups=optGroups.concat(propGroups);
