@@ -13970,7 +13970,8 @@ async function newQuoteRevision(id){
     /* You cannot be working in two unsent revisions at once, and there is
        only one number it could be either way. */
     if(own>linkRev){
-      flagSaved("Revision "+(linkRev+1)+" has no link yet — that is the one you are in");
+      flagSaved("You are already in revision "+(linkRev+1)+
+                " — it has no link yet, so there is nothing to revise. Give it a link when it is ready.", 7000);
       return linkRev+1;
     }
     const next=linkRev+1;
@@ -14409,15 +14410,21 @@ async function syncFromSharedOnStart(){
 }
 
 /* small, non-shouty status text next to the header buttons */
+/* sticky: true stays until something replaces it, a number is how many
+   milliseconds to hold it — 1.4 seconds is right for "Saved" and far too
+   short for a sentence that has something to explain. Both wear the
+   warning colour, because both are saying something went differently than
+   you asked. */
 function flagSaved(msg, sticky){
   const el=document.getElementById("saveState");
   if(!el) return;
   el.textContent=msg;
   el.classList.toggle("warnstate", !!sticky);
   el.classList.add("show");
-  if(!sticky){
+  const hold = (typeof sticky==="number") ? sticky : 0;
+  if(!sticky || hold){
     clearTimeout(flagSaved._t);
-    flagSaved._t=setTimeout(()=>el.classList.remove("show"), 1400);
+    flagSaved._t=setTimeout(()=>el.classList.remove("show"), hold||1400);
   }
 }
 /* ---- customer share mode — a link opens straight into a cut-down proposal
