@@ -2498,6 +2498,12 @@ let restoredDraftRev = null;
    quote is opened, when a new one is started, and when you actually move
    this one forward — and at no other time. */
 let quoteCatVersion = null;
+/* Which revision this quote IS. A revision used to exist only as a link,
+   so making one handed the customer a half-finished quotation there and
+   then. It is a number on the quote now: you raise it, change what you
+   need, and give it a link when you are ready. Null means "whatever its
+   newest link says", which is every quote made before this. */
+let quoteRevision = null;
 let cloudQuoteRev = null;     // the rev we last read/wrote — used to spot a colleague's save
 let cloudConflictPaused = false;  // true while a rev conflict banner is waiting on a choice
 /* the quote bar's own state: the row's status, the active share (if any) and
@@ -11369,7 +11375,10 @@ function askRevisionCatalogue(quoteId, onCat, nextRev){
       &ldquo;Compare catalogue to newest version&rdquo; on the quote first &mdash; it lists what would be
       dropped, added and repriced.</i></span></div>`;
   const panel=diffPanel("revChoice", `The link for revision ${nextRev} — on which catalogue?`, body,
-    mode==="quotes"?document.getElementById("qListWrap"):null);
+    /* under the heading, not under the whole list: anchored to the list it
+       landed below every card, so on any real number of quotes pressing
+       the button looked like it had done nothing at all */
+    mode==="quotes"?document.querySelector("#quotesBody .qhead"):null);
   panel.querySelectorAll("[data-revon]").forEach(b=>{
     b.onclick=()=>{
       const v=b.dataset.revon==="new" ? null : +b.dataset.revon;
@@ -11556,7 +11565,9 @@ function renderNotices(){
       ${custEdited?`<button class="btn sm" id="lbPull" title="Take the selection he made in his link into this quote">Take their changes</button>`:""}
       <button class="btn sm" id="lbDiff">See what changed</button>
       ${sent
-        ? `<button class="btn primary sm" id="lbRevise" title="Revision ${shareRevision()} stays in the record exactly as it was sent. This hands what is on your screen a link of its own — change what you need first, nothing goes out until you press this.">New link &middot; rev ${shareRevision()+1}</button>`
+        ? ((quoteRevision && quoteRevision>shareRevision())
+            ? `<button class="btn primary sm" id="lbRevise" title="Revision ${quoteRevision} has no link yet. This makes one, and asks which catalogue it should show.">Create link &middot; rev ${quoteRevision}</button>`
+            : `<button class="btn sm" id="lbNewRev" title="Revision ${shareRevision()} stays in the record exactly as it was sent. This starts revision ${shareRevision()+1}: nothing is shared and nothing gets a link — you simply carry on in the next one.">New revision</button>`)
         : `<button class="btn primary sm" id="lbPush">Update the link</button>`}
       ${/* the opposite decision, in the same place as the one it is the
             opposite of: send yours, or take his back */""}
@@ -11582,6 +11593,7 @@ function renderNotices(){
   on("lbDiff", showShareDiff);
   on("lbPush", pushShareNow);
   on("lbRevise", createRevision);
+  on("lbNewRev", ()=>{ if(cloudQuoteId) newQuoteRevision(cloudQuoteId); });
   on("lbRevert", restoreCustomerVersion);
   /* Later on the link lasts until this quote is edited again: "I know, not
      now", not "never tell me again". */
@@ -12774,6 +12786,7 @@ function quotePayload(name){
              draft the closest true anchor is the newest published one,
              which is also what a customer link would pin to. */
           catalogueVersion: quoteCatVersion || loadedCatalogueVersion || publishedVersion || null,
+          revision: quoteRevision || null,
           docLang, cursor, includedSteps:clone(includedSteps), navWidth, partsColW:clone(partsColW)};
 }
 /* the catalogue lands on top of whatever quote is open */
@@ -13302,6 +13315,7 @@ async function cloudOpenQuote(id){
     }
   }
   quoteCatVersion=want||null;
+  quoteRevision=(data.data&&data.data.revision)||null;
   if(!applyAnyFile(data.data)) return false;
   /* after the quote, not before: applying it normalises the catalogue
      (ensureParts, ensureProps, seeded defaults), and taking the baseline
@@ -13358,6 +13372,7 @@ async function reattachCloudQuote(){
        was on v28: opening it gave the right answer, but nobody opens a
        quote that is already open, they press Continue. */
     quoteCatVersion=await quoteCatalogueVersion(data.id, data.data);
+    quoteRevision=(data.data&&data.data.revision)||null;
     return true;
   }catch(err){ return false; }
 }
@@ -13398,7 +13413,7 @@ function clearQuoteSide(){
      saved over the old one */
   cloudQuoteId=null; cloudQuoteRev=null; cloudConflictPaused=false; cloudSavedSig=null;
   removeCloudConflictBanner();
-  quoteShare=null; quoteStatus="draft"; quoteEvents=[]; quoteVersions=[];
+  quoteShare=null; quoteStatus="draft"; quoteEvents=[]; quoteVersions=[]; quoteRevision=null;
   quoteUpdatedAt=null; linkBarSnoozed=null; quoteCatVersion=null;
   /* No number yet, on purpose: next_quote_number() is a shared counter, so
      handing one out before the quote is saved would burn numbers on quotes
@@ -13795,8 +13810,7 @@ function linkStateOf(list){
      already the next revision — it simply has no link yet, and it gets one
      when you say so. Saying that here is the difference between "I have to
      make a revision first" and "I am working on one". */
-  if(top.sent_at)
-    parts.push("rev "+((top.revision||1)+1)+" in the making &middot; no link yet");
+
   return {tone, text:parts.join(" &middot; "),
           edited: list.some(s=>s.customer_changed_at && !s.revoked_at)};
 }
@@ -13897,6 +13911,41 @@ async function fillRevisionTotals(shares){
     if(typeof t==="number") cell.textContent=fmt(t);
   }
 }
+/* Which revision a quote is, and whether that revision still has to be
+   given a link. The quote carries a number; a quote made before it did
+   simply is whatever its newest link says. */
+function revStateOf(q, revs){
+  const linkRev=(revs||[]).reduce((n,s)=>Math.max(n,+s.revision||0),0);
+  const own=+(q && q.data && q.data.revision)||0;
+  const rev=Math.max(own, linkRev) || 1;
+  return {rev, linkRev, pending: rev>linkRev && linkRev>0};
+}
+/* Raise the quote to the next revision. Nothing is shared: what was sent
+   stays as it was, and the quote is now the one after it — to be changed,
+   and given a link when it is ready. */
+async function newQuoteRevision(id){
+  if(!supa || !id) return null;
+  try{
+    if(id===cloudQuoteId) await flushQuoteNow();
+    const {data:row}=await supa.from("quotes").select("rev,data").eq("id",id).maybeSingle();
+    if(!row || !row.data) return null;
+    const {data:shs}=await supa.from("quote_shares").select("revision").eq("quote_id",id);
+    const linkRev=(shs||[]).reduce((n,x)=>Math.max(n,+x.revision||0),0);
+    const next=Math.max(linkRev, +row.data.revision||0)+1;
+    const d=Object.assign({}, row.data, {revision:next});
+    const {data:up}=await supa.from("quotes").update({data:d})
+      .eq("id",id).eq("rev",row.rev).select("id,rev").maybeSingle();
+    if(!up){ alert("Someone saved this quote a moment ago — open it again and try once more."); return null; }
+    if(id===cloudQuoteId){
+      quoteRevision=next; cloudQuoteRev=up.rev;
+      cloudSavedSig=quoteContentSig(quotePayload());
+      renderQuoteBar();
+    }
+    flagSaved("Revision "+next+" — no link yet");
+    if(mode==="quotes") renderQuotes();
+    return next;
+  }catch(err){ alert("Could not make a revision: "+(err&&err.message||err)); return null; }
+}
 function quoteCatOfCard(q, revs){
   const own=(q && q.data && q.data.catalogueVersion) || null;
   const link=(revs||[]).reduce((v,s)=>Math.max(v, +s.catalogue_version||0), 0) || null;
@@ -13920,6 +13969,8 @@ function paintQuoteCards(quotes, shares){
   wrap.innerHTML=list.map(q=>{
     const revs=shares.get(q.id)||[];
     const st=linkStateOf(revs);
+    const rs=revStateOf(q, revs);
+    if(rs.pending) st.text+=" &middot; <b>rev "+rs.rev+" has no link yet</b>";
     const isOpen=q.id===cloudQuoteId;
     const shown=!!quoteOpenCards[q.id];
     const top=revs[0]||null;
@@ -13955,7 +14006,14 @@ function paintQuoteCards(quotes, shares){
              is fixed, so the quote already IS the next revision. This
              button gives that revision its link, and nothing is shared
              until it is pressed. */
-          if(top.sent_at) return `<button class="btn sm" data-shnew="${esc(q.id)}" title="Revision ${top.revision||1} has been sent and stays as it is. This quote is already revision ${(top.revision||1)+1} — make its changes first; this hands it a link of its own, and its own catalogue.">New link &middot; rev ${(top.revision||1)+1}</button>`;
+          if(top.sent_at){
+            const rs=revStateOf(q, revs);
+            /* two separate acts, in the order they are done: raise the
+               revision, change what you need, then give it a link */
+            return rs.pending
+              ? `<button class="btn sm primary" data-shnew="${esc(q.id)}" title="Revision ${rs.rev} has no link yet. This makes one — and asks which catalogue it should show.">Create link &middot; rev ${rs.rev}</button>`
+              : `<button class="btn sm" data-newrev="${esc(q.id)}" title="Revision ${top.revision||1} has been sent and stays as it is. This starts revision ${(top.revision||1)+1}: nothing is shared, nothing gets a link, you simply carry on in the next one.">New revision</button>`;
+          }
           /* Updating a draft link re-pins it to the newest published
              catalogue. It always did; it just never said so, and the line
              above it still read "catalogue v28" — so the one thing the
@@ -14073,6 +14131,9 @@ function paintQuoteCards(quotes, shares){
   wrap.querySelectorAll("[data-shsend]").forEach(b=>{ b.onclick=()=>markShareSent(b.dataset.shsend); });
   wrap.querySelectorAll("[data-shoffline]").forEach(b=>{
     b.onclick=()=>setShareOffline(b.dataset.off==="1", b.dataset.shoffline);
+  });
+  wrap.querySelectorAll("[data-newrev]").forEach(b=>{
+    b.onclick=()=>newQuoteRevision(b.dataset.newrev);
   });
   wrap.querySelectorAll("[data-shnew]").forEach(b=>{
     b.onclick=async ()=>{
