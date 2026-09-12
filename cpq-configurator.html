@@ -12309,6 +12309,15 @@ async function moveQuoteToCatalogue(v){
   const dp=document.getElementById("catDiffPanel"); if(dp) dp.remove();
   /* reconcile may have dropped what the new catalogue no longer has, and
      the stamp has moved — both belong in the row, not only on screen */
+  /* A save is skipped when the quote says the same as the row — that is
+     what stops a refresh writing a version that changed nothing. But the
+     catalogue a quote is on is not part of what it says: move from v29 to
+     v30 and every word and every choice is identical, so the save was
+     skipped and the stamp never left the screen. One refresh and it was
+     back on v29. Clearing the memo says: this one really is different.
+     cloudSavedSig is a memo about the row, not about the customer, so
+     dropping it costs one write and nothing else. */
+  cloudSavedSig=null;
   saveSoon();
   flagSaved("This quote is now on catalogue v"+v);
   renderCatTabs(); renderCatalogueBar(); renderNotices(); renderQuoteBar(); refreshView();
@@ -12331,6 +12340,7 @@ async function takeUpstreamCatalogue(){
   /* the open quote now belongs to the catalogue it was just moved to, and
      reconcile may have dropped what the new one no longer has — both have
      to be written down rather than left on screen */
+  cloudSavedSig=null;          // the stamp moved; see moveQuoteToCatalogue
   saveSoon();
   flagSaved("Catalogue updated");
   renderNotices(); renderCatalogueBar(); refreshView();
