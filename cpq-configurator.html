@@ -13261,7 +13261,13 @@ async function reattachCloudQuote(){
        leaves no empty version behind, while genuinely unsaved work still
        goes up. */
     cloudSavedSig=quoteContentSig(data.data);
-    quoteCatVersion=(data.data&&data.data.catalogueVersion)||null;
+    /* Not the stamp on its own. Picking the quote back up after a refresh
+       is the same question as opening it, and it has the same two answers
+       that can disagree — see quoteCatalogueVersion. Reading the stamp
+       straight was why the header still said v27 for a quote whose link
+       was on v28: opening it gave the right answer, but nobody opens a
+       quote that is already open, they press Continue. */
+    quoteCatVersion=await quoteCatalogueVersion(data.id, data.data);
     return true;
   }catch(err){ return false; }
 }
