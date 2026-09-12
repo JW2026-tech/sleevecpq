@@ -11371,7 +11371,8 @@ function askRevisionCatalogue(quoteId, onCat, nextRev){
   }
   const body=`
     <div class="qbrow"><span class="what">What was sent stays as it is, on catalogue
-      <b>v${onCat}</b>. Revision <b>${nextRev}</b> gets a link of its own &mdash; and its own catalogue.</span></div>
+      <b>v${onCat}</b>. This hands revision <b>${nextRev}</b> &mdash; the quote as it stands on your
+      screen &mdash; a link of its own, and its own catalogue.</span></div>
     <div class="qbrow"><span class="who">stay on v${onCat}</span>
       <span class="what">The same prices and steps the customer already has, so the difference between the
       two revisions is only what you change yourself.
@@ -11382,7 +11383,7 @@ function askRevisionCatalogue(quoteId, onCat, nextRev){
     <div class="qbrow"><span class="what"><i>Not sure what moving costs? Close this and use
       &ldquo;Compare catalogue to newest version&rdquo; on the quote first &mdash; it lists what would be
       dropped, added and repriced.</i></span></div>`;
-  const panel=diffPanel("revChoice", `Revision ${nextRev} — on which catalogue?`, body,
+  const panel=diffPanel("revChoice", `The link for revision ${nextRev} — on which catalogue?`, body,
     mode==="quotes"?document.getElementById("qListWrap"):null);
   panel.querySelectorAll("[data-revon]").forEach(b=>{
     b.onclick=()=>{
@@ -11570,7 +11571,7 @@ function renderNotices(){
       ${custEdited?`<button class="btn sm" id="lbPull" title="Take the selection he made in his link into this quote">Take their changes</button>`:""}
       <button class="btn sm" id="lbDiff">See what changed</button>
       ${sent
-        ? `<button class="btn primary sm" id="lbRevise" title="A new link with the quote as it stands. Revision ${shareRevision()} stays in the record.">Make revision ${shareRevision()+1}</button>`
+        ? `<button class="btn primary sm" id="lbRevise" title="Revision ${shareRevision()} stays in the record exactly as it was sent. This hands what is on your screen a link of its own — change what you need first, nothing goes out until you press this.">New link &middot; rev ${shareRevision()+1}</button>`
         : `<button class="btn primary sm" id="lbPush">Update the link</button>`}
       ${/* the opposite decision, in the same place as the one it is the
             opposite of: send yours, or take his back */""}
@@ -13803,6 +13804,12 @@ function linkStateOf(list){
   else parts.push((top.sent_at?"live until ":"until ")+shortDate(top.expires_at));
   if(!top.sent_at && sentOne)
     parts.push("rev "+(sentOne.revision||1)+" sent "+shortDate(sentOne.sent_at));
+  /* What was sent cannot be changed, so from that moment on the quote is
+     already the next revision — it simply has no link yet, and it gets one
+     when you say so. Saying that here is the difference between "I have to
+     make a revision first" and "I am working on one". */
+  if(top.sent_at)
+    parts.push("rev "+((top.revision||1)+1)+" in the making &middot; no link yet");
   return {tone, text:parts.join(" &middot; "),
           edited: list.some(s=>s.customer_changed_at && !s.revoked_at)};
 }
@@ -13953,7 +13960,13 @@ function paintQuoteCards(quotes, shares){
         ${live?`<button class="btn sm" data-copyshare="${esc(top.token)}">Copy link</button>`:""}
         ${(()=>{
           if(!top) return `<button class="btn sm" data-shnew="${esc(q.id)}" title="Make the first link for this quote">Share</button>`;
-          if(top.sent_at) return `<button class="btn sm" data-shnew="${esc(q.id)}" title="Revision ${top.revision||1} has been sent and stays as it is. The next revision gets its own link, and its own catalogue.">New revision</button>`;
+          /* It used to say "New revision", which sounds like a step you
+             take before you start changing things — and it handed out a
+             link there and then. There is nothing to create: what was sent
+             is fixed, so the quote already IS the next revision. This
+             button gives that revision its link, and nothing is shared
+             until it is pressed. */
+          if(top.sent_at) return `<button class="btn sm" data-shnew="${esc(q.id)}" title="Revision ${top.revision||1} has been sent and stays as it is. This quote is already revision ${(top.revision||1)+1} — make its changes first; this hands it a link of its own, and its own catalogue.">New link &middot; rev ${(top.revision||1)+1}</button>`;
           /* Updating a draft link re-pins it to the newest published
              catalogue. It always did; it just never said so, and the line
              above it still read "catalogue v28" — so the one thing the
