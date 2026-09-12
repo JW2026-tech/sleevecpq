@@ -11413,6 +11413,18 @@ async function pullShareChanges(){
   }catch(err){ alert("Could not take the changes: "+(err&&err.message||err)); }
 }
 /* Updating the link, from either the header button or the reminder bar. */
+/* Pushing a link, with the catalogue the quote is on. The version argument
+   only exists once supabase-offerte-catalogus.sql has been run, and until
+   then the call would simply fail — so a database that does not know it
+   gets the old one-argument call, which does what it always did. One
+   fallback, on the one error that means exactly this. */
+async function pushShare(shareId, version){
+  let r=await supa.rpc("push_quote_share",{p_share_id:shareId, p_version:version||null});
+  const why=r.error ? String(r.error.code||"")+" "+String(r.error.message||"") : "";
+  if(r.error && /PGRST202|Could not find the function/i.test(why))
+    r=await supa.rpc("push_quote_share",{p_share_id:shareId});
+  return r;
+}
 async function pushShareNow(){
   if(!supa || !quoteShare) return;
   if(shareCatalogueBehind() &&
@@ -11425,7 +11437,8 @@ async function pushShareNow(){
     /* awaited, not fire-and-forget: the push copies the quote row, so the
        save has to be in it before the copy is taken */
     await flushQuoteNow();
-    await supa.rpc("push_quote_share",{p_share_id:quoteShare.id, p_version:quoteCatVersion||null});
+    const {error:perr}=await pushShare(quoteShare.id, quoteCatVersion);
+    if(perr) throw perr;
     await giveShareItsOwnCatalogue(quoteShare.id);
     await loadQuoteMeta();
     const p=document.getElementById("shareDiffPanel"); if(p) p.remove();
@@ -14041,8 +14054,7 @@ function paintQuoteCards(quotes, shares){
     b.onclick=async ()=>{
       try{
         if(cloudQuoteId) await flushQuoteNow();
-        const {error}=await supa.rpc("push_quote_share",
-          {p_share_id:b.dataset.shpush, p_version:+b.dataset.shver||null});
+        const {error}=await pushShare(b.dataset.shpush, +b.dataset.shver||null);
         if(error) throw error;
         await giveShareItsOwnCatalogue(b.dataset.shpush);
         if(cloudQuoteId) await loadQuoteMeta();
