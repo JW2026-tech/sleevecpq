@@ -11471,14 +11471,37 @@ async function restoreCustomerVersion(){
         if(data && data.data) scope=scopeFlagsFromCatalogue(data.data);
       }catch(err){}
     }
+    /* His version is the quote AND the prices it was quoted at. Going back
+       to his choices while the screen stayed on a newer catalogue put the
+       same items in front of you at different money — the comparison then
+       said the total had moved with nothing you had done to explain it,
+       which is exactly what "back to his version" is supposed to end.
+       The catalogue goes first: applyQuote carries the scope marks across
+       the swap, and doing it the other way round would reprice what has
+       just been restored. */
+    if(quoteShare.catalogue_version && quoteShare.catalogue_version!==loadedCatalogueVersion){
+      const cat=await catalogueVersionData(quoteShare.catalogue_version);
+      if(cat && applyCatalogue({catalogue:cat})){
+        loadedCatalogueVersion=quoteShare.catalogue_version;
+        draftRev=null; draftConflict=null;
+        quoteCatVersion=quoteShare.catalogue_version;
+        markCataloguePublished();
+        catUpstream=null; catUpstreamSnoozed=null;
+      }
+    }
     if(!applyQuote(quoteShare.data)) throw new Error("the link has no readable copy of the quote");
     if(scope && !quoteShare.data.scope){ applyScopeFlags(scope); reconcile(); }
+    /* the stamp moved with it, and that alone does not change what the
+       quote says — so the memo has to go or the save would be skipped */
+    cloudSavedSig=null;
     await flushQuoteNow();
     await loadQuoteMeta();
     logQuoteEvent("reverted_to_link", null);
     const p=document.getElementById("shareDiffPanel"); if(p) p.remove();
-    flagSaved("Back to the customer's version");
+    flagSaved("Back to the customer's version"+(quoteShare.catalogue_version?" — catalogue v"+quoteShare.catalogue_version:""));
+    renderCatTabs(); renderCatalogueBar(); renderNotices();
     renderQuoteBar(); refreshView();
+    if(mode==="quotes") renderQuotes();
   }catch(err){ alert("Could not go back: "+(err&&err.message||err)); }
 }
 /* THE REMINDER
