@@ -11816,12 +11816,44 @@ async function showCatalogueDiff(){
    measurement and putting yours back afterwards — hence the try/finally,
    and hence nothing in here renders or saves.
    ============================================================ */
+/* Everything on the customer's page that carries money, as the lines he
+   actually reads. It used to be the option tree and nothing else — each
+   option at its own catalogue price — which leaves out most of what a
+   quotation charges for: format parts, the type each item's properties
+   get, service, packaging. Six format parts going from no price to a
+   price moved a quote by 25.350 and the comparison had not one line to
+   explain it; it could only say the total had changed.
+   The three passes are the three lists he sees: in scope, offered, and
+   offered instead of. Rows are skipped here on exactly the terms
+   priceRowsTotal skips them, so the lines and the total can never tell
+   different stories. A step folded to a single price is kept as that one
+   line, because that is all he is shown of it. */
 function quoteFiguresNow(){
   const items=new Map();
-  for(const n of scopeNodes()){
-    items.set(n.o.id, {name:n.o.name||n.o.id, step:(n.root&&n.root.title)||"",
-                       price:+n.o.price||0, optional:!!n.o.optional, alt:!!n.o.alt});
-  }
+  const take=(rows, kind)=>{
+    for(const r of rows){
+      if(r.hide || r.subtotal || r.taken) continue;
+      if(r.isGroup){
+        const g=r.group;
+        if(!g) continue;
+        const id="__step_"+g.id;
+        if(!items.has(id)) items.set(id, {name:g.title||g.id, step:g.title||"",
+          price:+r.price||0, optional:kind==="opt", alt:kind==="alt"});
+        continue;
+      }
+      const o=r.node && r.node.o;
+      if(!o) continue;
+      const id=String(o.id||"");
+      /* in scope wins over offered: an item can appear in two passes and
+         the first one is the one he is being charged for */
+      if(!id || items.has(id)) continue;
+      items.set(id, {name:o.name||id, step:(r.node.root&&r.node.root.title)||"",
+                     price:+r.price||0, optional:kind==="opt", alt:kind==="alt"});
+    }
+  };
+  take(buildPriceRows(false), "in");
+  take(buildOptionalRows(false), "opt");
+  take(buildAltRows(false), "alt");
   return {total:priceRowsTotal(buildPriceRows(false)), items};
 }
 async function shareDiffSummary(){
@@ -11979,13 +12011,16 @@ function scopeOfNode(n){
   if(n.o.optional) return "opt";
   return "in";
 }
+/* "Compare catalogue to newest version" had the same blind spot as the
+   customer comparison, so it is answered from the same place: one reading
+   of what this quote charges for, not two that can disagree. */
 function quoteItemsNow(){
+  const f=quoteFiguresNow();
   const items=[];
-  for(const n of scopeNodes()){
-    items.push({id:n.o.id, name:n.o.name||n.o.id, step:(n.root&&n.root.title)||"",
-                price:+n.o.price||0, scope:scopeOfNode(n)});
-  }
-  return {items, total:priceRowsTotal(buildPriceRows(false))};
+  for(const [id,v] of f.items)
+    items.push({id, name:v.name, step:v.step, price:v.price,
+                scope:v.alt?"alt":(v.optional?"opt":"in")});
+  return {items, total:f.total};
 }
 /* Read one quote payload against one catalogue. cat null means "the
    catalogue you have on screen". */
