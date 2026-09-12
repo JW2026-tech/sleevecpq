@@ -13874,6 +13874,29 @@ async function fillMissingTotals(quotes){
    uses: the stamp it carries and the version its newest link is pinned to
    can disagree, and versions only go up, so the higher one is the later
    decision. */
+/* Revisions made before the total travelled with a quote have none in
+   their frozen copy, and an empty cell in a money column is the one thing
+   you cannot read past. They are worked out the way the quote list does
+   it: the copy as it was, read against the catalogue that revision was
+   pinned to — so the figure is the one the customer saw, not what those
+   choices would cost today. One at a time, with the thread handed back in
+   between, because each one clones a catalogue. */
+async function fillRevisionTotals(shares){
+  const byId=new Map();
+  for(const list of shares.values()) for(const sh of list) byId.set(sh.id, sh);
+  const cells=[...document.querySelectorAll("[data-revtotal]")].filter(c=>!c.textContent.trim());
+  for(const cell of cells){
+    const sh=byId.get(cell.dataset.revtotal);
+    if(!sh || !sh.data) continue;
+    await new Promise(r=>setTimeout(r,0));
+    let cat=null;
+    try{ cat=await catalogueVersionData(sh.catalogue_version); }catch(err){}
+    let t=null;
+    try{ t=readQuoteAgainst(sh.data, cat).total; }catch(err){ continue; }
+    if(!cell.isConnected) return;            // the list was drawn again
+    if(typeof t==="number") cell.textContent=fmt(t);
+  }
+}
 function quoteCatOfCard(q, revs){
   const own=(q && q.data && q.data.catalogueVersion) || null;
   const link=(revs||[]).reduce((v,s)=>Math.max(v, +s.catalogue_version||0), 0) || null;
@@ -13963,7 +13986,7 @@ function paintQuoteCards(quotes, shares){
               : (gone ? "Past its expiry date, so it no longer opens"
                       : "The customer can open this link right now")}">
               <span class="revdot"></span>${off?"offline":(gone?"expired":"online until "+shortDate(sh.expires_at))}</span></td>
-            <td class="rv-total">${(()=>{ const t=sh.data && sh.data.total;
+            <td class="rv-total" data-revtotal="${esc(sh.id)}">${(()=>{ const t=sh.data && sh.data.total;
               /* the copy frozen when the link was made — what that
                  revision came to, not what the quote costs today */
               return (typeof t==="number") ? fmt(t) : ""; })()}</td>
@@ -13989,6 +14012,7 @@ function paintQuoteCards(quotes, shares){
 
   /* ---- wiring ---- */
   const qid=b=>b.closest(".qcard").dataset.qid;
+  fillRevisionTotals(shares);
   wrap.querySelectorAll("[data-more]").forEach(b=>{
     b.onclick=()=>{ const id=b.dataset.more;
       quoteOpenCards[id]=!quoteOpenCards[id]; paintQuoteCards(quotes, shares); };
