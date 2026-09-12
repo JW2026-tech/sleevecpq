@@ -526,6 +526,10 @@
   /* the catalogue notice is about your own tools, the link notice about
      something a customer can see — the second is the louder of the two */
   .notice.is-cat .catdot{background:var(--txt-faint)}
+  /* not a tab you are on, but a move you can make — the warning colour of
+     the thing it changes, beside the version it changes from */
+  .cattab.moveto{border-color:var(--warn);color:var(--warn);font-weight:600}
+  .cattab.moveto:hover{background:var(--warn-softer)}
   /* work that is being lost while you look at it */
   .notice.is-stray .catdot{background:var(--bad)}
   .notice.is-stray code{background:var(--panel-2,rgba(127,127,127,.15));padding:1px 5px;border-radius:4px}
@@ -11229,14 +11233,18 @@ async function logQuoteEvent(kind, detail){
   catch(err){}
 }
 let publishedVersion=null;      // newest published catalogue version
-/* Is the customer's link pinned to an older price list than the one that is
-   published now? Publishing deliberately leaves live links alone — that is
-   the whole point of pinning them — so this is the only thing that says a
-   link is on version 5 while the shelf is at 13. Without it the bar reported
-   "Link is up to date" for a link showing prices from ten versions ago. */
+/* Is the customer's link on a different price list than the quote is?
+   It used to measure against the newest published version, which meant a
+   colleague publishing anything at all announced that the customer was
+   behind — on a quote nobody had touched, and with nothing you could
+   sensibly do about it. What matters is whether HIS copy and YOUR quote
+   disagree: the quote's own catalogue is the one you are working in and
+   the one a new link would show. Publishing still leaves both alone, which
+   is the whole point of pinning them. */
 function shareCatalogueBehind(){
-  if(!quoteShare || !publishedVersion || !quoteShare.catalogue_version) return false;
-  return quoteShare.catalogue_version < publishedVersion;
+  if(!quoteShare || !quoteShare.catalogue_version) return false;
+  const mine=quoteCatVersion || publishedVersion || null;
+  return !!mine && quoteShare.catalogue_version!==mine;
 }
 /* Is the customer looking at something older than the quote as it stands?
    Compare when the quote row last changed against when the link was last
@@ -11325,7 +11333,12 @@ async function createRevisionOn(version, quoteId){
   try{
     if(id===cloudQuoteId) await flushQuoteNow();
     const args={p_quote_id:id, p_days:14};
-    if(version) args.p_version=version;
+    /* the quote decides which catalogue its link shows. Without this the
+       database picked the newest published one, which need not be the one
+       the quote was priced against — the customer would then open prices
+       nobody had looked at. */
+    const want = version || (id===cloudQuoteId ? quoteCatVersion : null);
+    if(want) args.p_version=want;
     const {data, error}=await supa.rpc("create_quote_share", args);
     if(error || !data) throw error||new Error("no link came back");
     await giveShareItsOwnCatalogue(data.id);
@@ -11404,7 +11417,7 @@ async function pushShareNow(){
   if(!supa || !quoteShare) return;
   if(shareCatalogueBehind() &&
      !confirm("This link shows catalogue version "+quoteShare.catalogue_version+
-              ". Updating it moves the customer to version "+publishedVersion+
+              ". Updating it moves the customer to version "+(quoteCatVersion||publishedVersion)+
               ", so the prices and pictures they see change to the ones published now.\n\nUpdate the link?")) return;
   if(quoteShare.customer_changed_at &&
      !confirm("The customer has changed their own selection in this link.\n\nUpdating the link replaces their copy with yours and their changes are lost. Take their changes first if you want to keep them.\n\nUpdate anyway?")) return;
@@ -11412,7 +11425,7 @@ async function pushShareNow(){
     /* awaited, not fire-and-forget: the push copies the quote row, so the
        save has to be in it before the copy is taken */
     await flushQuoteNow();
-    await supa.rpc("push_quote_share",{p_share_id:quoteShare.id});
+    await supa.rpc("push_quote_share",{p_share_id:quoteShare.id, p_version:quoteCatVersion||null});
     await giveShareItsOwnCatalogue(quoteShare.id);
     await loadQuoteMeta();
     const p=document.getElementById("shareDiffPanel"); if(p) p.remove();
@@ -11529,9 +11542,9 @@ function renderNotices(){
     const what = (!qB && !cB && custEdited)
       ? "He changed his own selection in the link and it is not in the quote yet"
       : ((qB&&cB)
-         ? "You changed this quote, and the prices were published anew, since the link was last sent"
+         ? "You changed this quote, and it is on a different catalogue, since the link was last sent"
          : (qB ? "You changed this quote since the link was last sent"
-               : "New prices were published since the link was last sent"));
+               : "This quote is on a different catalogue than the link shows"));
     const sent=shareIsSent();
     rows.push(`<div class="notice is-link">
       <span class="catdot"></span>
@@ -12265,6 +12278,33 @@ async function showQuoteBreakdown(quoteId, btn){
     body, document.getElementById("qListWrap"));
   panel.dataset.qid=quoteId;
 }
+/* Move the open quote onto a published catalogue version: load it, reprice
+   against it, and mark the quote as belonging to it. Links that already
+   exist are deliberately left where they are — a link only ever changes
+   when you update it, which is the same rule that protects a sent one. */
+async function moveQuoteToCatalogue(v){
+  if(!v || !supa) return false;
+  const mineUnsaved = draftRev!==null && draftSavedSig!==catalogueSig();
+  if(mineUnsaved && !confirm("You have catalogue changes that have not been saved yet. " + "Moving this quote to version " + v + " replaces what is on screen and those are lost." + "\n\nContinue?")) return false;
+  const cat=await catalogueVersionData(v);
+  if(!cat || !applyCatalogue({catalogue:cat})){
+    alert("Could not load catalogue version "+v+".");
+    return false;
+  }
+  loadedCatalogueVersion=v; draftRev=null; draftConflict=null;
+  quoteCatVersion=v;
+  markCataloguePublished();
+  catUpstream=null; catUpstreamSnoozed=null;
+  const dp=document.getElementById("catDiffPanel"); if(dp) dp.remove();
+  /* reconcile may have dropped what the new catalogue no longer has, and
+     the stamp has moved — both belong in the row, not only on screen */
+  saveSoon();
+  flagSaved("This quote is now on catalogue v"+v);
+  renderCatTabs(); renderCatalogueBar(); renderNotices(); renderQuoteBar(); refreshView();
+  if(mode==="admin") renderAdmin();
+  if(mode==="quotes") renderQuotes();
+  return true;
+}
 async function takeUpstreamCatalogue(){
   if(!catUpstream) return;
   const mineUnsaved = draftRev!==null && draftSavedSig!==catalogueSig();
@@ -12596,7 +12636,16 @@ function renderCatTabs(){
         : "Switch to the catalogue the whole team works in"}">
       <span class="catdotlive"></span>Live catalogue</button>
     ${pinned?`<button class="cattab ${(onVersion&&loadedCatalogueVersion===pinned)?"on":""}" id="catTabVer"
-      title="The frozen catalogue this quote was written against. Its prices cannot move.">v${pinned}</button>`:""}`;
+      title="The frozen catalogue this quote was written against. Its prices cannot move.">v${pinned}</button>`:""}
+    ${/* The catalogue belongs to the QUOTE, so moving it forward is an
+          action on the quote — here, beside the version it is on, and
+          whether or not the quote has ever been shared. It used to be
+          reachable only as a side effect of "Update link", which is the
+          wrong thing to press and said nothing about what it would do. */""}
+    ${(pinned && publishedVersion && publishedVersion>pinned)
+      ? `<button class="cattab moveto" id="catTabMove"
+          title="Put this quote on catalogue version ${publishedVersion}: today's prices and steps. Anything the catalogue no longer has drops out. Links already made stay where they are until you update them.">&rarr; v${publishedVersion}</button>`
+      : ""}`;
   const live=document.getElementById("catTabLive");
   if(live) live.onclick=async ()=>{
     if(draftRev!==null) return;                       // already there
@@ -12612,6 +12661,8 @@ function renderCatTabs(){
       if(mode==="admin") renderAdmin();
     } else alert("Could not load the live catalogue.");
   };
+  const move=document.getElementById("catTabMove");
+  if(move) move.onclick=()=>moveQuoteToCatalogue(publishedVersion);
   const ver=document.getElementById("catTabVer");
   if(ver) ver.onclick=async ()=>{
     if(draftRev===null && loadedCatalogueVersion===pinned) return;
@@ -13833,6 +13884,16 @@ async function fillMissingTotals(quotes){
     if(cell) cell.textContent=fmt(t);
   }
 }
+/* Which catalogue a quote in the list is on, by the same rule the opening
+   uses: the stamp it carries and the version its newest link is pinned to
+   can disagree, and versions only go up, so the higher one is the later
+   decision. */
+function quoteCatOfCard(q, revs){
+  const own=(q && q.data && q.data.catalogueVersion) || null;
+  const link=(revs||[]).reduce((v,s)=>Math.max(v, +s.catalogue_version||0), 0) || null;
+  if(link && (!own || link>own)) return link;
+  return own;
+}
 function paintQuoteCards(quotes, shares){
   const wrap=document.getElementById("qListWrap"); if(!wrap) return;
   const needle=quoteFilter.trim().toLowerCase();
@@ -13884,10 +13945,10 @@ function paintQuoteCards(quotes, shares){
              catalogue. It always did; it just never said so, and the line
              above it still read "catalogue v28" — so the one thing the
              button changes besides the quote was the one thing invisible. */
-          const moves=(publishedVersion && top.catalogue_version && publishedVersion>top.catalogue_version)
-            ? publishedVersion : null;
-          return `<button class="btn sm ${moves?"warn":""}" data-shpush="${esc(top.id)}" title="Revision ${top.revision||1} has not been sent, so it is still yours to change — this puts the quote as it stands into that link${
-            moves?", and moves it from catalogue v"+top.catalogue_version+" to v"+moves:""}">Update link${moves?" &rarr; v"+moves:""}</button>`;
+          const mine=quoteCatOfCard(q, revs);
+          const moves=(mine && top.catalogue_version && mine!==top.catalogue_version) ? mine : null;
+          return `<button class="btn sm ${moves?"warn":""}" data-shpush="${esc(top.id)}" data-shver="${moves||""}" title="Revision ${top.revision||1} has not been sent, so it is still yours to change — this puts the quote as it stands into that link${
+            moves?", and brings it from catalogue v"+top.catalogue_version+" onto v"+moves+", the one this quote is on":""}">Update link${moves?" &rarr; v"+moves:""}</button>`;
         })()}
         <button class="btn sm qcmore" data-more="${esc(q.id)}">${shown?"Less &#9652;":"More &#9662;"}</button>
       </div>
@@ -13980,7 +14041,8 @@ function paintQuoteCards(quotes, shares){
     b.onclick=async ()=>{
       try{
         if(cloudQuoteId) await flushQuoteNow();
-        const {error}=await supa.rpc("push_quote_share",{p_share_id:b.dataset.shpush});
+        const {error}=await supa.rpc("push_quote_share",
+          {p_share_id:b.dataset.shpush, p_version:+b.dataset.shver||null});
         if(error) throw error;
         await giveShareItsOwnCatalogue(b.dataset.shpush);
         if(cloudQuoteId) await loadQuoteMeta();
