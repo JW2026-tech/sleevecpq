@@ -11591,8 +11591,8 @@ function renderNotices(){
       <button class="btn sm" id="lbDiff">See what changed</button>
       ${sent
         ? (()=>{ const pend=quoteRevision && quoteRevision>shareRevision();
-            const next=pend ? quoteRevision : shareRevision()+1;
-            return `<button class="btn sm" id="lbNewRev" title="Revision ${shareRevision()} stays in the record exactly as it was sent. This starts revision ${pend?quoteRevision+1:shareRevision()+1}: nothing is shared and nothing gets a link — you simply carry on in the next one.">New revision</button>
+            const next=shareRevision()+1;
+            return `<button class="btn sm" id="lbNewRev" title="Revision ${shareRevision()} stays in the record exactly as it was sent. This starts revision ${shareRevision()+1}: nothing is shared and nothing gets a link — you simply carry on in the next one.">New revision</button>
               <button class="btn primary sm" id="lbRevise" title="${pend
                 ? "Revision "+next+" has no link yet. This makes one, and asks which catalogue it should show."
                 : "This hands what is on your screen a link of its own, as revision "+next+" — and asks which catalogue it should show."}">Create link &middot; rev ${next}</button>`; })()
@@ -13942,11 +13942,18 @@ async function fillRevisionTotals(shares){
 /* Which revision a quote is, and whether that revision still has to be
    given a link. The quote carries a number; a quote made before it did
    simply is whatever its newest link says. */
+/* There is only ever one revision after the last one that has a link, and
+   it is the next number — always. Storing the number let it drift: press
+   "New revision" twice and it read 7 while 6 had never existed, and there
+   was nothing to delete to get back, because 6 was never a thing, only a
+   count. So the number on the quote says THAT it has been revised past its
+   last link, and the number you see is worked out: one more than the
+   newest link. A quote that ran up to 11 reads 6 again by itself. */
 function revStateOf(q, revs){
   const linkRev=(revs||[]).reduce((n,s)=>Math.max(n,+s.revision||0),0);
   const own=+(q && q.data && q.data.revision)||0;
-  const rev=Math.max(own, linkRev) || 1;
-  return {rev, linkRev, pending: rev>linkRev && linkRev>0};
+  const pending = own>linkRev && linkRev>0;
+  return {rev: pending ? linkRev+1 : (Math.max(own,linkRev)||1), linkRev, pending};
 }
 /* Raise the quote to the next revision. Nothing is shared: what was sent
    stays as it was, and the quote is now the one after it — to be changed,
@@ -13960,15 +13967,13 @@ async function newQuoteRevision(id){
     const {data:shs}=await supa.from("quote_shares").select("revision").eq("quote_id",id);
     const linkRev=(shs||[]).reduce((n,x)=>Math.max(n,+x.revision||0),0);
     const own=+row.data.revision||0;
-    /* You cannot be working in two unsent revisions at once. Pressing this
-       again while one is still waiting for its link only inflated the
-       number — one quote reached revision 11 with five of them that never
-       existed. It says which one you are in instead. */
+    /* You cannot be working in two unsent revisions at once, and there is
+       only one number it could be either way. */
     if(own>linkRev){
-      flagSaved("Revision "+own+" has no link yet — that is the one you are in");
-      return own;
+      flagSaved("Revision "+(linkRev+1)+" has no link yet — that is the one you are in");
+      return linkRev+1;
     }
-    const next=Math.max(linkRev, own)+1;
+    const next=linkRev+1;
     const d=Object.assign({}, row.data, {revision:next});
     const {data:up}=await supa.from("quotes").update({data:d})
       .eq("id",id).eq("rev",row.rev).select("id,rev").maybeSingle();
