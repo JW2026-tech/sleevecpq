@@ -13489,6 +13489,7 @@ async function cloudDeleteQuote(id){
 const SAVE_KEY="cpq-configurator/v1";
 let saveTimer=null, storageOK=true;
 let creatingQuote=false;        // one row, however many saves overlap
+let bootDone=false;             // until then a save must not mint a quote
 
 function snapshot(){
   /* publishedSig travels with the snapshot: without it a reload has no
@@ -13523,7 +13524,14 @@ function saveNow(){
      was backed up, and a closed tab took it with it. It saves itself from
      the moment it says anything: a name, a customer, a first choice. An
      empty screen still makes no row, so opening the tool costs nothing. */
-  if(supa && !cloudQuoteId && !creatingQuote && quoteHasContent()){
+  /* Not while the boot is still finding its feet. A refresh restores the
+     quote to the screen before reattachCloudQuote has said which row it
+     belongs to, and a save landing in that gap saw a quote with content
+     and no row — and made one. Six identical copies of the same quote,
+     one per refresh, each with a quote number of its own. So: only once
+     the boot is done, and never while a row is still waiting to be picked
+     back up. */
+  if(supa && bootDone && !restoredQuoteId && !cloudQuoteId && !creatingQuote && quoteHasContent()){
     creatingQuote=true;
     cloudCreateQuote()
       .then(()=>loadQuoteMeta()).then(()=>renderQuoteBar())
@@ -14164,7 +14172,12 @@ function paintQuoteCards(quotes, shares){
       else if(act==="peek"){ await showQuoteBreakdown(id, b); }
       else if(act==="open"){
         if(!confirm("Open this quote? Anything unsaved on screen is replaced.")) return;
-        if(await cloudOpenQuote(id)){ setMode("configure"); flagSaved("Opened"); }
+        /* Opening a quote used to throw you into the configurator, which
+           is one screen further than you asked for: you may be opening it
+           to look at its links, its revisions or what it came to. The list
+           marks it as the open one and offers Continue when you do want to
+           go on with it. */
+        if(await cloudOpenQuote(id)){ flagSaved("Opened"); renderQuotes(); }
         else alert("Could not open that quote.");
       } else if(act==="dup"){
         try{ await cloudDuplicateQuote(id); flagSaved("Duplicated"); renderQuotes(); }
@@ -15340,13 +15353,21 @@ function bootLocalOnly(){
   else if(restored) flagSaved("Restored your last session");
 
   (function(){ const h=document.getElementById("hdrLogo"); if(h) h.innerHTML=logoSvg(); })();
-  /* The tool opens on Quotes, whatever screen was last in use. Starting
-     work means one of two things — a new quote, or an existing one — and
-     that is the screen where both are in front of you, with the one you
-     had open at the top and Continue on it. Reopening halfway into a
-     configuration made it too easy to keep typing into the wrong quote.
-     The last mode is still saved; it is deliberately not restored here. */
-  setMode("quotes");
+  /* Opening the tool and refreshing it are different things, and they were
+     being treated the same. Opening it starts work — a new quote or an
+     existing one — and Quotes is where both are in front of you; coming
+     back halfway into a configuration made it too easy to keep typing into
+     the wrong quote. But a refresh is not starting work, it is carrying on
+     with it, and being thrown back to the list every time cost the screen
+     you were reading.
+     sessionStorage tells the two apart: it is empty in a tab that has just
+     been opened and still there across a reload of that same tab. */
+  let refreshed=false;
+  try{
+    refreshed = sessionStorage.getItem("cpq-open")==="1";
+    sessionStorage.setItem("cpq-open","1");
+  }catch(err){}                                  // private mode: treat as a fresh open
+  setMode(refreshed ? mode : "quotes");
   /* on a phone the step list sits above the step being answered — this folds
      it away so the options have the screen to themselves */
   document.getElementById("btnNav").onclick=()=>document.body.classList.toggle("navclosed");
@@ -15531,7 +15552,7 @@ async function boot(){
   const shareTok=params.get("share");
   if(shareTok){ await bootShareMode(shareTok); return; }
 
-  if(!supa){ bootLocalOnly(); return; }   // supabase-js CDN failed to load
+  if(!supa){ bootLocalOnly(); bootDone=true; return; }   // supabase-js CDN failed to load
 
   /* ---- TEMPORARY TEST MODE ----
      Sign-in is disabled for now (see supabase-schema-testmode.sql, which
@@ -15583,6 +15604,7 @@ async function boot(){
   /* One check right away: a tab left open overnight, or one opened after a
      colleague published, should say so before you start quoting from it. */
   checkCatalogueUpstream();
+  bootDone=true;
   const {data:{session}}=await supa.auth.getSession();
   if(session){
     document.getElementById("whoAmI").textContent=session.user.email||"";
