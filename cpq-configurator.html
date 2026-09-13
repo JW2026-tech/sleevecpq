@@ -11351,49 +11351,11 @@ async function createRevisionOn(version, quoteId){
     return null;
   }
 }
-/* A sent revision stays on the catalogue it was written against — that is
-   what the customer was shown. Changing the quote means a new revision, and
-   the catalogue is a decision you make there and then: carry on where this
-   one sat, or come along with what has been published since. So it is
-   asked, not assumed — and only when there is actually a choice. */
-function askRevisionCatalogue(quoteId, onCat, nextRev){
-  const newest=publishedVersion;
-  if(!onCat || !newest || onCat===newest){
-    createRevisionOn(null, quoteId);
-    return;
-  }
-  const body=`
-    <div class="qbrow"><span class="what">What was sent stays as it is, on catalogue
-      <b>v${onCat}</b>. This hands revision <b>${nextRev}</b> &mdash; the quote as it stands on your
-      screen &mdash; a link of its own, and its own catalogue.</span></div>
-    <div class="qbrow"><span class="who">stay on v${onCat}</span>
-      <span class="what">The same prices and steps the customer already has, so the difference between the
-      two revisions is only what you change yourself.
-      <button class="btn sm" data-revon="${onCat}">Stay on v${onCat}</button></span></div>
-    <div class="qbrow"><span class="who">move to v${newest}</span>
-      <span class="what">Today&rsquo;s prices and steps. Anything the catalogue no longer has drops out of the quote.
-      <button class="btn sm primary" data-revon="new">Move to v${newest}</button></span></div>
-    <div class="qbrow"><span class="what"><i>Not sure what moving costs? Close this and use
-      &ldquo;Compare catalogue to newest version&rdquo; on the quote first &mdash; it lists what would be
-      dropped, added and repriced.</i></span></div>`;
-  const panel=diffPanel("revChoice", `The link for revision ${nextRev} — on which catalogue?`, body,
-    /* under the heading, not under the whole list: anchored to the list it
-       landed below every card, so on any real number of quotes pressing
-       the button looked like it had done nothing at all */
-    mode==="quotes"?document.querySelector("#quotesBody .qhead"):null);
-  panel.querySelectorAll("[data-revon]").forEach(b=>{
-    b.onclick=()=>{
-      const v=b.dataset.revon==="new" ? null : +b.dataset.revon;
-      panel.remove();
-      createRevisionOn(v, quoteId);
-    };
-  });
-}
 async function createRevision(){
   if(!supa || !cloudQuoteId) return;
-  askRevisionCatalogue(cloudQuoteId,
-    quoteCatVersion || (quoteShare && quoteShare.catalogue_version) || null,
-    shareRevision()+1);
+  /* on the catalogue this quote is on — see the card's Create link */
+  await createRevisionOn(quoteCatVersion || (quoteShare && quoteShare.catalogue_version) || null,
+                         cloudQuoteId);
 }
 /* Take the selection the customer made in his link into the quote. His
    copy stays where it is; only the quote moves. */
@@ -12312,10 +12274,15 @@ async function showQuoteBreakdown(quoteId, btn){
   const pair = s.onCurrent
     ? "on the catalogue you have now"
     : `catalogue v${s.version} &rarr; v${publishedVersion||"?"}`;
+  /* Anchored to the whole list, it opened below every card — on ten quotes
+     that is well past the bottom of the screen, so the answer arrived
+     somewhere you were not looking. It belongs under the card it is about. */
+  const card=(btn && btn.closest(".qcard")) || document.getElementById("qListWrap");
   const panel=diffPanel("qBreakdown",
     `${esc(s.number||"This quote")}${s.customer?" &mdash; "+esc(s.customer):""} &middot; ${pair}`,
-    body, document.getElementById("qListWrap"));
+    body, card);
   panel.dataset.qid=quoteId;
+  panel.scrollIntoView({block:"nearest", behavior:"smooth"});
 }
 /* Move the open quote onto a published catalogue version: load it, reprice
    against it, and mark the quote as belonging to it. Links that already
@@ -14232,9 +14199,14 @@ function paintQuoteCards(quotes, shares){
   });
   wrap.querySelectorAll("[data-shnew]").forEach(b=>{
     b.onclick=async ()=>{
-      const id=b.dataset.shnew, newest=(shares.get(id)||[])[0];
-      if(!newest || !newest.sent_at){ await createRevisionOn(null, id); return; }
-      askRevisionCatalogue(id, newest.catalogue_version||null, (newest.revision||1)+1);
+      const id=b.dataset.shnew;
+      /* No question about the catalogue. Which one this quote is on is
+         already a decision you made — with "→ v30" beside the version, or
+         by leaving it where it was. Asking again at the moment you want a
+         link second-guessed that, and the honest reading of pressing
+         "Create link" while the quote says v29 is: v29. */
+      const q=(quotes||[]).find(x=>x.id===id);
+      await createRevisionOn(quoteCatOfCard(q, shares.get(id)||[]), id);
     };
   });
 }
