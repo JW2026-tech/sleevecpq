@@ -14121,7 +14121,18 @@ function paintQuoteCards(quotes, shares){
         }).join("")}</tbody></table>`:`<div class="meta">This quote has never been shared.</div>`}
         <div class="qcsub">This quote</div>
         <div class="revline">
-          <button class="btn sm" data-qact="peek" title="Read it against the catalogue it was made on — in scope, optional, alternative — and see what moving it to the newest catalogue would change, without opening it">Compare catalogue to newest version</button>
+          ${(()=>{
+            /* The button named neither side, so it asked you to press it to
+               find out what it was about to compare — and the answer is
+               already on this card twice over. */
+            const from=quoteCatOfCard(q, revs), to=publishedVersion;
+            const moved=from && to && from!==to;
+            return `<button class="btn sm" data-qact="peek" title="Read this quote against catalogue v${from||"?"} — in scope, optional, alternative — ${moved
+              ? "and see what moving it to v"+to+" would drop, add and reprice, without opening it"
+              : "without opening it"}">${moved
+              ? `Compare v${from} to v${to}`
+              : (from ? `Read against v${from}` : "Compare catalogue to newest version")}</button>`;
+          })()}
           <button class="btn sm" data-qact="dup">Duplicate</button>
           <span class="spacer"></span>
           <button class="btn sm danger" data-qact="del">Delete quote</button>
