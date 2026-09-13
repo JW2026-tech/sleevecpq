@@ -14086,7 +14086,15 @@ function paintQuoteCards(quotes, shares){
             <td class="rv-state"><span class="revstate is-none" title="No link has been made for this revision yet"><span class="revdot"></span>no link yet</span></td>
             <td class="rv-total">${(q.data && typeof q.data.total==="number")?fmt(q.data.total):""}</td>
             <td class="rv-cat">${quoteCatOfCard(q,revs)?`<span class="meta" title="The catalogue this quote is on — its link will show this version">catalogue v${quoteCatOfCard(q,revs)}</span>`:""}</td>
-            <td class="rv-copy"></td>
+            <td class="rv-copy">${(()=>{
+            const from=quoteCatOfCard(q, revs), to=publishedVersion;
+            const moved=from && to && from!==to;
+            return `<button class="pbtn" data-qact="peek" title="Read this quote against catalogue v${from||"?"} — in scope, optional, alternative — ${moved
+              ? "and see what moving it to v"+to+" would drop, add and reprice, without opening it"
+              : "without opening it"}">${moved
+              ? `Compare v${from} to v${to}`
+              : (from ? `Read against v${from}` : "Compare catalogue")}</button>`;
+          })()}</td>
             <td class="rv-live"><button class="pbtn" data-shnew="${esc(q.id)}" title="Give this revision a link, and choose which catalogue it shows">Create link</button></td>
             <td class="rv-del"></td>
           </tr>`:""}${revs.map(sh=>{
@@ -14121,10 +14129,11 @@ function paintQuoteCards(quotes, shares){
         }).join("")}</tbody></table>`:`<div class="meta">This quote has never been shared.</div>`}
         <div class="qcsub">This quote</div>
         <div class="revline">
-          ${(()=>{
-            /* The button named neither side, so it asked you to press it to
-               find out what it was about to compare — and the answer is
-               already on this card twice over. */
+          ${rsCard.pending ? "" : (()=>{
+            /* It belongs on the line it is about — the revision you are in,
+               with the catalogue it is on written beside it. That line only
+               exists once a quote has been revised past its last link, so
+               until then the button waits down here. */
             const from=quoteCatOfCard(q, revs), to=publishedVersion;
             const moved=from && to && from!==to;
             return `<button class="btn sm" data-qact="peek" title="Read this quote against catalogue v${from||"?"} — in scope, optional, alternative — ${moved
