@@ -14922,12 +14922,13 @@ function shareHeroCardHtml(block, first, frac){
               quotation and the website make the same promise */""}
         ${first?`<div class="sharebadge">${shareShieldIconSvg()}<span><b>Guaranteed &ge;98% efficiency</b></span></div>`:""}
       </div>
-      ${/* the upgrades for THIS machine, inside its own card — so it is never
-            a puzzle which item an upgrade bolts onto */""}
+      ${/* The upgrades for this machine used to sit inside its card, which
+            kept it clear what they bolt onto but put prices that are not
+            being asked for in among the one that is. They are on a page of
+            their own now; the card says how many and where. */""}
       ${(block.upgrades||[]).length?`<div class="shareheroups">
-        <div class="shareupshead">Upgrade options for this module
-          <i>— quoted separately, on top of the price above</i></div>
-        <div class="shareupgrades">${block.upgrades.map(shareUpgradeCardHtml).join("")}</div>
+        <div class="shareupshead">${block.upgrades.length} optional item${block.upgrades.length===1?"":"s"} for this module
+          <i>— see Optional items</i></div>
       </div>`:""}
       ${/* Alternatives used to hang under the machine they stand against,
             which put a second machine and a second price inside the card
@@ -15009,15 +15010,25 @@ function shareUpgradeCardHtml(r){
    flag set while building them: scaleRows() copies every row, so each call
    hands back fresh objects and a mark left on one set would be invisible to
    the next — which duplicated every upgrade into both places. */
+/* Every optional item in the quotation, on its own page — the ones that
+   used to sit inside a machine card as well as the ones that never had a
+   home. None of them is in the investment on the previous page: each is
+   quoted on top of it, and only counts once it is taken. */
 function shareUpgradeCardsHtml(frac, blocks){
-  const homed=(blocks||[]).filter(b=>b.step).map(b=>b.step);
-  const rows=shareUpgradeRows(frac).filter(r=>!homed.includes(r.node.root||null));
+  const rows=shareUpgradeRows(frac);
   if(!rows.length) return "";
   return `<div class="sharesectionhead">
-      <h3>Other upgrade options</h3>
-      <div class="sharesectionsub">Each is quoted separately, on top of the total.</div>
+      <h3>Optional items</h3>
+      <div class="sharesectionsub">Each of these is quoted <b>on top of</b> the investment on the previous page, and none of them is counted in it. Take one and it joins the quotation and its total.</div>
     </div>
     <div class="shareupgrades">${rows.map(shareUpgradeCardHtml).join("")}</div>`;
+}
+/* the page itself, worked out the same way the proposal is */
+function shareOptionalHtml(){
+  const inScopeRows=buildPriceRows(priceDetail==="top");
+  const subtotal=priceRowsTotal(inScopeRows);
+  const frac=discountFraction(subtotal-serviceRowsTotal(inScopeRows));
+  return shareUpgradeCardsHtml(frac, shareStepBlocks(frac));
 }
 /* the machines offered instead of the one in scope, side by side as cards.
    The full spec-by-spec comparison table still follows below (altCompareHtml
@@ -15148,7 +15159,6 @@ function shareProposalHtml(){
         <div class="shareheroes">${beforeFmt.map(card).join("")}</div>
         ${sharePropTablesHtml(frac)}
         ${fromFmt.length?`<div class="shareheroes shareheroes-after">${fromFmt.map(card).join("")}</div>`:""}
-        ${shareUpgradeCardsHtml(frac, blocks)}
         <div class="sharesectionhead">
           <h3>Detailed breakdown</h3>
           <div class="sharesectionsub">Every item in the scope of this quotation, with its price.</div>
@@ -15248,6 +15258,7 @@ function shareDocSections(){
     {id:"specs", nav:"Product & sleeve specs", html: printSpecsHtml()},
     {id:"machinespecs", nav:"Machine specs", html: machineSpecSectionHtml()},
     {id:"proposal", nav:"Investment proposal", html: shareProposalHtml()},
+    {id:"optional", nav:"Optional items", html: shareOptionalHtml()},
     {id:"alternatives", nav:"Alternatives", html: shareAlternativesHtml()},
     {id:"delivery", nav:"Commercial terms", html: deliverySectionHtml()},
     {id:"terms", nav:"Terms & conditions", html: printTermsHtml()}
