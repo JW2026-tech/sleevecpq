@@ -13484,6 +13484,7 @@ const SAVE_KEY="cpq-configurator/v1";
 let saveTimer=null, storageOK=true;
 let creatingQuote=false;        // one row, however many saves overlap
 let bootDone=false;             // until then a save must not mint a quote
+let userEdited=false;           // has anyone actually changed anything here?
 
 function snapshot(){
   /* publishedSig travels with the snapshot: without it a reload has no
@@ -13525,7 +13526,14 @@ function saveNow(){
      one per refresh, each with a quote number of its own. So: only once
      the boot is done, and never while a row is still waiting to be picked
      back up. */
-  if(supa && bootDone && !restoredQuoteId && !cloudQuoteId && !creatingQuote && quoteHasContent()){
+  /* And only after someone has actually changed something in THIS session.
+     Having content on screen is not the same as starting a quote: a tab
+     that reloads with a restored session has content too, and if it no
+     longer knows which row that content belongs to it was minting a new
+     one — identical to the last, with a quote number of its own, every
+     time the tab came back. Editing is the thing that means "this is mine
+     and it is new"; a screen that is merely being looked at is not. */
+  if(supa && bootDone && userEdited && !restoredQuoteId && !cloudQuoteId && !creatingQuote && quoteHasContent()){
     creatingQuote=true;
     cloudCreateQuote()
       .then(()=>loadQuoteMeta()).then(()=>renderQuoteBar())
@@ -15366,8 +15374,12 @@ function shareSaveSoon(){
 
 /* catches typing, pasting, checkbox/select changes and contenteditable
    edits anywhere in the app, including elements added by later renders */
-document.addEventListener("input", saveSoon, true);
-document.addEventListener("change", saveSoon, true);
+const noteUserEdit=()=>{ userEdited=true; saveSoon(); };
+document.addEventListener("input", noteUserEdit, true);
+document.addEventListener("change", noteUserEdit, true);
+/* a configuration is made of clicks, not only of typing — choosing an
+   option never fires an input event */
+document.addEventListener("click", ()=>{ userEdited=true; }, true);
 /* A number field changes its value when the wheel turns over it — but only
    while it has focus. So scrolling the page after clicking in a price box
    silently repriced whatever you had just touched, and the save went up
