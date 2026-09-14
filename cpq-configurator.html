@@ -4547,13 +4547,15 @@ function propSummaryRows(kind){
         if(scopeKind(c.o)!=="in") continue;
         const v=(p.variants&&p.variants.length)?assignedVariant(p,c.o.id):null;
         if(!v && (p.variants||[]).length) continue;          // nothing chosen yet
-        const each=v?(+v.unitPrice||0):0;
+        const each=v?variantPriceFor(v, c.o.id):0;
         add(v?v.id:"__plain", v?v.name:propName(p,c.qty), c.qty, each, c.qty*each);
       }
     } else {
       for(const r of propScopeLines(kind)){
         if(r.p!==p) continue;
-        add(r.v.id, r.v.name, r.qty, +r.v.unitPrice||0, r.price);
+        /* a grouped offer covers items in different classes, so there is no
+           single "each" to quote unless they all came to the same */
+        add(r.v.id, r.v.name, r.qty, (r.sameEach?(+r.each||0):0), r.price);
       }
     }
     const rows=Object.keys(per).map(k=>per[k]).filter(r=>r.qty>0);
@@ -14707,14 +14709,16 @@ function shareAltPropPreview(altOptId, frac){
     if(!qty || !(p.variants||[]).length) continue;
     const e=assignEntry(p, altOptId);
     const supplied=assignedVariant(p, altOptId);
-    const base=supplied?(+supplied.unitPrice||0):0;
+    /* per class, like everywhere else: this whole panel is about one
+       option, so its class decides what each type costs here */
+    const base=supplied?variantPriceFor(supplied, altOptId):0;
     const levels=[];
     for(const v of p.variants){
       const isSupplied=!!supplied && supplied.id===v.id;
       const offered=(e[v.id]||[]).some(s=>s==="opt"||s==="alt");
       if(!isSupplied && !offered) continue;
       levels.push({name:v.name, supplied:isSupplied,
-                   delta:cut(qty*((+v.unitPrice||0)-base))});
+                   delta:cut(qty*(variantPriceFor(v, altOptId)-base))});
     }
     /* nothing to choose between — one type and no offer against it — is not
        worth a panel; the sales-side warning covers the case where the offer
@@ -14758,10 +14762,10 @@ function sharePropTables(frac){
       if(kind!=="in" && kind!=="alt") continue;
       const key = kind==="in" ? top.id+"|in" : "alt|"+c.o.id;
       if(!byMachine.has(key))
-        byMachine.set(key, {top, kind, qty:0, optIds:[], via:c.o.name||"",
+        byMachine.set(key, {top, kind, qty:0, optIds:[], items:[], via:c.o.name||"",
                             label: kind==="in" ? (top.title||"") : (c.o.name||"")});
       const e=byMachine.get(key);
-      e.qty+=c.qty; e.optIds.push(c.o.id);
+      e.qty+=c.qty; e.optIds.push(c.o.id); e.items.push({id:c.o.id, qty:c.qty});
     }
     if(!byMachine.size) continue;
     /* only types that are actually in play — supplied or offered somewhere */
@@ -14787,12 +14791,20 @@ function sharePropTables(frac){
       const assigned=Object.keys(tally).filter(Boolean).sort((a,b)=>tally[b]-tally[a]);
       const suppliedId=assigned[0]||"";
       const supplied=suppliedId?p.variants.find(v=>v.id===suppliedId):null;
-      const base=supplied?(+supplied.unitPrice||0):0;
+      /* unitPrice is the type's flat rate, and a type priced per class has
+         none — a closed cable tray costs one thing on a corner and another
+         on a straight run. Reading the flat rate made the customer's own
+         page offer it at "no extra cost", on the very screen where he
+         decides whether to take it. Every item in the row is asked for its
+         own price and the row is their sum: the items under one machine can
+         sit in different classes. */
+      const priceOf = v => (e.items||[]).reduce((t,it)=>t+it.qty*variantPriceFor(v, it.id), 0);
+      const baseTotal = supplied ? priceOf(supplied) : 0;
       const mixed=assigned.length>1 || !!tally[""];
       const cells=types.map(v=>({
         vid:v.id,
         current: !!supplied && supplied.id===v.id,
-        delta: cut(e.qty*((+v.unitPrice||0)-base)),
+        delta: cut(priceOf(v)-baseTotal),
         /* in a mixed row a type some items already carry has to be clickable
            too, otherwise there is no way to bring the machine onto one type */
         offered: e.optIds.some(oid=>{
