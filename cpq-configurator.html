@@ -889,7 +889,9 @@
   /* the tap-to-open compact bar only ever shows on the narrow breakpoint
      below — hidden here so a wide screen just gets the plain button row */
   .sharegone{max-width:520px;margin:0 auto;padding:90px 28px;text-align:center;color:#222}
-  .sharegone .stmark{width:52px;height:auto}
+  /* the mark is an inline svg, so centring the text around it left it
+     sitting wherever its own box began — it is a block of its own now */
+  .sharegone .stmark{display:block;width:108px;height:auto;margin:0 auto}
   .sharegonebrand{font-size:12px;letter-spacing:2.4px;text-transform:uppercase;
     color:#8a8fa8;margin-top:14px}
   .sharegone h1{font-size:26px;font-weight:600;margin:22px 0 0;color:#1c2563}
@@ -6342,14 +6344,20 @@ function allOptions(list=activeModules(), acc=[]){
   return acc;
 }
 function wirePriceToggles(container){
+  /* The same buttons serve the salesperson and the customer, so what is
+     recorded is recorded only on his side — shareToken is what tells them
+     apart. The name is read off the option rather than the button, which
+     says "Add upgrade +" on every one of them. */
+  const named=id=>{ const o=optionById(id); return (o&&o.name)||id; };
   container.querySelectorAll("[data-take]").forEach(b=>{
-    b.onclick=()=>takeOptional(b.dataset.take);
+    b.onclick=()=>{ shareLog("took", {item:named(b.dataset.take)}); takeOptional(b.dataset.take); };
   });
   container.querySelectorAll("[data-untake]").forEach(b=>{
-    b.onclick=()=>putBackOptional(b.dataset.untake);
+    b.onclick=()=>{ shareLog("put_back", {item:named(b.dataset.untake)}); putBackOptional(b.dataset.untake); };
   });
   container.querySelectorAll("[data-cmpswap]").forEach(b=>{
-    b.onclick=()=>{ takeAlternative(b.dataset.cmpswap); };
+    b.onclick=()=>{ shareLog("chose_alternative", {what:(b.textContent||"").trim().slice(0,60)});
+                    takeAlternative(b.dataset.cmpswap); };
   });
   /* "Set all" on the customer's type table: one type across every machine
      that carries this property, so the choice is made once. Mirrors the
@@ -14021,6 +14029,73 @@ async function newQuoteRevision(id){
    — ours in data, his in customer_data — so this is a comparison of two
    quotes against one catalogue, the version his link is pinned to, and it
    needs nothing of what is on screen. */
+/* How long he stayed, in words a person reads rather than a number of
+   seconds. */
+function dwellWords(sec){
+  const n=+sec||0;
+  if(n<5) return "";
+  if(n<60) return n+"s";
+  const m=Math.round(n/60);
+  return m<60 ? m+" min" : Math.round(m/60)+" h";
+}
+/* Everything the customer did inside one link, in order. Sessions are split
+   where he was away or the page was closed, because "opened it three times
+   over two days" is a different story from one long read. */
+async function showCustomerMoves(shareId, btn, shares){
+  const open=document.getElementById("custMoves");
+  if(open && open.dataset.sid===shareId){ open.remove(); return; }
+  let sh=null;
+  for(const list of shares.values()) for(const x of list) if(x.id===shareId) sh=x;
+  const label=btn?btn.textContent:null;
+  if(btn){ btn.disabled=true; btn.textContent="Reading…"; }
+  let rows=null, err=null;
+  try{
+    const {data,error}=await supa.rpc("get_share_activity",{p_share_id:shareId});
+    if(error) err=error.message; else rows=data||[];
+  }catch(e){ err=String(e&&e.message||e); }
+  if(btn){ btn.disabled=false; btn.textContent=label; }
+  if(err) return alert("Could not read that: "+err+" — has supabase-klantgedrag.sql been run?");
+  const WORDS={opened:"opened the link", page:"read", took:"added", put_back:"took out",
+               chose_alternative:"chose", reset:"put it back the way it was sent",
+               pdf:"downloaded the PDF", away:"left the tab", left:"closed it"};
+  const line=r=>{
+    const d=r.detail||{};
+    const what = r.kind==="page" ? esc(d.to||"")
+               : (r.kind==="took"||r.kind==="put_back") ? esc(d.item||"")
+               : r.kind==="chose_alternative" ? esc(d.what||"")
+               : "";
+    const held = (r.kind==="page"||r.kind==="away"||r.kind==="left") ? dwellWords(r.seconds) : "";
+    return `<div class="qbrow">
+      <span class="when">${new Date(r.at).toLocaleString()}</span>
+      <span class="who">${esc(WORDS[r.kind]||r.kind)}</span>
+      <span class="what">${what}${held?` <span class="snote">&mdash; ${held} on the page before</span>`:""}</span>
+    </div>`;
+  };
+  let body;
+  if(!rows || !rows.length){
+    body=`<div class="qbempty">Nothing recorded for this link yet. Only what happens from now on is kept, so a link sent before this was built has no history — and a link nobody has opened has none either.</div>`;
+  } else {
+    /* a visit is a run of moves with no more than half an hour between them */
+    const visits=[]; let cur=null;
+    for(const r of rows){
+      const t=new Date(r.at).getTime();
+      if(!cur || t-cur.last>30*60000){ visits.push(cur={first:t, last:t, rows:[]}); }
+      cur.last=t; cur.rows.push(r);
+    }
+    const pages=rows.filter(r=>r.kind==="page"||r.kind==="opened").length;
+    const total=rows.reduce((n,r)=>n+(+r.seconds||0),0);
+    body=`<div class="qbrow"><span class="who">altogether</span><span class="what">
+        <b>${visits.length}</b> visit${visits.length===1?"":"s"} &middot; <b>${pages}</b> page${pages===1?"":"s"} read${
+        total?` &middot; <b>${dwellWords(total)||"under a minute"}</b> in all`:""}</span></div>`
+      + visits.map((v,i)=>diffSection("visit "+(i+1),
+          new Date(v.first).toLocaleString()+(v.rows.length>1?" · "+v.rows.length+" moves":""),
+          v.rows.map(line).join(""), i===visits.length-1)).join("");
+  }
+  const card=(btn && btn.closest(".qcard")) || null;
+  const panel=diffPanel("custMoves", `What the customer did in revision ${(sh&&sh.revision)||1}`, body, card);
+  panel.dataset.sid=shareId;
+  panel.scrollIntoView({block:"nearest", behavior:"smooth"});
+}
 async function showCustomerDiff(shareId, btn, shares){
   const open=document.getElementById("custDiff");
   if(open && open.dataset.sid===shareId){ open.remove(); return; }
@@ -14193,10 +14268,7 @@ function paintQuoteCards(quotes, shares){
                  this whole thing: you believe the customer has it and he
                  has not looked. get_shared_quote stamps every opening, so
                  the answer is already there — it was just never shown. */""}${
-              sent?`<span class="revseen ${sh.last_accessed_at?"":"never"}" title="${sh.last_accessed_at
-                ? "Last opened "+new Date(sh.last_accessed_at).toLocaleString()
-                : "This link has never been opened"}">${sh.last_accessed_at
-                ? "opened "+agoWords(sh.last_accessed_at) : "not opened yet"}</span>`:""}</td>
+              (sent && sh.last_accessed_at)?`<span class="revseen" title="Last opened ${new Date(sh.last_accessed_at).toLocaleString()}">opened ${agoWords(sh.last_accessed_at)}</span>`:""}</td>
             ${/* Whether the customer can open it right now is the thing you
                  scan this list for, so it is a colour and not a word among
                  words: green can be opened, red cannot. */""}
@@ -14210,7 +14282,8 @@ function paintQuoteCards(quotes, shares){
                  revision came to, not what the quote costs today */
               return (typeof t==="number") ? fmt(t) : ""; })()}</td>
             <td class="rv-cat">${sh.catalogue_version?`<span class="meta" title="This link keeps showing catalogue version ${sh.catalogue_version}; publishing new prices does not change it">catalogue v${sh.catalogue_version}</span>`:""}${
-              sh.customer_changed_at?` <span class="qcflag">customer edited</span>`:""}</td>
+              sh.customer_changed_at?` <span class="qcflag">customer edited</span>`:""}${
+              sent?` <button class="pbtn" data-moves="${esc(sh.id)}" title="Everything the customer did in this link: which pages he read and for how long, what he switched on or off, which alternatives he took">Customer moves</button>`:""}</td>
             <td class="rv-copy">${sh.customer_changed_at
               ? `<button class="pbtn iscust" data-custdiff="${esc(sh.id)}" title="He changed this himself on ${new Date(sh.customer_changed_at).toLocaleString()} — see what">What he changed</button>`
               : (alive?`<button class="pbtn" data-copyshare="${esc(sh.token)}">Copy link</button>`:"")}</td>
@@ -14311,6 +14384,9 @@ function paintQuoteCards(quotes, shares){
   wrap.querySelectorAll("[data-shsend]").forEach(b=>{ b.onclick=()=>markShareSent(b.dataset.shsend); });
   wrap.querySelectorAll("[data-shoffline]").forEach(b=>{
     b.onclick=()=>setShareOffline(b.dataset.off==="1", b.dataset.shoffline);
+  });
+  wrap.querySelectorAll("[data-moves]").forEach(b=>{
+    b.onclick=()=>showCustomerMoves(b.dataset.moves, b, shares);
   });
   wrap.querySelectorAll("[data-custdiff]").forEach(b=>{
     b.onclick=()=>showCustomerDiff(b.dataset.custdiff, b, shares);
@@ -14576,6 +14652,39 @@ let shareToken=null, shareSaveTimer=null, shareSectionIdx=0;
    sent him — the link says so, so going back can be offered only when there
    is something to go back from */
 let shareCustomerChanged=false;
+/* ============================================================
+   WHAT THE CUSTOMER DOES IN HIS LINK
+   We knew two things about a sent quotation: that it was opened, and
+   whether he changed his selection. Not what he read, how long, or where
+   he stopped — which is the half a salesperson wants before picking up
+   the phone. Every page he turns, every option he switches, every
+   alternative he takes and every PDF he pulls is recorded, with how long
+   he stayed on the page before it.
+   It must never be able to break his page: nothing is awaited, every
+   failure is swallowed, and a token the database does not know simply
+   writes nothing. The last one uses keepalive so the page may close on
+   top of it and the request still leaves.
+   ============================================================ */
+let shareSeenAt=Date.now();          // when the page he is on came up
+function shareLog(kind, detail, closing){
+  if(!shareToken) return;
+  const seconds=Math.round((Date.now()-shareSeenAt)/1000);
+  const body=JSON.stringify({p_token:shareToken, p_kind:kind,
+                             p_detail:detail||null, p_seconds:seconds});
+  try{
+    fetch(SUPABASE_URL+"/rest/v1/rpc/log_share_activity", {
+      method:"POST", keepalive:!!closing,
+      headers:{"Content-Type":"application/json",
+               "apikey":SUPABASE_ANON_KEY, "Authorization":"Bearer "+SUPABASE_ANON_KEY},
+      body
+    }).catch(()=>{});
+  }catch(err){}
+}
+/* a page change closes the time on the one before it and opens the next */
+function shareLogPage(name, from){
+  shareLog("page", {to:name, from:from||null});
+  shareSeenAt=Date.now();
+}
 /* the front page — same content as the printed cover (coverPageHtml, line
    ~8810), but with its own on-screen CSS since coverPageHtml's classes only
    render anything under body.print-all inside @media print (see .coverwrap
@@ -15417,11 +15526,16 @@ function renderShareMode(){
   el.innerHTML=nav+page+pager;
   wirePriceToggles(el);
   const pdfBtn=document.getElementById("sharePdfBtn");
-  if(pdfBtn) pdfBtn.onclick=()=>shareDownloadPdf(pdfBtn);
+  if(pdfBtn) pdfBtn.onclick=()=>{ shareLog("pdf"); shareDownloadPdf(pdfBtn); };
   const resetBtn=document.getElementById("shareReset");
-  if(resetBtn) resetBtn.onclick=()=>shareResetToSent(resetBtn);
+  if(resetBtn) resetBtn.onclick=()=>{ shareLog("reset"); shareResetToSent(resetBtn); };
 
-  const goTo=(i)=>{ shareSectionIdx=i; renderShareMode(); };
+  const goTo=(i)=>{
+    const was=(sections[shareSectionIdx]||{}).nav||null;
+    shareSectionIdx=i;
+    shareLogPage((sections[i]||{}).nav||("page "+(i+1)), was);
+    renderShareMode();
+  };
   el.querySelectorAll("[data-shareidx]").forEach(b=>{ b.onclick=()=>goTo(+b.dataset.shareidx); });
   const prev=document.getElementById("sharePrev"); if(prev) prev.onclick=()=>goTo(shareSectionIdx-1);
   const next=document.getElementById("shareNext"); if(next) next.onclick=()=>goTo(shareSectionIdx+1);
@@ -15453,7 +15567,7 @@ function showShareError(reason){
   document.getElementById("shareBody").innerHTML=`
     <div class="sharegone">
       <div class="sharegonemark">${logoSvg("stmark")}</div>
-      <div class="sharegonebrand">Sleeve Technology</div>
+      <div class="sharegonebrand">Sleeve Technology Group</div>
       <h1>${esc(heads[k])}</h1>
       <p>${esc(says[k])}</p>
     </div>`;
@@ -15476,6 +15590,14 @@ async function bootShareMode(token){
   const {data, error}=await supa.rpc("get_shared_quote", {p_token: token});
   if(error || !data || !data.ok){ showShareError(data&&data.reason); return; }
   shareCustomerChanged = !!data.customer_changed;
+  shareSeenAt=Date.now();
+  shareLog("opened", {revision:data.revision||null, screen:(screen&&screen.width)?screen.width+"x"+screen.height:null});
+  /* the time on the last page he was reading, sent as the tab goes */
+  window.addEventListener("pagehide", ()=>shareLog("left", null, true));
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden) shareLog("away", null, true);
+    else shareSeenAt=Date.now();
+  });
   applyCatalogue({catalogue: data.catalogue});
   applyQuote(data.quote);
   renderShareMode();
