@@ -1784,7 +1784,12 @@
   .spectable .fcell{display:flex;align-items:center;gap:6px}
   .spectable .fcell input,.spectable .fcell select{flex:1;min-width:0}
   .spectable .funit{color:var(--txt-faint);font-size:12px;white-space:nowrap;flex:0 0 auto}
-  .spectable .fval{flex:1;min-width:0;font-size:13px;color:var(--txt)}
+  /* A typed-in value sits in an input that fills the cell, so the unit
+     belongs at the far end. A value being READ is just a number, and
+     stretching it to the width of the column pushed "mm" the best part of
+     an inch away from the 163.0 it belongs to. It takes its own width now,
+     and may still shrink if the text is long. */
+  .spectable .fval{flex:0 1 auto;min-width:0;font-size:13px;color:var(--txt)}
   .spectable .colnametxt{font-size:13px;font-weight:600;color:var(--txt)}
 
   /* free-text tabs: header memo, product/machine specs, terms */
