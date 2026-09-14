@@ -14287,7 +14287,7 @@ function paintQuoteCards(quotes, shares){
               return (typeof t==="number") ? fmt(t) : ""; })()}</td>
             <td class="rv-cat">${sh.catalogue_version?`<span class="meta" title="This link keeps showing catalogue version ${sh.catalogue_version}; publishing new prices does not change it">catalogue v${sh.catalogue_version}</span>`:""}${
               sh.customer_changed_at?` <span class="qcflag">customer edited</span>`:""}${
-              sent?` <button class="pbtn" data-moves="${esc(sh.id)}" title="Everything the customer did in this link: which pages he read and for how long, what he switched on or off, which alternatives he took">Customer moves</button>`:""}</td>
+              ` <button class="pbtn" data-moves="${esc(sh.id)}" title="Everything the customer did in this link: which pages he read and for how long, what he switched on or off, which alternatives he took">Customer moves</button>`}</td>
             <td class="rv-copy">${sh.customer_changed_at
               ? `<button class="pbtn iscust" data-custdiff="${esc(sh.id)}" title="He changed this himself on ${new Date(sh.customer_changed_at).toLocaleString()} — see what">What he changed</button>`
               : (alive?`<button class="pbtn" data-copyshare="${esc(sh.token)}">Copy link</button>`:"")}</td>
