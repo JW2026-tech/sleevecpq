@@ -14876,7 +14876,7 @@ function sharePropTablesHtml(frac){
           </tr>`).join("")}
           ${t.locked.map(r=>`<tr class="plocked">
             <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>
-              <span class="plockwhy">only if you take this alternative</span></td>
+              <span class="plockwhy">becomes available if this alternative is chosen</span></td>
             ${r.cells.map(x=>`<td>${x.current?`included`:(x.delta?`+ ${fmt(x.delta)}`:"&mdash;")}</td>`).join("")}
           </tr>`).join("")}
         </tbody>
