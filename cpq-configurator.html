@@ -14872,12 +14872,16 @@ function sharePropTablesHtml(frac){
           </tr>`).join("")}
           ${t.locked.map(r=>`<tr class="plocked">
             <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>
-              <span class="plockwhy">this machine is not selected</span></td>
+              <span class="plockwhy">only if you take this alternative</span></td>
             ${r.cells.map(x=>`<td>${x.current?`included`:(x.delta?`+ ${fmt(x.delta)}`:"&mdash;")}</td>`).join("")}
           </tr>`).join("")}
         </tbody>
       </table></div>
-      ${t.locked.length?`<div class="sharelockednote">${shareLockIconSvg()}<span>Greyed rows are machines you have not selected. Choose one of them above and its positions become choosable here.</span></div>`:""}
+      ${/* The note used to say "choose one of them above", which was true
+            while the alternatives sat on this page. They have their own
+            page now, so it has to say where to go — otherwise the reader is
+            looking at prices for machines with no way to reach them. */""}
+      ${t.locked.length?`<div class="sharelockednote">${shareLockIconSvg()}<span>The greyed rows are <b>alternatives</b> &mdash; machines offered instead of the ones you have. Their prices are shown so you can see what they would cost, but you cannot choose them here: take the machine itself on the <b>Alternatives</b> page first, and its rows come alive.</span></div>`:""}
     </div>`).join("")}`;
 }
 /* what a step actually holds in scope — the picked options that are neither
