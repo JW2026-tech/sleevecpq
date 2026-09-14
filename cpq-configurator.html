@@ -15377,9 +15377,15 @@ function shareSaveSoon(){
 const noteUserEdit=()=>{ userEdited=true; saveSoon(); };
 document.addEventListener("input", noteUserEdit, true);
 document.addEventListener("change", noteUserEdit, true);
-/* a configuration is made of clicks, not only of typing — choosing an
-   option never fires an input event */
-document.addEventListener("click", ()=>{ userEdited=true; }, true);
+/* A configuration is made of clicks as well as typing — choosing an option
+   fires no input event. But not every click is work on a quote: opening a
+   card in the list, switching a tab, reading the history. Only the screens
+   where a quote is actually built count, or simply looking around after a
+   reload would be enough to have one made. */
+document.addEventListener("click", e=>{
+  const t=e.target;
+  if(t && t.closest && t.closest("#viewConfigure,#viewFormats,#viewService,#viewDocs")) userEdited=true;
+}, true);
 /* A number field changes its value when the wheel turns over it — but only
    while it has focus. So scrolling the page after clicking in a price box
    silently repriced whatever you had just touched, and the save went up
