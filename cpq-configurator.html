@@ -11204,15 +11204,17 @@ async function loadQuoteMeta(){
     const {data:shs}=await supa.from("quote_shares").select("*").eq("quote_id",cloudQuoteId)
       .order("created_at",{ascending:false}).limit(8);
     const list=shs||[];
+    quoteShares = list;
     quoteShare = list.find(s=>!s.revoked_at) || list.find(s=>s.sent_at) || null;
-  }catch(err){ quoteShare=null; }
+  }catch(err){ quoteShare=null; quoteShares=[]; }
   try{
     const {data:ev}=await supa.from("quote_events").select("*").eq("quote_id",cloudQuoteId)
       .order("at",{ascending:false}).limit(60);
     quoteEvents=ev||[];
   }catch(err){ quoteEvents=[]; }
   try{
-    const {data:vs,error}=await supa.from("quote_versions").select("id,saved_at,saved_by")
+    const {data:vs,error}=await supa.from("quote_versions")
+      .select("id,saved_at,saved_by,total:data->total")
       .eq("quote_id",cloudQuoteId).order("saved_at",{ascending:false}).limit(40);
     /* a query that fails resolves with an error instead of throwing, so
        without this the panel silently claims there is no history */
@@ -11225,6 +11227,7 @@ async function logQuoteEvent(kind, detail){
   try{ await supa.rpc("log_quote_event",{p_quote_id:cloudQuoteId, p_kind:kind, p_detail:detail||null}); }
   catch(err){}
 }
+let quoteShares=[];             // every link of the open quote, newest first
 let publishedVersion=null;      // newest published catalogue version
 /* Is the customer's link on a different price list than the quote is?
    It used to measure against the newest published version, which meant a
@@ -12369,6 +12372,21 @@ function renderQuoteBar(){
   renderQuoteBarPanel();
   syncTopbar();
 }
+/* Which revision the quote was in when a version was filed. Not stored
+   anywhere — it does not have to be: a link carries its revision and the
+   moment it was made, so the newest link made at or before that save says
+   which one it was. Without this the list is forty timestamps that all
+   look alike, and choosing one is guesswork. */
+function revisionAt(at){
+  const t=new Date(at).getTime();
+  if(!t) return 0;
+  let best=0;
+  for(const sh of quoteShares||[]){
+    const made=new Date(sh.created_at).getTime();
+    if(made<=t) best=Math.max(best, +sh.revision||0);
+  }
+  return best;
+}
 function renderQuoteBarPanel(){
   const old=document.getElementById("qbPanel");
   if(old) old.remove();
@@ -12390,8 +12408,9 @@ function renderQuoteBarPanel(){
       quoteVersions.length
         ? quoteVersions.map(v=>`<div class="qbrow">
             <span class="when">${when(v.saved_at)}</span>
-            <span class="who">${esc(v.saved_by||"")}</span>
-            <span class="what"><button class="btn sm" data-restorever="${esc(v.id)}">Restore this version</button></span>
+            <span class="who">${(()=>{ const r=revisionAt(v.saved_at); return r?"rev "+r:""; })()}</span>
+            <span class="what"><b>${(typeof v.total==="number")?fmt(v.total):""}</b>
+              <button class="btn sm" data-restorever="${esc(v.id)}">Restore this version</button></span>
           </div>`).join("")
         : `<div class="qbempty">No earlier versions recorded for this quote yet.</div>`}`;
   }
