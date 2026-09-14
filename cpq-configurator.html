@@ -783,6 +783,50 @@
      whether or not the row above has one. The catalogue column takes the
      slack, so the group still sits right. */
   .revtable td.rv-total{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  /* ---- what the customer did, as its own page over the app ---- */
+  body.moves-open{overflow:hidden}
+  .movespage{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:auto}
+  .mvhead{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:14px;
+    padding:18px 28px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .mvhead h2{margin:0;font-size:19px;font-weight:600}
+  .mvsub{font-size:12.5px;color:var(--txt-dim);margin-top:3px}
+  .mvbody{max-width:1100px;margin:0 auto;padding:26px 28px 70px}
+  .mvbody h3{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--txt-faint);
+    margin:34px 0 12px;font-weight:600}
+  .mvcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+  .mvcard{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--panel)}
+  .mvcardn{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--txt-faint)}
+  .mvcardv{font-size:26px;font-weight:600;margin-top:6px;font-variant-numeric:tabular-nums}
+  .mvcardsub{font-size:11.5px;color:var(--txt-dim);margin-top:3px}
+  /* time per page, each bar against the page he stayed on longest */
+  .mvpages{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .mvpage{display:flex;align-items:center;gap:14px;padding:9px 16px;font-size:13px}
+  .mvpage+.mvpage{border-top:1px solid var(--line-soft)}
+  .mvpn{flex:0 0 190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mvbar{flex:1;height:8px;background:var(--sunken);border-radius:5px;overflow:hidden}
+  .mvbar i{display:block;height:100%;background:var(--accent);border-radius:5px}
+  .mvpt{flex:0 0 70px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .mvpv{flex:0 0 44px;text-align:right;color:var(--txt-faint);font-size:12px}
+  .mvnote{font-size:11.5px;color:var(--txt-faint);margin-top:8px}
+  .mvacts,.mvvisit{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .mvvisit{margin-bottom:14px}
+  .mvvisith{display:flex;align-items:baseline;gap:10px;padding:10px 16px;background:var(--rail);
+    border-bottom:1px solid var(--line-soft);font-size:13px;font-weight:600}
+  .mvrow{display:flex;align-items:center;gap:14px;padding:7px 16px;font-size:12.5px}
+  .mvrow+.mvrow{border-top:1px solid var(--line-soft)}
+  .mvwhen{flex:0 0 88px;color:var(--txt-faint);font-variant-numeric:tabular-nums}
+  .mvkind{flex:0 0 150px;color:var(--txt-dim)}
+  .mvkind.is-took,.mvkind.is-chose_alternative{color:var(--ok);font-weight:600}
+  .mvkind.is-put_back,.mvkind.is-reset{color:var(--warn);font-weight:600}
+  .mvkind.is-pdf{color:var(--accent);font-weight:600}
+  .mvwhat{flex:1;min-width:0}
+  .mvsec{flex:0 0 70px;text-align:right;color:var(--txt-faint);font-variant-numeric:tabular-nums}
+  .mvempty{border:1px dashed var(--line-strong);border-radius:12px;padding:22px;
+    color:var(--txt-dim);font-size:13px;line-height:1.6}
+  @media(max-width:760px){
+    .mvpn{flex:0 0 120px}
+    .mvkind{flex:0 0 110px}
+  }
   .revseen{display:block;font-size:10.5px;color:var(--txt-faint);margin-top:2px}
   .revseen.never{color:var(--warn)}
   .pbtn.iscust{border-color:var(--warn);color:var(--warn)}
@@ -5610,7 +5654,16 @@ function altAncestorOf(id){
    app re-renders whichever screen is open, but a customer viewing a shared
    link only ever sees the proposal, so that one gets its own render path */
 function refreshView(){
-  if(document.body.classList.contains("share-mode")){ renderShareMode(); return; }
+  if(document.body.classList.contains("share-mode")){
+    /* And it is written down. shareSaveSoon existed, and nothing ever
+       called it — so everything the customer switched on or off lived in
+       his browser and nowhere else: gone on the next reload, invisible to
+       us, and no reason for the link to say he had changed anything. This
+       is the one path every change on his page comes through. */
+    shareSaveSoon();
+    renderShareMode();
+    return;
+  }
   renderDocs();
 }
 function takeOptional(id){
@@ -6360,7 +6413,10 @@ function wirePriceToggles(container){
     b.onclick=()=>{ shareLog("put_back", {item:named(b.dataset.untake)}); putBackOptional(b.dataset.untake); };
   });
   container.querySelectorAll("[data-cmpswap]").forEach(b=>{
-    b.onclick=()=>{ shareLog("chose_alternative", {what:(b.textContent||"").trim().slice(0,60)});
+    b.onclick=()=>{
+      const card=b.closest(".sharealtcard")||b.closest(".gcell");
+      const named=card&&card.querySelector(".sharealtname,.cmpname");
+      shareLog("chose_alternative", {what:((named&&named.textContent)||b.textContent||"").trim().slice(0,80)});
                     takeAlternative(b.dataset.cmpswap); };
   });
   /* "Set all" on the customer's type table: one type across every machine
@@ -14045,9 +14101,74 @@ function dwellWords(sec){
 /* Everything the customer did inside one link, in order. Sessions are split
    where he was away or the page was closed, because "opened it three times
    over two days" is a different story from one long read. */
+/* ============================================================
+   WHAT THE CUSTOMER DID — on a page of its own
+   A strip of moves under a card answers "did he look at it". The
+   questions that follow — which pages held him, what he reached for,
+   where he stopped — are questions about proportion, and those want a
+   page: the totals, then the time per page measured against each other,
+   then what he actually touched, and the move-by-move account under it
+   for when the summary raises a question.
+   ============================================================ */
+function movesFigures(rows){
+  const pages=new Map();
+  const acts=[];
+  let cur=null, total=0, views=0;
+  const spent=(name, sec)=>{
+    if(!name) return;
+    const e=pages.get(name)||{views:0, seconds:0};
+    e.seconds+=(+sec||0); pages.set(name,e); total+=(+sec||0);
+  };
+  const seen=name=>{
+    if(!name) return;
+    const e=pages.get(name)||{views:0, seconds:0};
+    e.views++; pages.set(name,e); views++;
+  };
+  for(const r of rows){
+    const d=r.detail||{};
+    if(r.kind==="opened"){ cur=d.first||null; seen(cur); continue; }
+    if(r.kind==="page"){
+      /* the seconds on a page change belong to the page being LEFT */
+      spent(d.from||cur, r.seconds);
+      cur=d.to||cur; seen(cur);
+      continue;
+    }
+    if(r.kind==="away" || r.kind==="left"){ spent(cur, r.seconds); continue; }
+    /* anything else carries a running count that a later page row settles,
+       so counting it here would count the same seconds twice */
+    acts.push(r);
+  }
+  const list=[...pages.entries()].map(([name,e])=>({name, views:e.views, seconds:e.seconds}))
+    .sort((x,y)=>y.seconds-x.seconds || y.views-x.views);
+  return {pages:list, acts, total, views};
+}
+/* a visit is a run of moves with no more than half an hour between them */
+function movesVisits(rows){
+  const out=[]; let cur=null;
+  for(const r of rows){
+    const t=new Date(r.at).getTime();
+    if(!cur || t-cur.last>30*60000) out.push(cur={first:t, last:t, rows:[]});
+    cur.last=t; cur.rows.push(r);
+  }
+  return out;
+}
+const MOVE_WORDS={opened:"opened the link", page:"read", took:"added", put_back:"took out",
+  chose_alternative:"chose", reset:"put it back as sent", pdf:"downloaded the PDF",
+  away:"left the tab", left:"closed it"};
+function movesRowHtml(r){
+  const d=r.detail||{};
+  const what = r.kind==="page" ? esc(d.to||"")
+             : (r.kind==="took"||r.kind==="put_back") ? esc(d.item||"")
+             : r.kind==="chose_alternative" ? esc(d.what||"") : "";
+  const held = (r.kind==="page"||r.kind==="away"||r.kind==="left") ? dwellWords(r.seconds) : "";
+  return `<div class="mvrow">
+    <span class="mvwhen">${new Date(r.at).toLocaleTimeString()}</span>
+    <span class="mvkind is-${esc(r.kind)}">${esc(MOVE_WORDS[r.kind]||r.kind)}</span>
+    <span class="mvwhat">${what}</span>
+    <span class="mvsec">${esc(held)}</span>
+  </div>`;
+}
 async function showCustomerMoves(shareId, btn, shares){
-  const open=document.getElementById("custMoves");
-  if(open && open.dataset.sid===shareId){ open.remove(); return; }
   let sh=null;
   for(const list of shares.values()) for(const x of list) if(x.id===shareId) sh=x;
   const label=btn?btn.textContent:null;
@@ -14059,46 +14180,71 @@ async function showCustomerMoves(shareId, btn, shares){
   }catch(e){ err=String(e&&e.message||e); }
   if(btn){ btn.disabled=false; btn.textContent=label; }
   if(err) return alert("Could not read that: "+err+" — has supabase-klantgedrag.sql been run?");
-  const WORDS={opened:"opened the link", page:"read", took:"added", put_back:"took out",
-               chose_alternative:"chose", reset:"put it back the way it was sent",
-               pdf:"downloaded the PDF", away:"left the tab", left:"closed it"};
-  const line=r=>{
-    const d=r.detail||{};
-    const what = r.kind==="page" ? esc(d.to||"")
-               : (r.kind==="took"||r.kind==="put_back") ? esc(d.item||"")
-               : r.kind==="chose_alternative" ? esc(d.what||"")
-               : "";
-    const held = (r.kind==="page"||r.kind==="away"||r.kind==="left") ? dwellWords(r.seconds) : "";
-    return `<div class="qbrow">
-      <span class="when">${new Date(r.at).toLocaleString()}</span>
-      <span class="who">${esc(WORDS[r.kind]||r.kind)}</span>
-      <span class="what">${what}${held?` <span class="snote">&mdash; ${held} on the page before</span>`:""}</span>
-    </div>`;
-  };
-  let body;
-  if(!rows || !rows.length){
-    body=`<div class="qbempty">Nothing recorded for this link yet. Only what happens from now on is kept, so a link sent before this was built has no history — and a link nobody has opened has none either.</div>`;
-  } else {
-    /* a visit is a run of moves with no more than half an hour between them */
-    const visits=[]; let cur=null;
-    for(const r of rows){
-      const t=new Date(r.at).getTime();
-      if(!cur || t-cur.last>30*60000){ visits.push(cur={first:t, last:t, rows:[]}); }
-      cur.last=t; cur.rows.push(r);
-    }
-    const pages=rows.filter(r=>r.kind==="page"||r.kind==="opened").length;
-    const total=rows.reduce((n,r)=>n+(+r.seconds||0),0);
-    body=`<div class="qbrow"><span class="who">altogether</span><span class="what">
-        <b>${visits.length}</b> visit${visits.length===1?"":"s"} &middot; <b>${pages}</b> page${pages===1?"":"s"} read${
-        total?` &middot; <b>${dwellWords(total)||"under a minute"}</b> in all`:""}</span></div>`
-      + visits.map((v,i)=>diffSection("visit "+(i+1),
-          new Date(v.first).toLocaleString()+(v.rows.length>1?" · "+v.rows.length+" moves":""),
-          v.rows.map(line).join(""), i===visits.length-1)).join("");
-  }
-  const card=(btn && btn.closest(".qcard")) || null;
-  const panel=diffPanel("custMoves", `What the customer did in revision ${(sh&&sh.revision)||1}`, body, card);
-  panel.dataset.sid=shareId;
-  panel.scrollIntoView({block:"nearest", behavior:"smooth"});
+
+  const f=movesFigures(rows||[]);
+  const visits=movesVisits(rows||[]);
+  const count=k=>f.acts.filter(r=>r.kind===k).length;
+  const first=(rows&&rows.length)?rows[0].at:null;
+  const last=(rows&&rows.length)?rows[rows.length-1].at:null;
+  const q=(sh&&sh.data&&sh.data.quote)||{};
+  const card=(n,v,sub)=>`<div class="mvcard"><div class="mvcardn">${esc(n)}</div>
+    <div class="mvcardv">${v}</div>${sub?`<div class="mvcardsub">${sub}</div>`:""}</div>`;
+  const top=f.pages.length?f.pages[0].seconds:0;
+  const body = (!rows || !rows.length)
+    ? `<div class="mvempty"><b>Nothing recorded for this link yet.</b>
+         Only what happens from now on is kept, so a link sent before this was built has no
+         history — and one nobody has opened has none either.</div>`
+    : `<div class="mvcards">
+        ${card("Visits", visits.length, visits.length>1?"more than half an hour apart":"")}
+        ${card("Time in all", dwellWords(f.total)||"under 5s", "")}
+        ${card("Pages read", f.views, f.pages.length+" different")}
+        ${card("Items added", count("took"), count("put_back")?count("put_back")+" taken out again":"")}
+        ${card("Alternatives chosen", count("chose_alternative"), "")}
+        ${card("PDF downloads", count("pdf"), count("reset")?count("reset")+" times put back as sent":"")}
+        ${card("First seen", first?new Date(first).toLocaleDateString():"—", first?new Date(first).toLocaleTimeString():"")}
+        ${card("Last seen", last?agoWords(last):"—", last?new Date(last).toLocaleString():"")}
+      </div>
+
+      <h3>Where his time went</h3>
+      <div class="mvpages">${f.pages.map(pg=>`<div class="mvpage">
+        <span class="mvpn">${esc(pg.name)}</span>
+        <span class="mvbar"><i style="width:${top?Math.max(2,Math.round(pg.seconds/top*100)):0}%"></i></span>
+        <span class="mvpt">${dwellWords(pg.seconds)||"—"}</span>
+        <span class="mvpv">${pg.views}&times;</span>
+      </div>`).join("")}</div>
+      <div class="mvnote">A page opened and left inside five seconds shows no time — he passed through it.</div>
+
+      <h3>What he touched</h3>
+      ${f.acts.length
+        ? `<div class="mvacts">${f.acts.map(movesRowHtml).join("")}</div>`
+        : `<div class="mvempty">He read it and changed nothing.</div>`}
+
+      <h3>Move by move</h3>
+      ${visits.map((v,i)=>`<div class="mvvisit">
+        <div class="mvvisith">Visit ${i+1}<span class="meta">${new Date(v.first).toLocaleString()} &middot; ${
+          v.rows.length} moves${v.last>v.first?" · over "+dwellWords(Math.round((v.last-v.first)/1000)):""}</span></div>
+        ${v.rows.map(movesRowHtml).join("")}
+      </div>`).join("")}`;
+
+  const el=document.createElement("div");
+  el.id="movesPage"; el.className="movespage";
+  el.innerHTML=`<div class="mvhead">
+      <div>
+        <h2>What the customer did</h2>
+        <div class="mvsub">${esc(q.quoteNumber||"")}${q.customer?" &middot; "+esc(q.customer):""}
+          &middot; revision ${(sh&&sh.revision)||1}${sh&&sh.catalogue_version?" &middot; catalogue v"+sh.catalogue_version:""}</div>
+      </div>
+      <span class="spacer"></span>
+      <button class="btn" id="mvClose">Close</button>
+    </div>
+    <div class="mvbody">${body}</div>`;
+  document.body.appendChild(el);
+  document.body.classList.add("moves-open");
+  const shut=()=>{ el.remove(); document.body.classList.remove("moves-open");
+                   document.removeEventListener("keydown", onKey); };
+  const onKey=e=>{ if(e.key==="Escape") shut(); };
+  document.getElementById("mvClose").onclick=shut;
+  document.addEventListener("keydown", onKey);
 }
 async function showCustomerDiff(shareId, btn, shares){
   const open=document.getElementById("custDiff");
@@ -15605,7 +15751,8 @@ async function bootShareMode(token){
   if(error || !data || !data.ok){ showShareError(data&&data.reason, data); return; }
   shareCustomerChanged = !!data.customer_changed;
   shareSeenAt=Date.now();
-  shareLog("opened", {revision:data.revision||null, screen:(screen&&screen.width)?screen.width+"x"+screen.height:null});
+  shareLog("opened", {revision:data.revision||null, first:(shareDocSections()[0]||{}).nav||null,
+                      screen:(screen&&screen.width)?screen.width+"x"+screen.height:null});
   /* the time on the last page he was reading, sent as the tab goes */
   window.addEventListener("pagehide", ()=>shareLog("left", null, true));
   document.addEventListener("visibilitychange", ()=>{
@@ -15636,6 +15783,9 @@ async function shareResetToSent(btn){
 }
 function shareSaveSoon(){
   if(!shareToken || !supa) return;
+  /* from the first change on there is something to go back from, so the
+     header can offer it straight away rather than after a reload */
+  if(!shareCustomerChanged){ shareCustomerChanged=true; }
   clearTimeout(shareSaveTimer);
   shareSaveTimer=setTimeout(()=>{
     supa.rpc("update_shared_quote", {p_token: shareToken, p_data: quotePayload()}).catch(()=>{});
