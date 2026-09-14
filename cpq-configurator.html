@@ -15028,7 +15028,11 @@ function shareOptionalHtml(){
   const inScopeRows=buildPriceRows(priceDetail==="top");
   const subtotal=priceRowsTotal(inScopeRows);
   const frac=discountFraction(subtotal-serviceRowsTotal(inScopeRows));
-  return shareUpgradeCardsHtml(frac, shareStepBlocks(frac));
+  /* The types table belongs here too: feet, counters, access doors and
+     cable tray are all "the line has these, and a better one costs extra".
+     Standing in the investment proposal it put a wall of prices nobody is
+     being charged in the middle of the one figure that is being asked for. */
+  return shareUpgradeCardsHtml(frac, shareStepBlocks(frac)) + sharePropTablesHtml(frac);
 }
 /* the machines offered instead of the one in scope, side by side as cards.
    The full spec-by-spec comparison table still follows below (altCompareHtml
@@ -15157,7 +15161,6 @@ function shareProposalHtml(){
   return `<div class="shareproposalwrap">
       <div class="shareproposalmain">
         <div class="shareheroes">${beforeFmt.map(card).join("")}</div>
-        ${sharePropTablesHtml(frac)}
         ${fromFmt.length?`<div class="shareheroes shareheroes-after">${fromFmt.map(card).join("")}</div>`:""}
         <div class="sharesectionhead">
           <h3>Detailed breakdown</h3>
