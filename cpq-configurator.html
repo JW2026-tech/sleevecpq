@@ -1102,7 +1102,11 @@
   .shareprotable .btn.sm{white-space:nowrap;padding:4px 10px;font-size:11.5px}
   .shareprotable tr.plocked td{color:#aaa;background:#fafafc}
   .shareprotable tr.plocked td.pmach{color:#888}
-  .plockwhy{display:block;font-size:10px;color:#bbb;font-style:italic;white-space:nowrap}
+  /* It sat under the machine name at 10px in near-white italics — the one
+     line on the row that says why the row cannot be used, and the hardest
+     thing on it to read. It goes beside the name, at the size of the rest
+     of the table. */
+  .plockwhy{font-size:11.5px;color:#888;font-style:italic;white-space:nowrap;margin-left:10px}
   .pmixed{display:block;font-size:10px;color:#c15c00;font-style:italic;white-space:nowrap}
   /* a property only an alternative would bring: shown, but plainly not yet
      available — dashed and faded, with no button to press */
