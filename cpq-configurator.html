@@ -14068,7 +14068,9 @@ function paintQuoteCards(quotes, shares){
               ? "and see what moving it to v"+to+" would drop, add and reprice, without opening it"
               : "without opening it"}">${moved
               ? `Compare v${from} to v${to}`
-              : (from ? `Read against v${from}` : "Compare catalogue")}</button>`;
+              : (from ? `Read against v${from}` : "Compare catalogue")}</button>${moved
+              ? ` <button class="pbtn" data-moveto="${esc(q.id)}|${to}" title="Put this quote on catalogue v${to}: today's prices and steps, and anything the catalogue no longer has drops out. Links already made stay where they are.">Move to v${to}</button>`
+              : ""}`;
           })()}</td>
             <td class="rv-live"><button class="pbtn" data-shnew="${esc(q.id)}" title="Give this revision a link, and choose which catalogue it shows">Create link</button></td>
             <td class="rv-del"></td>
@@ -14193,6 +14195,21 @@ function paintQuoteCards(quotes, shares){
   wrap.querySelectorAll("[data-shsend]").forEach(b=>{ b.onclick=()=>markShareSent(b.dataset.shsend); });
   wrap.querySelectorAll("[data-shoffline]").forEach(b=>{
     b.onclick=()=>setShareOffline(b.dataset.off==="1", b.dataset.shoffline);
+  });
+  wrap.querySelectorAll("[data-moveto]").forEach(b=>{
+    b.onclick=async ()=>{
+      const [id,v]=String(b.dataset.moveto).split("|");
+      b.disabled=true; b.textContent="Moving…";
+      /* the move reprices the quote against the new catalogue and saves it,
+         and that has to happen to the quote itself — so it is opened first
+         if it is not the one on screen. Opening no longer leaves this
+         screen, so you stay where you are. */
+      try{
+        if(cloudQuoteId!==id && !await cloudOpenQuote(id)) throw new Error("could not open it");
+        await loadQuoteMeta();
+        await moveQuoteToCatalogue(+v);
+      }catch(err){ alert("Could not move it: "+(err&&err.message||err)); renderQuotes(); }
+    };
   });
   wrap.querySelectorAll("[data-newrev]").forEach(b=>{
     b.onclick=()=>newQuoteRevision(b.dataset.newrev);
