@@ -13984,8 +13984,9 @@ function paintQuoteCards(quotes, shares){
   wrap.innerHTML=list.map(q=>{
     const revs=shares.get(q.id)||[];
     const st=linkStateOf(revs);
+    /* Not repeated here: the revisions table underneath says it on its
+       own row, with the catalogue and the amount beside it. */
     const rs=revStateOf(q, revs), rsCard=rs;
-    if(rs.pending) st.text+=" &middot; <b>rev "+rs.rev+" has no link yet</b>";
     const isOpen=q.id===cloudQuoteId;
     const shown=!!quoteOpenCards[q.id];
     const top=revs[0]||null;
