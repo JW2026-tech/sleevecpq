@@ -896,6 +896,10 @@
     color:#8a8fa8;margin-top:14px}
   .sharegone h1{font-size:26px;font-weight:600;margin:22px 0 0;color:#1c2563}
   .sharegone p{font-size:14.5px;line-height:1.65;color:#666;margin:14px 0 0}
+  .sharegonego{display:inline-block;margin-top:20px;background:#1c2563;color:#fff;
+    text-decoration:none;font-size:14px;padding:11px 22px;border-radius:9px}
+  .sharegonego:hover{background:#28338A}
+  .sharegonefine{font-size:12.5px;color:#9aa0b4;margin-top:16px}
   .sharereset{margin-left:auto;background:transparent;color:rgba(255,255,255,.9);
     border:1px solid rgba(255,255,255,.45);border-radius:8px;padding:6px 12px;
     font-size:12px;cursor:pointer;white-space:nowrap}
@@ -15552,7 +15556,7 @@ function renderShareMode(){
    line of grey text: the mark, what happened in one sentence, and what to
    do about it. Nothing about the quotation is said, because at this point
    nothing about it has been read. */
-function showShareError(reason){
+function showShareError(reason, info){
   const heads={
     expired:"This link has expired",
     revoked:"This link is no longer active",
@@ -15564,12 +15568,22 @@ function showShareError(reason){
     not_found:"The address may have been copied incompletely, or the link may never have existed. Ask your contact at Sleeve Technology to send it again."
   };
   const k=heads[reason]?reason:"not_found";
+  /* If a newer revision has been sent and is still live, that is what he
+     came for — so hand it to him instead of sending him back to us. Only a
+     SENT one: a draft is still ours, and a link taken offline with no
+     successor points nowhere, which is when the message stands on its own. */
+  const go=info&&info.newer_token;
+  const rev=info&&info.newer_revision;
   document.getElementById("shareBody").innerHTML=`
     <div class="sharegone">
       <div class="sharegonemark">${logoSvg("stmark")}</div>
       <div class="sharegonebrand">Sleeve Technology Group</div>
       <h1>${esc(heads[k])}</h1>
-      <p>${esc(says[k])}</p>
+      ${go
+        ? `<p>A newer version of your quotation is ready${rev?` — revision ${esc(String(rev))}`:""}.</p>
+           <a class="sharegonego" href="${location.pathname}?share=${esc(go)}">Open the current quotation</a>
+           <p class="sharegonefine">This old address will keep saying the same thing, so it is worth replacing the one you have.</p>`
+        : `<p>${esc(says[k])}</p>`}
     </div>`;
 }
 async function bootShareMode(token){
@@ -15586,9 +15600,9 @@ async function bootShareMode(token){
      same light-mode variable values the rest of the app uses in light
      theme, so force that theme rather than duplicating every variable */
   document.documentElement.setAttribute("data-theme","light");
-  if(!supa){ showShareError("not_found"); return; }
+  if(!supa){ showShareError("not_found", null); return; }
   const {data, error}=await supa.rpc("get_shared_quote", {p_token: token});
-  if(error || !data || !data.ok){ showShareError(data&&data.reason); return; }
+  if(error || !data || !data.ok){ showShareError(data&&data.reason, data); return; }
   shareCustomerChanged = !!data.customer_changed;
   shareSeenAt=Date.now();
   shareLog("opened", {revision:data.revision||null, screen:(screen&&screen.width)?screen.width+"x"+screen.height:null});
