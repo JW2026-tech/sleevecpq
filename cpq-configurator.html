@@ -888,6 +888,12 @@
   .sharenavlist{display:flex;flex-wrap:wrap;gap:6px 22px;padding:10px 28px}
   /* the tap-to-open compact bar only ever shows on the narrow breakpoint
      below — hidden here so a wide screen just gets the plain button row */
+  .sharegone{max-width:520px;margin:0 auto;padding:90px 28px;text-align:center;color:#222}
+  .sharegone .stmark{width:52px;height:auto}
+  .sharegonebrand{font-size:12px;letter-spacing:2.4px;text-transform:uppercase;
+    color:#8a8fa8;margin-top:14px}
+  .sharegone h1{font-size:26px;font-weight:600;margin:22px 0 0;color:#1c2563}
+  .sharegone p{font-size:14.5px;line-height:1.65;color:#666;margin:14px 0 0}
   .sharereset{margin-left:auto;background:transparent;color:rgba(255,255,255,.9);
     border:1px solid rgba(255,255,255,.45);border-radius:8px;padding:6px 12px;
     font-size:12px;cursor:pointer;white-space:nowrap}
@@ -11193,6 +11199,11 @@ const EVENT_WORDS={
   pdf_created:"PDF created",
   email_sent:"PDF emailed",
   customer_opened:"Customer opened the link",
+  /* he clicked a link that is offline or past its date — he is looking for
+     his quotation and cannot find it, which is worth knowing today and not
+     next week */
+  customer_tried_dead_link:"Customer tried a link that is no longer live",
+  customer_reset:"Customer went back to the quotation as sent",
   customer_changed:"Customer changed their selection",
   customer_changes_taken:"Customer's changes taken into the quote",
   status_changed:"Status changed",
@@ -15423,17 +15434,38 @@ function renderShareMode(){
     navToggle.setAttribute("aria-expanded", open?"true":"false");
   };
 }
+/* The last thing a customer may ever see of us, so it is a page and not a
+   line of grey text: the mark, what happened in one sentence, and what to
+   do about it. Nothing about the quotation is said, because at this point
+   nothing about it has been read. */
 function showShareError(reason){
-  const msgs={
-    expired:"This link has expired — ask your sales contact for a new one.",
-    revoked:"This link is no longer active — ask your sales contact for a new one.",
-    not_found:"This link isn't valid — ask your sales contact for a new one."
+  const heads={
+    expired:"This link has expired",
+    revoked:"This link is no longer active",
+    not_found:"This link is not valid"
   };
-  document.getElementById("shareBody").innerHTML=
-    `<div class="docempty">${esc(msgs[reason]||msgs.not_found)}</div>`;
+  const says={
+    expired:"Quotations are shared for a limited time. Yours has not gone anywhere — ask your contact at Sleeve Technology and you will have a new link, showing the latest version.",
+    revoked:"It has been taken offline, usually because a newer version of the quotation has been prepared. Ask your contact at Sleeve Technology for the current link.",
+    not_found:"The address may have been copied incompletely, or the link may never have existed. Ask your contact at Sleeve Technology to send it again."
+  };
+  const k=heads[reason]?reason:"not_found";
+  document.getElementById("shareBody").innerHTML=`
+    <div class="sharegone">
+      <div class="sharegonemark">${logoSvg("stmark")}</div>
+      <div class="sharegonebrand">Sleeve Technology</div>
+      <h1>${esc(heads[k])}</h1>
+      <p>${esc(says[k])}</p>
+    </div>`;
 }
 async function bootShareMode(token){
   shareToken=token;
+  /* Before anything can go wrong. share-mode is what hides the tabs, the
+     step list, the sidebar and every other screen of the tool, and it was
+     only being set once a quotation had loaded — so a link that was
+     expired or taken offline showed the customer the message AND the
+     configurator behind it, quote number and all. */
+  document.body.classList.add("share-mode");
   document.getElementById("viewShare").classList.remove("hidden");
   /* the quotation look is fixed/light regardless of the viewer's own
      light/dark preference — .sharewrap's white background assumes the
