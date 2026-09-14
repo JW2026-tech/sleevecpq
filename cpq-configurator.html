@@ -14929,10 +14929,15 @@ function shareHeroCardHtml(block, first, frac){
           <i>— quoted separately, on top of the price above</i></div>
         <div class="shareupgrades">${block.upgrades.map(shareUpgradeCardHtml).join("")}</div>
       </div>`:""}
+      ${/* Alternatives used to hang under the machine they stand against,
+            which put a second machine and a second price inside the card
+            for the one being quoted — the proposal read as though it were
+            offering both. They have a page of their own now; what is left
+            here is a line saying so. */""}
       ${(block.alts||[]).length?`<div class="shareheroups shareheroalts">
-        <div class="shareupshead">Alternatives for this module
-          <i>— offered instead of what is quoted above, not on top of it</i></div>
-        ${block.alts.map(c=>shareAltGroupHtml(c, frac)).join("")}
+        <div class="shareupshead">${(block.alts||[]).reduce((n,c)=>n+((c.cols||[]).length),0)} alternative${
+          (block.alts||[]).reduce((n,c)=>n+((c.cols||[]).length),0)===1?"":"s"} for this module
+          <i>— see Alternatives</i></div>
       </div>`:""}
     </div>
   </div>`;
@@ -15017,19 +15022,25 @@ function shareUpgradeCardsHtml(frac, blocks){
 /* the machines offered instead of the one in scope, side by side as cards.
    The full spec-by-spec comparison table still follows below (altCompareHtml
    in the itemised part), this is the at-a-glance version. */
-/* only the comparisons that belong to no single machine — see
-   shareAltGroupStep. Anything with a home is drawn inside that card. */
+/* Every alternative in the quotation, on its own page — the ones that used
+   to sit under a machine card as well as the ones that never had a home.
+   They are not part of the investment: each one stands INSTEAD of something
+   that is, so adding them to the proposal read as one machine quoted three
+   times over. */
 function shareAltCardsHtml(frac, blocks){
-  const homed=(blocks||[]).filter(b=>b.step).map(b=>b.step);
-  const list=shareAltGroups(frac).filter(c=>{
-    const st=shareAltGroupStep(c);
-    return !(st && homed.includes(st));
-  });
+  const list=shareAltGroups(frac);
   if(!list.length) return "";
   return `<div class="sharesectionhead">
-      <h3>Other alternatives</h3>
-      <div class="sharesectionsub">An alternative replaces the item it stands against, it is not quoted on top of it.</div>
+      <h3>Alternatives</h3>
+      <div class="sharesectionsub">Each one is offered <b>instead of</b> the item it stands against, never on top of it — so none of them is counted in the investment on the previous page. Choosing one puts it in the quotation and takes the other out.</div>
     </div>` + list.map(c=>shareAltGroupHtml(c, frac)).join("");
+}
+/* the page itself, worked out the same way the proposal is */
+function shareAlternativesHtml(){
+  const inScopeRows=buildPriceRows(priceDetail==="top");
+  const subtotal=priceRowsTotal(inScopeRows);
+  const frac=discountFraction(subtotal-serviceRowsTotal(inScopeRows));
+  return shareAltCardsHtml(frac, shareStepBlocks(frac));
 }
 function shareAltGroupHtml(c, frac){
     /* a property only an alternative would bring: visible so the customer
@@ -15138,7 +15149,6 @@ function shareProposalHtml(){
         ${sharePropTablesHtml(frac)}
         ${fromFmt.length?`<div class="shareheroes shareheroes-after">${fromFmt.map(card).join("")}</div>`:""}
         ${shareUpgradeCardsHtml(frac, blocks)}
-        ${shareAltCardsHtml(frac, blocks)}
         <div class="sharesectionhead">
           <h3>Detailed breakdown</h3>
           <div class="sharesectionsub">Every item in the scope of this quotation, with its price.</div>
@@ -15238,6 +15248,7 @@ function shareDocSections(){
     {id:"specs", nav:"Product & sleeve specs", html: printSpecsHtml()},
     {id:"machinespecs", nav:"Machine specs", html: machineSpecSectionHtml()},
     {id:"proposal", nav:"Investment proposal", html: shareProposalHtml()},
+    {id:"alternatives", nav:"Alternatives", html: shareAlternativesHtml()},
     {id:"delivery", nav:"Commercial terms", html: deliverySectionHtml()},
     {id:"terms", nav:"Terms & conditions", html: printTermsHtml()}
   ].filter(Boolean)
