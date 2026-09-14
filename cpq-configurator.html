@@ -783,6 +783,9 @@
      whether or not the row above has one. The catalogue column takes the
      slack, so the group still sits right. */
   .revtable td.rv-total{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .revseen{display:block;font-size:10.5px;color:var(--txt-faint);margin-top:2px}
+  .revseen.never{color:var(--warn)}
+  .pbtn.iscust{border-color:var(--warn);color:var(--warn)}
   .revtable td.rv-cat{width:100%}
   .revtable td.rv-copy,.revtable td.rv-live,.revtable td.rv-del{
     padding-right:0;padding-left:8px;text-align:left}
@@ -885,6 +888,10 @@
   .sharenavlist{display:flex;flex-wrap:wrap;gap:6px 22px;padding:10px 28px}
   /* the tap-to-open compact bar only ever shows on the narrow breakpoint
      below — hidden here so a wide screen just gets the plain button row */
+  .sharereset{margin-left:auto;background:transparent;color:rgba(255,255,255,.9);
+    border:1px solid rgba(255,255,255,.45);border-radius:8px;padding:6px 12px;
+    font-size:12px;cursor:pointer;white-space:nowrap}
+  .sharereset:hover{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.8)}
   .sharenavcur{display:none;width:100%;align-items:center;justify-content:space-between;
     color:#fff;font-weight:500;padding:12px 20px}
   .sharenavcur .chev{font-size:11px;opacity:.8}
@@ -13999,6 +14006,56 @@ async function newQuoteRevision(id){
     return next;
   }catch(err){ alert("Could not make a revision: "+(err&&err.message||err)); return null; }
 }
+/* What the customer made of what we sent him. Both copies sit on the link
+   — ours in data, his in customer_data — so this is a comparison of two
+   quotes against one catalogue, the version his link is pinned to, and it
+   needs nothing of what is on screen. */
+async function showCustomerDiff(shareId, btn, shares){
+  const open=document.getElementById("custDiff");
+  if(open && open.dataset.sid===shareId){ open.remove(); return; }
+  let sh=null;
+  for(const list of shares.values()) for(const x of list) if(x.id===shareId) sh=x;
+  if(!sh || !sh.customer_data || !sh.data) return alert("That link has no copy to compare.");
+  const label=btn?btn.textContent:null;
+  if(btn){ btn.disabled=true; btn.textContent="Reading…"; }
+  let ours=null, his=null;
+  try{
+    const cat=await catalogueVersionData(sh.catalogue_version);
+    ours=readQuoteAgainst(sh.data, cat);
+    his =readQuoteAgainst(sh.customer_data, cat);
+  }catch(err){}
+  if(btn){ btn.disabled=false; btn.textContent=label; }
+  if(!ours || !his) return alert("Could not read that comparison.");
+  const byId=l=>new Map(l.map(i=>[i.id,i]));
+  const a=byId(ours.items), b=byId(his.items);
+  const took=[], dropped=[], swapped=[];
+  for(const [id,i] of b){
+    const was=a.get(id);
+    if(!was){ took.push(i); continue; }
+    if(was.scope!==i.scope) swapped.push({name:i.name, step:i.step, from:was.scope, to:i.scope});
+  }
+  for(const [id,i] of a) if(!b.has(id)) dropped.push(i);
+  const money=n=>fmt(+n||0);
+  const words={in:"in the quotation", opt:"offered", alt:"an alternative"};
+  const rows=(list,cls)=>list.map(i=>`<div class="qbrow ${cls||""}"><span class="when"></span>
+      <span class="who">${esc(i.step||"")}</span>
+      <span class="what">${esc(i.name)} <b>${money(i.price)}</b></span></div>`).join("");
+  const d=his.total-ours.total;
+  const body=`
+    <div class="qbrow"><span class="who">total</span><span class="what">${money(ours.total)} &rarr; <b>${money(his.total)}</b>${
+      d?` <b style="color:var(--${d>0?"ok":"warn"})">${d>0?"+":"&minus;"} ${money(Math.abs(d))}</b>`:" (unchanged)"}</span></div>
+    ${took.length?diffSection("he added", `${took.length} item${took.length===1?"":"s"}`, rows(took), took.length<=3):""}
+    ${dropped.length?diffSection("he took out", `${dropped.length} item${dropped.length===1?"":"s"}`, rows(dropped,"is-gone"), dropped.length<=3):""}
+    ${swapped.length?diffSection("he moved", `${swapped.length}`, swapped.map(c=>`<div class="qbrow"><span class="when"></span>
+        <span class="who">${esc(c.step||"")}</span>
+        <span class="what">${esc(c.name)}: ${esc(words[c.from]||c.from)} &rarr; <b>${esc(words[c.to]||c.to)}</b></span></div>`).join(""), swapped.length<=3):""}
+    ${(!took.length&&!dropped.length&&!swapped.length)?`<div class="qbempty">He opened it and changed nothing that shows in the quotation.</div>`:""}
+    <div class="qbrow"><span class="what"><i>This is his copy of the link. Your quote is untouched — use “Take their changes” on the quote itself if you want it.</i></span></div>`;
+  const card=(btn && btn.closest(".qcard")) || null;
+  const panel=diffPanel("custDiff", `What the customer made of revision ${sh.revision||1}`, body, card);
+  panel.dataset.sid=shareId;
+  panel.scrollIntoView({block:"nearest", behavior:"smooth"});
+}
 function quoteCatOfCard(q, revs){
   const own=(q && q.data && q.data.catalogueVersion) || null;
   const link=(revs||[]).reduce((v,s)=>Math.max(v, +s.catalogue_version||0), 0) || null;
@@ -14120,7 +14177,15 @@ function paintQuoteCards(quotes, shares){
             <td class="rv-rev"><span class="revpill ${sent?"is-sent":""}" title="${sent
               ? "Sent on "+new Date(sh.sent_at).toLocaleDateString()+" — the record of what the customer was given: it cannot be changed or deleted"
               : "Not sent yet, so this one is still yours to change"}">rev ${sh.revision||1} &middot; ${
-              sent?"sent "+shortDate(sh.sent_at):"draft"}</span></td>
+              sent?"sent "+shortDate(sh.sent_at):"draft"}</span>${
+              /* A sent link with nothing behind it is the quiet failure of
+                 this whole thing: you believe the customer has it and he
+                 has not looked. get_shared_quote stamps every opening, so
+                 the answer is already there — it was just never shown. */""}${
+              sent?`<span class="revseen ${sh.last_accessed_at?"":"never"}" title="${sh.last_accessed_at
+                ? "Last opened "+new Date(sh.last_accessed_at).toLocaleString()
+                : "This link has never been opened"}">${sh.last_accessed_at
+                ? "opened "+agoWords(sh.last_accessed_at) : "not opened yet"}</span>`:""}</td>
             ${/* Whether the customer can open it right now is the thing you
                  scan this list for, so it is a colour and not a word among
                  words: green can be opened, red cannot. */""}
@@ -14135,7 +14200,9 @@ function paintQuoteCards(quotes, shares){
               return (typeof t==="number") ? fmt(t) : ""; })()}</td>
             <td class="rv-cat">${sh.catalogue_version?`<span class="meta" title="This link keeps showing catalogue version ${sh.catalogue_version}; publishing new prices does not change it">catalogue v${sh.catalogue_version}</span>`:""}${
               sh.customer_changed_at?` <span class="qcflag">customer edited</span>`:""}</td>
-            <td class="rv-copy">${alive?`<button class="pbtn" data-copyshare="${esc(sh.token)}">Copy link</button>`:""}</td>
+            <td class="rv-copy">${sh.customer_changed_at
+              ? `<button class="pbtn iscust" data-custdiff="${esc(sh.id)}" title="He changed this himself on ${new Date(sh.customer_changed_at).toLocaleString()} — see what">What he changed</button>`
+              : (alive?`<button class="pbtn" data-copyshare="${esc(sh.token)}">Copy link</button>`:"")}</td>
             <td class="rv-live">${sent
               ? `<button class="pbtn" data-shoffline="${esc(sh.id)}" data-off="${off?"0":"1"}">${off?"Put online":"Take offline"}</button>`
               : `<button class="pbtn" data-shsend="${esc(sh.id)}" title="From then on this link is the record: it cannot be changed or deleted, only taken offline">Mark as sent</button>`}</td>
@@ -14233,6 +14300,9 @@ function paintQuoteCards(quotes, shares){
   wrap.querySelectorAll("[data-shsend]").forEach(b=>{ b.onclick=()=>markShareSent(b.dataset.shsend); });
   wrap.querySelectorAll("[data-shoffline]").forEach(b=>{
     b.onclick=()=>setShareOffline(b.dataset.off==="1", b.dataset.shoffline);
+  });
+  wrap.querySelectorAll("[data-custdiff]").forEach(b=>{
+    b.onclick=()=>showCustomerDiff(b.dataset.custdiff, b, shares);
   });
   wrap.querySelectorAll("[data-moveto]").forEach(b=>{
     b.onclick=async ()=>{
@@ -14491,6 +14561,10 @@ function flagSaved(msg, sticky){
    view: no login, no step editor, no admin, nothing but the take/put-back
    optional and swap-alternative controls the sales rep already exposed. */
 let shareToken=null, shareSaveTimer=null, shareSectionIdx=0;
+/* whether the customer is looking at his own edits rather than at what we
+   sent him — the link says so, so going back can be offered only when there
+   is something to go back from */
+let shareCustomerChanged=false;
 /* the front page — same content as the printed cover (coverPageHtml, line
    ~8810), but with its own on-screen CSS since coverPageHtml's classes only
    render anything under body.print-all inside @media print (see .coverwrap
@@ -15308,7 +15382,14 @@ function renderShareMode(){
     <div class="sharenavbrand">${logoSvg("stmark sm")}<div>
       <div class="stword">${esc(t.entity||"")}</div>
       <div class="sttag">INNOVATION IN SLEEVING</div>
-    </div></div>
+    </div>
+    ${/* Once something is switched on or off the page shows the customer his
+          own version, and there was no way back to ours — he may only have
+          wanted to see what something costs. Offered only when there is
+          something to undo. */""}
+    ${shareCustomerChanged?`<button type="button" class="sharereset" id="shareReset"
+      title="Put every option and alternative back the way Sleeve Technology sent it. Your own changes are discarded.">Back to the Sleeve quotation</button>`:""}
+    </div>
     <button type="button" class="sharenavcur" id="shareNavToggle" aria-expanded="false">
       <span>${esc(cur.nav)}</span><i class="chev">&#9662;</i>
     </button>
@@ -15326,6 +15407,8 @@ function renderShareMode(){
   wirePriceToggles(el);
   const pdfBtn=document.getElementById("sharePdfBtn");
   if(pdfBtn) pdfBtn.onclick=()=>shareDownloadPdf(pdfBtn);
+  const resetBtn=document.getElementById("shareReset");
+  if(resetBtn) resetBtn.onclick=()=>shareResetToSent(resetBtn);
 
   const goTo=(i)=>{ shareSectionIdx=i; renderShareMode(); };
   el.querySelectorAll("[data-shareidx]").forEach(b=>{ b.onclick=()=>goTo(+b.dataset.shareidx); });
@@ -15360,9 +15443,28 @@ async function bootShareMode(token){
   if(!supa){ showShareError("not_found"); return; }
   const {data, error}=await supa.rpc("get_shared_quote", {p_token: token});
   if(error || !data || !data.ok){ showShareError(data&&data.reason); return; }
+  shareCustomerChanged = !!data.customer_changed;
   applyCatalogue({catalogue: data.catalogue});
   applyQuote(data.quote);
   renderShareMode();
+}
+/* Throw away the customer's own copy so the link shows the quotation as it
+   was sent. Nothing of ours is touched: his choices only ever lived in a
+   copy beside what we sent, never in the quote itself. */
+async function shareResetToSent(btn){
+  if(!shareToken || !supa) return;
+  if(!confirm("Put the quotation back the way Sleeve Technology sent it? Everything you switched on or off here is discarded.")) return;
+  const label=btn?btn.textContent:"";
+  if(btn){ btn.disabled=true; btn.textContent="Putting it back…"; }
+  try{
+    clearTimeout(shareSaveTimer);          // no pending edit may land after this
+    const {data,error}=await supa.rpc("reset_shared_quote",{p_token:shareToken});
+    if(error || !data || !data.ok) throw error||new Error("could not put it back");
+    location.reload();                     // the link reads itself again, from ours
+  }catch(err){
+    if(btn){ btn.disabled=false; btn.textContent=label; }
+    alert("Sorry, that did not work just now. Please try again, or ask your contact at Sleeve Technology.");
+  }
 }
 function shareSaveSoon(){
   if(!shareToken || !supa) return;
