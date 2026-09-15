@@ -10197,28 +10197,40 @@ function scopeDescriptionsHtml(){
   /* No alternatives — one stands INSTEAD of something in the scope, so
      describing it here would describe a machine nobody is buying. They are
      on the Alternatives page. */
-  const nodes=scopeNodes().filter(nd=>hasBlurb(nd.o) && !nd.o.alt);
+  const all=scopeNodes().filter(nd=>!nd.o.alt);
+  const nodes=all.filter(nd=>hasBlurb(nd.o));
   const customs=customItems().filter(c=>(c.text||"").trim())
     .map(c=>({custom:true, depth:1,
               o:{name:c.name||"Custom line", text:c.text, qty:Math.max(1,+c.qty||1), optional:c.scope==="opt"},
               m:{title:"Additional items for this quote"}}));
   if(!nodes.length && !customs.length) return "";
-  /* group by the machine each item hangs under: a new top-level item opens
-     a group, everything deeper joins the one before it */
+  /* Group by the machine each item hangs under, walking the WHOLE
+     configuration and not only the described part of it. Reading the
+     filtered list alone put everything under the one machine that happened
+     to have a description of its own: the machines without one never opened
+     a group, so their parts joined the group before them. */
   const groups=[]; let cur=null;
-  for(const nd of nodes){
-    if(nd.depth===0 || !cur){ groups.push(cur={head:nd, rows:[]}); continue; }
-    cur.rows.push(nd);
+  for(const nd of all){
+    if(nd.depth===0){
+      cur={machine:nd, head:hasBlurb(nd.o)?nd:null, rows:[]};
+      groups.push(cur);
+      continue;
+    }
+    if(cur && hasBlurb(nd.o)) cur.rows.push(nd);
   }
+  /* a machine nobody described and whose parts nobody described either has
+     nothing to say here */
+  for(let i=groups.length-1;i>=0;i--)
+    if(!groups[i].head && !groups[i].rows.length) groups.splice(i,1);
   if(customs.length) groups.push({head:null, title:"Additional items for this quote", rows:customs});
   return `<h3 class="descsection-title">Description of the supplied items</h3>
     <div class="desclist">${groups.map(g=>{
-      const title=g.head ? ((g.head.o.qty||optQty(g.head.o))>1
-          ? `${g.head.o.qty||optQty(g.head.o)}× ${g.head.o.name}` : g.head.o.name)
-        : (g.title||"");
+      const mo=g.machine?g.machine.o:null;
+      const mq=mo?(mo.qty||optQty(mo)):0;
+      const title=mo ? (mq>1?`${mq}× ${mo.name}`:mo.name) : (g.title||"");
       return `<div class="descgroup">
         <div class="descgrouphead">${esc(title)}${
-          g.head&&g.head.o.optional?' <span class="optpill">optional</span>':""}</div>
+          mo&&mo.optional?' <span class="optpill">optional</span>':""}</div>
         ${g.head?descRowHtml(g.head, {unnamed:true}):""}
         ${g.rows.map(nd=>descRowHtml(nd)).join("")}
       </div>`;
