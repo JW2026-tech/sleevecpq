@@ -14518,11 +14518,18 @@ function paintQuoteCards(quotes, shares){
                until then the button waits down here. */
             const from=quoteCatOfCard(q, revs), to=publishedVersion;
             const moved=from && to && from!==to;
+            /* And the move itself, which only sat on the pending-revision
+               row — so on a quote whose last revision is already sent there
+               was nothing to press: comparing v30 with v31 and then being
+               left with no way to act on the answer. The catalogue belongs
+               to the quote, not to a revision, so it is offered here too. */
             return `<button class="btn sm" data-qact="peek" title="Read this quote against catalogue v${from||"?"} — in scope, optional, alternative — ${moved
               ? "and see what moving it to v"+to+" would drop, add and reprice, without opening it"
               : "without opening it"}">${moved
               ? `Compare v${from} to v${to}`
-              : (from ? `Read against v${from}` : "Compare catalogue to newest version")}</button>`;
+              : (from ? `Read against v${from}` : "Compare catalogue to newest version")}</button>${moved
+              ? ` <button class="btn sm warn" data-moveto="${esc(q.id)}|${to}" title="Put this quote on catalogue v${to}: today's prices and steps, and anything the catalogue no longer has drops out. The links already sent stay exactly as they are.">Move to v${to}</button>`
+              : ""}`;
           })()}
           <button class="btn sm" data-qact="dup">Duplicate</button>
           <span class="spacer"></span>
