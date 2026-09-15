@@ -10150,7 +10150,8 @@ function pictureHtml(o, cls){
 function scopeDescriptionsHtml(){
   const items=scopeNodes().filter(nd=>hasBlurb(nd.o))
     .concat(customItems().filter(c=>(c.text||"").trim())
-      .map(c=>({o:{name:c.name||"Custom line", text:c.text, qty:Math.max(1,+c.qty||1), optional:c.scope==="opt"},
+      .map(c=>({custom:true,
+                o:{name:c.name||"Custom line", text:c.text, qty:Math.max(1,+c.qty||1), optional:c.scope==="opt"},
                 m:{title:"Additional items for this quote"}})));
   if(!items.length) return "";
   return `<h3 class="descsection-title">Description of the supplied items</h3>
@@ -10159,7 +10160,14 @@ function scopeDescriptionsHtml(){
       return `<div class="descitem${o.optional?" is-optional":""}">
         <div class="ditle">${o.alt?'<span class="altpill">alternative</span> ':o.optional?'<span class="optpill">optional</span> ':""}${q>1?`<span class="qty">${q}&times;</span> `:""}${esc(o.name)}${
           o.alt&&o.altFor?` <span class="altdiff">— instead of ${esc(optionLabel(o.altFor))}</span>`:""}</div>
-        ${nd.m&&nd.m.title?`<div class="dtrail">${esc(nd.m.title)}</div>`:""}
+        ${/* No step name under the item. A step is titled with the question
+             we ask ourselves while configuring — "Choose the registration
+             sensor" — and under a description of what is being supplied it
+             reads as though the customer still has something to choose.
+             The custom lines keep theirs: "Additional items for this quote"
+             is a statement, not a question, and it is the only thing that
+             says where such a line came from. */""}
+        ${(nd.m&&nd.m.title&&nd.custom)?`<div class="dtrail">${esc(nd.m.title)}</div>`:""}
         <div class="dwrap">
           ${pictureHtml(o)}
           <div class="dtext">
