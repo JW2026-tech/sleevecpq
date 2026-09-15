@@ -422,14 +422,14 @@
     border-left-width:1.5px}
   /* the descriptions run the whole width, under the two columns */
   #allDocsBody .pg-scope .descsection-title{font-size:1em;margin:1.2em 0 .3em;padding-top:.5em}
-  #allDocsBody .pg-scope .descitem{margin:0 0 .5em;break-inside:avoid}
-  #allDocsBody .pg-scope .descitem .ditle{font-size:1em}
-  #allDocsBody .pg-scope .descitem .dtrail{font-size:.84em}
-  #allDocsBody .pg-scope .descitem .dbody,
-  #allDocsBody .pg-scope .descitem .dbody p{font-size:.94em;line-height:1.32;margin:.2em 0;
+  #allDocsBody .pg-scope .descitem, #allDocsBody .pg-scope .descrow{margin:0 0 .5em;break-inside:avoid}
+  #allDocsBody .pg-scope .descitem .ditle, #allDocsBody .pg-scope .descrow .ditle{font-size:1em}
+  #allDocsBody .pg-scope .descitem .dtrail, #allDocsBody .pg-scope .descrow .dtrail{font-size:.84em}
+  #allDocsBody .pg-scope .descitem .dbody, #allDocsBody .pg-scope .descrow .dbody,
+  #allDocsBody .pg-scope .descitem .dbody p, #allDocsBody .pg-scope .descrow .dbody p{font-size:.94em;line-height:1.32;margin:.2em 0;
     max-width:none;width:100%;text-align:left;hyphens:none}
   #allDocsBody .pg-scope .descsection-title,
-  #allDocsBody .pg-scope .descitem{width:100%;max-width:none}
+  #allDocsBody .pg-scope .descitem, #allDocsBody .pg-scope .descrow{width:100%;max-width:none}
 
 
   /* ==================== SMALL SCREENS ====================
@@ -1387,7 +1387,7 @@
   .docsheet h2{font-size:23px;letter-spacing:-.2px;margin:0 0 4px}
   /* a line of prose is unreadable at 2000px, so text blocks keep a measure
      while the priced lists use the whole width */
-  .docsheet .descitem .dbody,.docsheet .termstext,.docsheet .secnote,
+  .docsheet .descitem .dbody,.docsheet .termstext,.docsheet .secnote, .docsheet .descrow .dbody,.docsheet .termstext,.docsheet .secnote,
   .docsheet .fineprint,.docsheet .docsub{max-width:110ch}
   .docsheet .docsub{color:var(--txt-dim);font-size:13.5px;margin-bottom:2px}
   .docsheet .docmeta{color:var(--txt-faint);font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;
@@ -1397,31 +1397,32 @@
   .scopeline .snote{color:var(--txt-faint);font-size:12px}
   .descsection-title{font-size:17px;font-weight:600;margin:34px 0 4px;padding-top:20px;
     border-top:1px solid var(--line)}
-  /* The descriptions were a single column 78 characters wide, which is the
-     right measure for a page of prose and the wrong one for forty short
-     entries: it left half the screen empty and made the reader scroll past
-     everything to find one machine. They are cards in as many columns as
-     fit, each with its picture, so the section can be scanned.
-     A card is never split down the middle of a column — see break-inside on
-     .desclist .descitem — and the print rules further up override all of
-     this back to full-width rows for the PDF. */
-  .desclist{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));
-    gap:16px;align-items:start;margin-top:14px}
-  .descitem{margin-top:0;max-width:none;border:1px solid var(--line);border-radius:12px;
-    padding:16px 18px;background:var(--panel)}
-  .descitem .ditle{font-size:14.5px;font-weight:600;color:var(--txt);
-    padding-bottom:9px;border-bottom:1px solid var(--line-soft)}
-  .descitem .dtrail{font-size:11px;color:var(--txt-faint);margin-top:6px}
-  .descitem .dbody{font-size:13px;line-height:1.65;color:var(--txt-dim);margin-top:5px}
-  .desclist .optpic{width:150px;flex-basis:150px;max-height:130px}
-  .descitem.is-optional{border-color:var(--warn-border)}
-  @media(max-width:900px){
-    .desclist{grid-template-columns:1fr}
-    .desclist .optpic{width:120px;flex-basis:120px}
+  /* Rows across the page, grouped under the machine they belong to. The
+     picture column is always there, empty where an item has no picture, so
+     every name and every paragraph starts on the same line down the whole
+     chapter — which is what lets a long list be skimmed. */
+  .desclist{margin-top:14px}
+  .descgroup{margin-top:26px}
+  .descgroup:first-child{margin-top:10px}
+  .descgrouphead{font-size:14px;font-weight:600;color:var(--txt);
+    padding:0 0 8px;border-bottom:1px solid var(--line)}
+  .descrow{display:flex;gap:22px;align-items:flex-start;padding:14px 0;max-width:none}
+  .descrow+.descrow{border-top:1px solid var(--line-soft)}
+  .descpiccol{flex:0 0 150px;width:150px}
+  .descpiccol .optpic{width:150px;flex-basis:150px;max-height:120px;margin:0}
+  .desctext{flex:1;min-width:0}
+  .descrow .ditle{font-size:13.5px;font-weight:600;color:var(--txt)}
+  .descrow .dtrail{font-size:11px;color:var(--txt-faint);margin-top:2px}
+  .descrow .dbody{font-size:13px;line-height:1.65;color:var(--txt-dim);margin-top:4px}
+  .descrow.is-optional .ditle{color:var(--warn)}
+  @media(max-width:760px){
+    .descrow{gap:14px}
+    .descpiccol{flex-basis:96px;width:96px}
+    .descpiccol .optpic{width:96px;flex-basis:96px}
   }
-  .descitem .dbody p{margin:0 0 7px}
-  .descitem .dbody p:last-child{margin-bottom:0}
-  .descitem.is-optional .ditle{color:var(--warn)}
+  .descitem .dbody p, .descrow .dbody p{margin:0 0 7px}
+  .descitem .dbody p:last-child, .descrow .dbody p:last-child{margin-bottom:0}
+  .descitem.is-optional .ditle, .descrow.is-optional .ditle{color:var(--warn)}
   .qty{font-variant-numeric:tabular-nums;color:var(--txt-dim);font-weight:600}
   /* depth is shown by indentation plus a marker that changes shape per
      level — filled square, hollow square, dash — instead of an outline
@@ -1815,7 +1816,7 @@
   .optpic.alt{width:140px;flex-basis:140px;max-height:110px}
   .feats{margin:2px 0 0;padding-left:16px;font-size:12.5px;color:var(--txt-dim);line-height:1.45}
   .feats li{margin:1px 0}
-  .desclist .descitem{break-inside:avoid;-webkit-column-break-inside:avoid}
+  .desclist .descitem, .desclist .descrow{break-inside:avoid;-webkit-column-break-inside:avoid}
   .dwrap{display:flex;gap:16px;align-items:flex-start;margin-top:5px}
   .dtext{flex:1;min-width:0}
   .gnote{font-size:11px;color:var(--txt-faint);font-style:italic;padding:4px 0 0}
@@ -2196,7 +2197,7 @@
     .pxhidden{display:none!important} /* leave the price cell blank instead of printing "price hidden" */
     body{background:#fff;color:#111}
     .docsheet{max-width:100%;padding:0;margin:0}
-    .docsheet .descitem .dbody,.docsheet .termstext,.docsheet .secnote,
+    .docsheet .descitem .dbody,.docsheet .termstext,.docsheet .secnote, .docsheet .descrow .dbody,.docsheet .termstext,.docsheet .secnote,
     .docsheet .fineprint,.docsheet .docsub{max-width:none}
     .docsheet .docmeta,.pline,.scopeline,.pbreadcrumb.group{border-color:#ddd}
     .pline .ptitle,.scopeline .stitle,.docsheet h2{color:#111}
@@ -2384,18 +2385,18 @@
     body.print-all .pline.discountrow .ptitle,body.print-all .pline.discountrow .pval{color:#EF7B0B}
     .discintro{color:#222;font-size:9.5pt;margin:10px 0 4px}
     .descsection-title{color:#28338A;border-top-color:#EF7B0B}
-    .descitem .ditle{color:#111}
-    .descitem .dtrail{color:#777}
-    .descitem .dbody{color:#333;font-size:9.5pt;line-height:1.5}
-    body.print-all .pg-scope .descitem .dbody{font-size:.94em;line-height:1.32}
-    #allDocsBody .pg-scope .desclist .descitem{break-inside:avoid;margin-bottom:2mm}
+    .descitem .ditle, .descrow .ditle{color:#111}
+    .descitem .dtrail, .descrow .dtrail{color:#777}
+    .descitem .dbody, .descrow .dbody{color:#333;font-size:9.5pt;line-height:1.5}
+    body.print-all .pg-scope .descitem .dbody, body.print-all .pg-scope .descrow .dbody{font-size:.94em;line-height:1.32}
+    #allDocsBody .pg-scope .desclist .descitem, #allDocsBody .pg-scope .desclist .descrow{break-inside:avoid;margin-bottom:2mm}
     .optpic{width:36mm;flex-basis:36mm;max-height:26mm;object-fit:contain;padding:1mm;border-color:#c9cee0}
     .optpic.alt{width:32mm;flex-basis:32mm;max-height:24mm}
     .feats{font-size:.92em;color:#333;line-height:1.3}
-    .altinfo,.dwrap,.descitem{break-inside:avoid}
+    .altinfo,.dwrap,.descitem, .altinfo,.dwrap,.descrow{break-inside:avoid}
     body.print-all .altinfo{margin:1.5mm 0 .5mm}
-    .descitem.is-optional .ditle{color:#EF7B0B}
-    .descitem{page-break-inside:avoid}
+    .descitem.is-optional .ditle, .descrow.is-optional .ditle{color:#EF7B0B}
+    .descitem, .descrow{page-break-inside:avoid}
     .scopenote{color:#555;font-size:8.5pt}
     .paysteps{font-size:9pt;line-height:1.45}
     .paysteps .payterm{font-size:8.5pt;color:#4a5170}
@@ -10165,40 +10166,61 @@ function featureListHtml(o, cls){
 function pictureHtml(o, cls){
   return o&&o.image ? `<img class="optpic ${cls||""}" src="${o.image}" alt="${esc(o.name||"")}">` : "";
 }
+/* ============================================================
+   DESCRIPTION OF THE SUPPLIED ITEMS
+   Rows across the page rather than a grid of cards: a quotation for a
+   machine is a document, and a card per item made it a shop window — four
+   columns of ragged boxes whose only common edge was the top.
+   Every row has the same picture column, kept whether or not that item has
+   a picture, so all the names and all the text start on one line. That
+   emptiness is what makes a long list quiet.
+   The rows are grouped under the machine they belong to. A machine is a
+   top-level item in the configuration, and everything below it in the tree
+   hangs off it, so its own description sits directly under the heading
+   without repeating its name, and its parts follow as named rows.
+   ============================================================ */
+function descRowHtml(nd, opts){
+  const o=nd.o, q=o.qty||optQty(o);
+  const named=!(opts&&opts.unnamed);
+  return `<div class="descrow${o.optional?" is-optional":""}">
+    <div class="descpiccol">${pictureHtml(o)}</div>
+    <div class="desctext">
+      ${named?`<div class="ditle">${o.optional?'<span class="optpill">optional</span> ':""}${
+        q>1?`<span class="qty">${q}&times;</span> `:""}${esc(o.name)}</div>`:""}
+      ${(nd.m&&nd.m.title&&nd.custom)?`<div class="dtrail">${esc(nd.m.title)}</div>`:""}
+      ${(o.text||"").trim()?`<div class="dbody">${paraHtml(o.text)}</div>`:""}
+      ${featureListHtml(o)}
+    </div>
+  </div>`;
+}
 function scopeDescriptionsHtml(){
-  /* No alternatives. The list above has left them out since it was written
-     — an alternative stands INSTEAD of something in the scope, so counting
-     it as supplied would describe a machine nobody is buying — but the
-     descriptions were still taking everything with a blurb, so the reader
-     found them here anyway, with a pill and a full description. They live
+  /* No alternatives — one stands INSTEAD of something in the scope, so
+     describing it here would describe a machine nobody is buying. They are
      on the Alternatives page. */
-  const items=scopeNodes().filter(nd=>hasBlurb(nd.o) && !nd.o.alt)
-    .concat(customItems().filter(c=>(c.text||"").trim())
-      .map(c=>({custom:true,
-                o:{name:c.name||"Custom line", text:c.text, qty:Math.max(1,+c.qty||1), optional:c.scope==="opt"},
-                m:{title:"Additional items for this quote"}})));
-  if(!items.length) return "";
+  const nodes=scopeNodes().filter(nd=>hasBlurb(nd.o) && !nd.o.alt);
+  const customs=customItems().filter(c=>(c.text||"").trim())
+    .map(c=>({custom:true, depth:1,
+              o:{name:c.name||"Custom line", text:c.text, qty:Math.max(1,+c.qty||1), optional:c.scope==="opt"},
+              m:{title:"Additional items for this quote"}}));
+  if(!nodes.length && !customs.length) return "";
+  /* group by the machine each item hangs under: a new top-level item opens
+     a group, everything deeper joins the one before it */
+  const groups=[]; let cur=null;
+  for(const nd of nodes){
+    if(nd.depth===0 || !cur){ groups.push(cur={head:nd, rows:[]}); continue; }
+    cur.rows.push(nd);
+  }
+  if(customs.length) groups.push({head:null, title:"Additional items for this quote", rows:customs});
   return `<h3 class="descsection-title">Description of the supplied items</h3>
-    <div class="desclist">${items.map(nd=>{
-      const o=nd.o, q=o.qty||optQty(o);
-      return `<div class="descitem${o.optional?" is-optional":""}">
-        <div class="ditle">${o.alt?'<span class="altpill">alternative</span> ':o.optional?'<span class="optpill">optional</span> ':""}${q>1?`<span class="qty">${q}&times;</span> `:""}${esc(o.name)}${
-          o.alt&&o.altFor?` <span class="altdiff">— instead of ${esc(optionLabel(o.altFor))}</span>`:""}</div>
-        ${/* No step name under the item. A step is titled with the question
-             we ask ourselves while configuring — "Choose the registration
-             sensor" — and under a description of what is being supplied it
-             reads as though the customer still has something to choose.
-             The custom lines keep theirs: "Additional items for this quote"
-             is a statement, not a question, and it is the only thing that
-             says where such a line came from. */""}
-        ${(nd.m&&nd.m.title&&nd.custom)?`<div class="dtrail">${esc(nd.m.title)}</div>`:""}
-        <div class="dwrap">
-          ${pictureHtml(o)}
-          <div class="dtext">
-            ${(o.text||"").trim()?`<div class="dbody">${paraHtml(o.text)}</div>`:""}
-            ${featureListHtml(o)}
-          </div>
-        </div>
+    <div class="desclist">${groups.map(g=>{
+      const title=g.head ? ((g.head.o.qty||optQty(g.head.o))>1
+          ? `${g.head.o.qty||optQty(g.head.o)}× ${g.head.o.name}` : g.head.o.name)
+        : (g.title||"");
+      return `<div class="descgroup">
+        <div class="descgrouphead">${esc(title)}${
+          g.head&&g.head.o.optional?' <span class="optpill">optional</span>':""}</div>
+        ${g.head?descRowHtml(g.head, {unnamed:true}):""}
+        ${g.rows.map(nd=>descRowHtml(nd)).join("")}
       </div>`;
     }).join("")}</div>`;
 }
