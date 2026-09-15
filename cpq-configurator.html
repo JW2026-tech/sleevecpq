@@ -10148,7 +10148,13 @@ function pictureHtml(o, cls){
   return o&&o.image ? `<img class="optpic ${cls||""}" src="${o.image}" alt="${esc(o.name||"")}">` : "";
 }
 function scopeDescriptionsHtml(){
-  const items=scopeNodes().filter(nd=>hasBlurb(nd.o))
+  /* No alternatives. The list above has left them out since it was written
+     — an alternative stands INSTEAD of something in the scope, so counting
+     it as supplied would describe a machine nobody is buying — but the
+     descriptions were still taking everything with a blurb, so the reader
+     found them here anyway, with a pill and a full description. They live
+     on the Alternatives page. */
+  const items=scopeNodes().filter(nd=>hasBlurb(nd.o) && !nd.o.alt)
     .concat(customItems().filter(c=>(c.text||"").trim())
       .map(c=>({custom:true,
                 o:{name:c.name||"Custom line", text:c.text, qty:Math.max(1,+c.qty||1), optional:c.scope==="opt"},
