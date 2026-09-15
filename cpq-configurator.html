@@ -10188,14 +10188,15 @@ function ownedScopeLines(o, depth){
    it. The two used to run together with a pill on some of the lines, so a
    reader counting up what he was buying had to read every pill to know
    which lines were his. */
-function scopeLineHtml(nd, state){
+function scopeLineHtml(nd){
   const o=nd.o;
-  let head="";
-  if(nd.root!==state.lastRoot){
-    state.lastRoot=nd.root;
-    head=`<div class="grouphead">${esc(nd.root.title||"")}</div>`;
-  }
-  return `${head}<div class="scopeline lvl${Math.min(nd.depth,3)}${o.optional?" is-optional":""}" style="padding-left:${nd.depth*18}px">
+  /* No step heading. A step is titled with the question we ask ourselves
+     while configuring — "Choose the registration sensor" — and a scope of
+     supply is a list of what the customer gets, not of the questions we
+     went through to get there. The items say what they are, and the indent
+     still shows what hangs under what. The headings that remain are the
+     ones that name something real: Format parts, and the products. */
+  return `<div class="scopeline lvl${Math.min(nd.depth,3)}${o.optional?" is-optional":""}" style="padding-left:${nd.depth*18}px">
       <span class="bullet"></span>
       <div class="stitle">${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${propsLabel(o)?` <span class="proplbl">${propsLabel(o)}</span>`:""}</div>
     </div>${ownedScopeLines(o, nd.depth)}`;
@@ -10208,7 +10209,7 @@ function scopeHtml(){
      every contributor before calling it empty */
   if(!all.length && !formatScopeHtml() && !customScopeHtml() && !serviceScopeHtml())
     return '<h2>Scope of supply</h2><div class="docempty">Nothing configured yet — go to Configure and make some selections first.</div>';
-  const body=(()=>{ const st={lastRoot:null}; return nodes.map(nd=>scopeLineHtml(nd,st)).join(""); })();
+  const body=nodes.map(scopeLineHtml).join("");
   /* The optional items, under their own heading rather than scattered
      through the list with a pill each: they are not part of what is being
      supplied, and a scope of supply that mixes the two is answering two
@@ -10219,7 +10220,7 @@ function scopeHtml(){
     ? `<div class="scopeopt">
         <div class="scopeopthead">Optional items
           <span>offered with this quotation &mdash; not included in the scope above</span></div>
-        ${(()=>{ const st={lastRoot:null}; return offered.map(nd=>scopeLineHtml(nd,st)).join(""); })()}
+        ${offered.map(scopeLineHtml).join("")}
         ${propSummaryHtml("opt",false)}
         ${offeredParts}
       </div>`
