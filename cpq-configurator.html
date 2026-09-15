@@ -1409,6 +1409,12 @@
      level — filled square, hollow square, dash — instead of an outline
      number, which grew unreadably long on deeply nested configurations */
   /* section heading naming the top-level step a run of items came from */
+  /* the offered half of the scope, set apart from what is supplied */
+  .scopeopt{margin-top:26px;padding-top:18px;border-top:1px dashed var(--line-strong)}
+  .scopeopthead{font-size:12px;text-transform:uppercase;letter-spacing:1px;font-weight:600;
+    color:var(--warn);margin-bottom:10px}
+  .scopeopthead span{display:block;text-transform:none;letter-spacing:0;font-weight:400;
+    font-size:11.5px;color:var(--txt-faint);margin-top:3px}
   .grouphead{margin:14px 0 3px;padding-top:9px;border-top:1px solid var(--line-soft)}
   .grouphead:first-child{margin-top:4px;padding-top:0;border-top:0}
   .grouphead .ghmain{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
@@ -10171,30 +10177,49 @@ function ownedScopeLines(o, depth){
         r.product?` <span class="snote">— ${esc(r.product)}</span>`:""}</div>
     </div>`).join("");
 }
+/* One line of the scope list. Pulled out of scopeHtml because the list is
+   now written twice: what is being supplied, and what is offered beside
+   it. The two used to run together with a pill on some of the lines, so a
+   reader counting up what he was buying had to read every pill to know
+   which lines were his. */
+function scopeLineHtml(nd, state){
+  const o=nd.o;
+  let head="";
+  if(nd.root!==state.lastRoot){
+    state.lastRoot=nd.root;
+    head=`<div class="grouphead">${esc(nd.root.title||"")}</div>`;
+  }
+  return `${head}<div class="scopeline lvl${Math.min(nd.depth,3)}${o.optional?" is-optional":""}" style="padding-left:${nd.depth*18}px">
+      <span class="bullet"></span>
+      <div class="stitle">${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${propsLabel(o)?` <span class="proplbl">${propsLabel(o)}</span>`:""}</div>
+    </div>${ownedScopeLines(o, nd.depth)}`;
+}
 function scopeHtml(){
-  const nodes=scopeNodes().filter(nd=>!nd.o.alt);
+  const all=scopeNodes().filter(nd=>!nd.o.alt);
+  const nodes=all.filter(nd=>!nd.o.optional);
+  const offered=all.filter(nd=>nd.o.optional);
   /* a quote can consist of nothing but services or a custom line, so ask
      every contributor before calling it empty */
-  if(!nodes.length && !formatScopeHtml() && !customScopeHtml() && !serviceScopeHtml())
+  if(!all.length && !formatScopeHtml() && !customScopeHtml() && !serviceScopeHtml())
     return '<h2>Scope of supply</h2><div class="docempty">Nothing configured yet — go to Configure and make some selections first.</div>';
-  let lastRoot=null;
-  const body=nodes.map(nd=>{
-    const o=nd.o;
-    /* heading for the top-level step this run of items belongs to — only
-       the first step in the chain is named, deeper ones stay hidden */
-    let head="";
-    if(nd.root!==lastRoot){
-      lastRoot=nd.root;
-      head=`<div class="grouphead">${esc(nd.root.title||"")}</div>`;
-    }
-    return `${head}<div class="scopeline lvl${Math.min(nd.depth,3)}${o.optional?" is-optional":""}" style="padding-left:${nd.depth*18}px">
-      <span class="bullet"></span>
-      <div class="stitle">${o.optional?'<span class="optpill">optional</span> ':""}${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${propsLabel(o)?` <span class="proplbl">${propsLabel(o)}</span>`:""}</div>
-    </div>${ownedScopeLines(o, nd.depth)}`;
-  }).join("");
+  const body=(()=>{ const st={lastRoot:null}; return nodes.map(nd=>scopeLineHtml(nd,st)).join(""); })();
+  /* The optional items, under their own heading rather than scattered
+     through the list with a pill each: they are not part of what is being
+     supplied, and a scope of supply that mixes the two is answering two
+     questions at once. The step headings start again here, so it reads on
+     its own. */
+  const offeredHtml=offered.length
+    ? `<div class="scopeopt">
+        <div class="scopeopthead">Optional items
+          <span>offered with this quotation &mdash; not included in the scope above</span></div>
+        ${(()=>{ const st={lastRoot:null}; return offered.map(nd=>scopeLineHtml(nd,st)).join(""); })()}
+        ${propSummaryHtml("opt",false)}
+      </div>`
+    : "";
   return `${openStepsHtml()}<h2>Scope of supply</h2>
     <div class="docsub">${esc(CONFIG.model||"")}</div>
-    <div class="docmeta">Generated ${new Date().toLocaleDateString()} &middot; ${nodes.length} configured item${nodes.length>1?"s":""}</div>
+    <div class="docmeta">Generated ${new Date().toLocaleDateString()} &middot; ${nodes.length} configured item${nodes.length===1?"":"s"}${
+      offered.length?` &middot; ${offered.length} offered separately`:""}</div>
     <div class="scopelist">
       ${body}
       ${propSummaryHtml("in",false)}
@@ -10202,6 +10227,7 @@ function scopeHtml(){
       ${formatScopeHtml()}
       ${serviceScopeHtml()}
         ${packDimsScopeHtml()}
+      ${offeredHtml}
     </div>
     ${scopeDescriptionsHtml()}`;
 }
