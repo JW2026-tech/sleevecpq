@@ -10022,29 +10022,35 @@ function scopeNodes(list=activeModules(), numPath=[], out=[], lvl=0, root=null){
   return out;
 }
 /* format parts belong in the scope of supply too, listed per format */
-function formatScopeHtml(){
+/* `wantOptional` splits this list the way the scope of supply is now split:
+   false writes the parts that are being supplied, true writes the ones
+   merely offered, for the section further down. Written in one pass either
+   way, so a product heading only appears where it has lines under it. */
+function formatScopeHtml(wantOptional){
   ensureParts();
+  const want=!!wantOptional;
   const rows=formatProducts().map((pr,i)=>{
     const parts=partsForProduct(pr,false).filter(x=>!partIsOwned(x)).map(x=>({x, opt:!!pr.optional}))
       .concat(partsForProduct(pr,true).filter(x=>!partIsOwned(x)).map(x=>({x, opt:true})))
-      .concat(sharedParts(pr).map(x=>({x, shared:sharedLabel(pr,x)})));
+      .concat(sharedParts(pr).map(x=>({x, shared:sharedLabel(pr,x)})))
+      .filter(r=>!!r.opt===want);
     if(!parts.length) return "";
     const q=Math.max(1,+pr.qty||1);
-    return `<div class="grouphead"><div class="ghmain"><div class="ghtitle">${pr.optional?'<span class="optpill">optional</span> ':""}${esc(productName(pr,i))}${q>1?` — ${q}×`:""}</div></div></div>`
+    return `<div class="grouphead"><div class="ghmain"><div class="ghtitle">${esc(productName(pr,i))}${q>1?` — ${q}×`:""}</div></div></div>`
       + parts.map(r=>`<div class="scopeline lvl1${r.opt?" is-optional":""}" style="padding-left:18px">
           <span class="bullet"></span>
           <div class="stitle">${(q>1&&!r.shared)?`<span class="qty">${q}&times;</span> `:""}${esc(r.x.desc)}${
-            r.opt?' <span class="optpill">optional</span>':""}${
             r.shared?` <span class="snote">— shared with ${esc(r.shared)}</span>`:""}</div>
         </div>`).join("");
   }).join("");
   const gen=generalChosen(false).filter(g=>!partIsOwned(g.part)).map(g=>({g, opt:false}))
-    .concat(generalChosen(true).filter(g=>!partIsOwned(g.part)).map(g=>({g, opt:true})));
+    .concat(generalChosen(true).filter(g=>!partIsOwned(g.part)).map(g=>({g, opt:true})))
+    .filter(r=>!!r.opt===want);
   const genRows=gen.length
     ? `<div class="grouphead"><div class="ghmain"><div class="ghtitle">General format parts</div></div></div>`
       + gen.map(r=>`<div class="scopeline lvl1${r.opt?" is-optional":""}" style="padding-left:18px">
           <span class="bullet"></span>
-          <div class="stitle">${r.g.qty>1?`<span class="qty">${r.g.qty}&times;</span> `:""}${esc(r.g.part.desc)}${r.opt?' <span class="optpill">optional</span>':""}</div>
+          <div class="stitle">${r.g.qty>1?`<span class="qty">${r.g.qty}&times;</span> `:""}${esc(r.g.part.desc)}</div>
         </div>`).join("")
     : "";
   return (rows||genRows)
@@ -10208,12 +10214,14 @@ function scopeHtml(){
      supplied, and a scope of supply that mixes the two is answering two
      questions at once. The step headings start again here, so it reads on
      its own. */
-  const offeredHtml=offered.length
+  const offeredParts=formatScopeHtml(true);
+  const offeredHtml=(offered.length||offeredParts)
     ? `<div class="scopeopt">
         <div class="scopeopthead">Optional items
           <span>offered with this quotation &mdash; not included in the scope above</span></div>
         ${(()=>{ const st={lastRoot:null}; return offered.map(nd=>scopeLineHtml(nd,st)).join(""); })()}
         ${propSummaryHtml("opt",false)}
+        ${offeredParts}
       </div>`
     : "";
   return `${openStepsHtml()}<h2>Scope of supply</h2>
