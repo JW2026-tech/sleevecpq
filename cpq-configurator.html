@@ -1395,12 +1395,30 @@
   .scopeline{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line-soft);align-items:baseline}
   .scopeline .stitle{font-size:13.5px}
   .scopeline .snote{color:var(--txt-faint);font-size:12px}
-  .descsection-title{font-size:15px;font-weight:600;margin:30px 0 4px;padding-top:18px;
+  .descsection-title{font-size:17px;font-weight:600;margin:34px 0 4px;padding-top:20px;
     border-top:1px solid var(--line)}
-  .descitem{margin-top:14px;max-width:78ch}
-  .descitem .ditle{font-size:13.5px;font-weight:600;color:var(--txt)}
-  .descitem .dtrail{font-size:11px;color:var(--txt-faint);margin-top:1px}
-  .descitem .dbody{font-size:12.5px;line-height:1.6;color:var(--txt-dim);margin-top:5px}
+  /* The descriptions were a single column 78 characters wide, which is the
+     right measure for a page of prose and the wrong one for forty short
+     entries: it left half the screen empty and made the reader scroll past
+     everything to find one machine. They are cards in as many columns as
+     fit, each with its picture, so the section can be scanned.
+     A card is never split down the middle of a column — see break-inside on
+     .desclist .descitem — and the print rules further up override all of
+     this back to full-width rows for the PDF. */
+  .desclist{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));
+    gap:16px;align-items:start;margin-top:14px}
+  .descitem{margin-top:0;max-width:none;border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;background:var(--panel)}
+  .descitem .ditle{font-size:14.5px;font-weight:600;color:var(--txt);
+    padding-bottom:9px;border-bottom:1px solid var(--line-soft)}
+  .descitem .dtrail{font-size:11px;color:var(--txt-faint);margin-top:6px}
+  .descitem .dbody{font-size:13px;line-height:1.65;color:var(--txt-dim);margin-top:5px}
+  .desclist .optpic{width:150px;flex-basis:150px;max-height:130px}
+  .descitem.is-optional{border-color:var(--warn-border)}
+  @media(max-width:900px){
+    .desclist{grid-template-columns:1fr}
+    .desclist .optpic{width:120px;flex-basis:120px}
+  }
   .descitem .dbody p{margin:0 0 7px}
   .descitem .dbody p:last-child{margin-bottom:0}
   .descitem.is-optional .ditle{color:var(--warn)}
