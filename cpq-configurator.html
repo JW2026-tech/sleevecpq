@@ -16138,31 +16138,37 @@ function shareDays(){
   if(w) return Math.max(1, +w[1]*7);
   return 60;                       // the commercial default, when it cannot be read
 }
-/* The customer's choices, on their way to the database. They were written
-   800ms after the last click — enough for someone who ticks an option and
-   closes the tab to lose it, which is exactly what someone does who only
-   wanted to know what the sleeve ejector costs. The debounce stays, because
-   clicking through five options should not be five writes; what is new is
-   that the page leaving flushes whatever is still pending, with keepalive,
-   so the request survives the tab it was made in. */
-let sharePending=null;
+/* The customer's choices, on their way to the database. They used to be
+   written 800ms after the last click, which is not enough for someone who
+   ticks an option to see what it costs and closes the tab — the write went
+   with the tab, and what he had chosen was gone.
+   The obvious repair, flushing on the way out with keepalive, cannot work
+   here: a keepalive request may carry 64KB and a configuration is 100KB, so
+   the browser refuses it outright ("Failed to fetch"). So the delay goes
+   instead. A click writes immediately; a click during that write leaves its
+   state behind and the write that is running picks it up when it lands. The
+   window in which a choice can be lost is now the flight of one request
+   rather than the better part of a second of waiting for more clicks.
+   The flush stays for whatever is still queued, and only uses keepalive if
+   the payload is small enough to be allowed one. */
+let sharePending=null, shareSaving=false;
 function shareSaveSoon(){
   if(!shareToken || !supa) return;
   /* from the first change on there is something to go back from, so the
      header can offer it straight away rather than after a reload */
   if(!shareCustomerChanged){ shareCustomerChanged=true; }
   sharePending=quotePayload();
-  clearTimeout(shareSaveTimer);
-  shareSaveTimer=setTimeout(shareSaveNow, 800);
+  shareSaveNow();
 }
 function shareSaveNow(){
   clearTimeout(shareSaveTimer);
-  if(!sharePending || !shareToken || !supa) return;
-  const body=sharePending; sharePending=null;
+  if(!sharePending || shareSaving || !shareToken || !supa) return;
+  const body=sharePending; sharePending=null; shareSaving=true;
   supa.rpc("update_shared_quote", {p_token: shareToken, p_data: body})
-    .catch(()=>{ sharePending=sharePending||body; });   // keep it for the next flush
+    .then(()=>{}, ()=>{ sharePending=sharePending||body; })   // keep it for the next try
+    .then(()=>{ shareSaving=false; if(sharePending) shareSaveNow(); });
 }
-/* the tab is going: an ordinary fetch dies with it, this one does not */
+/* the tab is going: an ordinary fetch dies with it */
 function shareFlushSave(){
   clearTimeout(shareSaveTimer);
   if(!sharePending || !shareToken) return;
@@ -16170,7 +16176,7 @@ function shareFlushSave(){
   sharePending=null;
   try{
     fetch(SUPABASE_URL+"/rest/v1/rpc/update_shared_quote", {
-      method:"POST", keepalive:true,
+      method:"POST", keepalive: body.length<60000,
       headers:{"Content-Type":"application/json",
                "apikey":SUPABASE_ANON_KEY, "Authorization":"Bearer "+SUPABASE_ANON_KEY},
       body
