@@ -1127,6 +1127,11 @@
     font-size:13px;padding:9px 0;border-bottom:1px solid #f0f0f5;gap:10px}
   .sharesummaryrow b{font-weight:600;color:#222;white-space:nowrap}
   .sharesummaryrow .sub{display:block;font-size:11px;color:#999;margin-top:2px}
+  /* his own line, marked in the accent so he can see at a glance what the
+     quotation holds and what he put in it */
+  .sharesummaryrow.is-chosen{color:#1c2563}
+  .sharesummaryrow.is-chosen b{color:#EF7B0B}
+  .sharesummaryrow.is-chosen .sub{color:#777}
   .sharesummarytotal{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
     padding-top:14px;margin-top:4px;border-top:2px solid #EF7B0B}
   .sharesummarytotal .lbl{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#222}
@@ -15577,17 +15582,35 @@ function shareSummaryCardHtml(frac){
   const grand=investmentGrandTotal();
   const t=activeTemplate();
   const svcTotal=serviceRowsTotal(buildPriceRows(priceDetail==="top"));
+  /* What the customer added himself, on a line of its own. It was folded
+     into the machine it bolts onto — "Applicator HSSA2000 $117,064.43,
+     incl. Sleeve ejector" — so the one figure he had just changed was the
+     one he could not see: the price of his own choice was inside a number
+     that was already there before he made it. Here it comes out of that
+     line and stands beside it, so the summary reads as what we quoted plus
+     what he chose. Exactly what is subtracted is what is added, so the
+     total cannot move by taking it apart. */
+  const takenRows=scaleRows(buildOptionalRows(false), frac)
+    .filter(r=>!r.isGroup && !r.subtotal && r.taken);
+  const takenTotal=takenRows.reduce((n,r)=>n+(+r.price||0), 0);
+  takenRows.forEach(r=>{
+    const home=blocks.find(b=>b.step && b.step===(r.node.root||null));
+    if(home) home.price-=(+r.price||0);
+  });
   return `<div class="sharesidebar">
     <div class="sharesummary">
       <div class="sharesummaryhead">Investment summary</div>
       <div class="sharesummarybody">
         ${blocks.length?blocks.map(b=>`<div class="sharesummaryrow">
           <span>${esc(b.o.name||"")}${(b.also||[]).length
-            ?`<span class="sub">${b.also.map(o=>esc(o.name||"")).join(" &middot; ")}</span>`:""}${b.taken.length
-            ?`<span class="sub">incl. ${b.taken.map(r=>esc(r.node.o.name||"")).join(", ")}</span>`:""}</span>
+            ?`<span class="sub">${b.also.map(o=>esc(o.name||"")).join(" &middot; ")}</span>`:""}</span>
           <b>${b.price?fmt(b.price):"—"}</b>
         </div>`).join("")
         :`<div class="sharesummaryrow"><span>Nothing in scope yet<span class="sub">Everything selected so far is optional</span></span><b>—</b></div>`}
+        ${takenRows.length?`<div class="sharesummaryrow is-chosen">
+          <span>Selected options<span class="sub">${takenRows.map(r=>esc((r.node.o&&r.node.o.name)||"")).join(" &middot; ")}</span></span>
+          <b>${takenTotal?fmt(takenTotal):"—"}</b>
+        </div>`:""}
         ${svcTotal?`<div class="sharesummaryrow"><span>Installation &amp; services</span><b>${fmt(svcTotal)}</b></div>`:""}
         <div class="sharesummarytotal">
           <div>
@@ -16063,9 +16086,9 @@ async function bootShareMode(token){
   shareLog("opened", {revision:data.revision||null, first:(shareDocSections()[0]||{}).nav||null,
                       screen:(screen&&screen.width)?screen.width+"x"+screen.height:null});
   /* the time on the last page he was reading, sent as the tab goes */
-  window.addEventListener("pagehide", ()=>shareLog("left", null, true));
+  window.addEventListener("pagehide", ()=>{ shareFlushSave(); shareLog("left", null, true); });
   document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden) shareLog("away", null, true);
+    if(document.hidden){ shareFlushSave(); shareLog("away", null, true); }
     else shareSeenAt=Date.now();
   });
   applyCatalogue({catalogue: data.catalogue});
@@ -16115,15 +16138,44 @@ function shareDays(){
   if(w) return Math.max(1, +w[1]*7);
   return 60;                       // the commercial default, when it cannot be read
 }
+/* The customer's choices, on their way to the database. They were written
+   800ms after the last click — enough for someone who ticks an option and
+   closes the tab to lose it, which is exactly what someone does who only
+   wanted to know what the sleeve ejector costs. The debounce stays, because
+   clicking through five options should not be five writes; what is new is
+   that the page leaving flushes whatever is still pending, with keepalive,
+   so the request survives the tab it was made in. */
+let sharePending=null;
 function shareSaveSoon(){
   if(!shareToken || !supa) return;
   /* from the first change on there is something to go back from, so the
      header can offer it straight away rather than after a reload */
   if(!shareCustomerChanged){ shareCustomerChanged=true; }
+  sharePending=quotePayload();
   clearTimeout(shareSaveTimer);
-  shareSaveTimer=setTimeout(()=>{
-    supa.rpc("update_shared_quote", {p_token: shareToken, p_data: quotePayload()}).catch(()=>{});
-  }, 800);
+  shareSaveTimer=setTimeout(shareSaveNow, 800);
+}
+function shareSaveNow(){
+  clearTimeout(shareSaveTimer);
+  if(!sharePending || !shareToken || !supa) return;
+  const body=sharePending; sharePending=null;
+  supa.rpc("update_shared_quote", {p_token: shareToken, p_data: body})
+    .catch(()=>{ sharePending=sharePending||body; });   // keep it for the next flush
+}
+/* the tab is going: an ordinary fetch dies with it, this one does not */
+function shareFlushSave(){
+  clearTimeout(shareSaveTimer);
+  if(!sharePending || !shareToken) return;
+  const body=JSON.stringify({p_token:shareToken, p_data:sharePending});
+  sharePending=null;
+  try{
+    fetch(SUPABASE_URL+"/rest/v1/rpc/update_shared_quote", {
+      method:"POST", keepalive:true,
+      headers:{"Content-Type":"application/json",
+               "apikey":SUPABASE_ANON_KEY, "Authorization":"Bearer "+SUPABASE_ANON_KEY},
+      body
+    }).catch(()=>{});
+  }catch(err){}
 }
 
 /* catches typing, pasting, checkbox/select changes and contenteditable
@@ -16290,6 +16342,7 @@ async function shareDownloadPdf(btn){
   btn.disabled=true; btn.textContent="Preparing your PDF…";
   try{
     clearTimeout(shareSaveTimer);
+    sharePending=null;
     await supa.rpc("update_shared_quote", {p_token: shareToken, p_data: quotePayload()});
     const r=await fetch("/api/render-pdf", {
       method:"POST", headers:{"Content-Type":"application/json"},
