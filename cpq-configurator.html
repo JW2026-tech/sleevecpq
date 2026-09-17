@@ -15971,6 +15971,12 @@ async function bootShareMode(token){
   });
   applyCatalogue({catalogue: data.catalogue});
   applyQuote(data.quote);
+  /* The date the customer reads. A quotation written since it began
+     carrying its own date says so itself; an older one has no stamp, and
+     the day the link was sent is the day that quotation reached him —
+     nearer the truth than today, which is what he would otherwise see,
+     and which made a three-week-old link look freshly written. */
+  quoteCreatedAt=(data.quote && data.quote.createdAt) || data.sent_at || null;
   renderShareMode();
 }
 /* Throw away the customer's own copy so the link shows the quotation as it
