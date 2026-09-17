@@ -991,7 +991,15 @@
     text-decoration:none;font-size:14px;padding:11px 22px;border-radius:9px}
   .sharegonego:hover{background:#28338A}
   .sharegonefine{font-size:12.5px;color:#9aa0b4;margin-top:16px}
-  .sharereset{margin-left:auto;background:transparent;color:rgba(255,255,255,.9);
+  /* the two things the customer can DO, kept together at the right of the
+     brand bar and away from the section names on the row below */
+  .sharenavacts{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .sharenav .sharenavpdf{display:inline-flex;align-items:center;gap:7px;opacity:1;
+    background:#EF7B0B;color:#fff;border:0;border-bottom:0;border-radius:8px;padding:8px 14px;
+    font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .sharenav .sharenavpdf:hover{background:#d96c05}
+  .sharenav .sharenavpdf:disabled{opacity:.6;cursor:default}
+  .sharereset{background:transparent;color:rgba(255,255,255,.9);
     border:1px solid rgba(255,255,255,.45);border-radius:8px;padding:6px 12px;
     font-size:12px;cursor:pointer;white-space:nowrap}
   .sharereset:hover{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.8)}
@@ -1118,11 +1126,6 @@
   .sharevalidity{display:flex;gap:10px;align-items:center;font-size:12px;color:#666;
     background:#f7f8fc;border-radius:10px;padding:10px 12px;margin-top:16px}
   .sharevalidity svg{flex:0 0 auto;color:#28338A}
-  .sharepdfbtn{width:100%;margin-top:14px;background:#1c2563;color:#fff;border:0;border-radius:9px;
-    padding:12px;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;
-    justify-content:center;gap:8px}
-  .sharepdfbtn:hover{background:#131a4a}
-  .sharepdfbtn:disabled{opacity:.6;cursor:default}
   /* the website's own assurances, next to the price where the buyer is
      weighing it — see SHARE_ASSURANCES */
   .shareassure{border:1px solid #e3e6f0;border-radius:14px;padding:14px 16px;background:#f7f8fc}
@@ -15581,9 +15584,12 @@ function shareSummaryCardHtml(frac){
           </div>
           <div class="amt">${grand?fmt(grand):"—"}</div>
         </div>
+        ${/* the download moved to the header bar: it is the one thing the
+             customer may want on any page, and here it existed only on the
+             investment proposal, so from the scope or the terms he had to
+             go back to find it */""}
         <div class="sharevalidity">${shareTagIconSvg()}
           <span>This proposal is valid for <b>${esc(CONFIG.validity||ensureCommercial().validity||"30 days from the date above")}</b>.</span></div>
-        <button type="button" class="sharepdfbtn" id="sharePdfBtn">${shareDownIconSvg()} Download proposal (PDF)</button>
       </div>
     </div>
     <div class="shareassure">${SHARE_ASSURANCES.map(a=>
@@ -15932,8 +15938,12 @@ function renderShareMode(){
           own version, and there was no way back to ours — he may only have
           wanted to see what something costs. Offered only when there is
           something to undo. */""}
-    ${shareCustomerChanged?`<button type="button" class="sharereset" id="shareReset"
-      title="Put every option and alternative back the way Sleeve Technology sent it. Your own changes are discarded.">Back to the Sleeve quotation</button>`:""}
+    <div class="sharenavacts">
+      ${shareCustomerChanged?`<button type="button" class="sharereset" id="shareReset"
+        title="Put every option and alternative back the way Sleeve Technology sent it. Your own changes are discarded.">Back to the Sleeve quotation</button>`:""}
+      <button type="button" class="sharenavpdf" id="sharePdfBtn"
+        title="The whole quotation as a PDF, with the options as you have them now">${shareDownIconSvg()} Download proposal (PDF)</button>
+    </div>
     </div>
     <button type="button" class="sharenavcur" id="shareNavToggle" aria-expanded="false">
       <span>${esc(cur.nav)}</span><i class="chev">&#9662;</i>
