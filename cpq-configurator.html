@@ -764,7 +764,27 @@
   body.share-mode .ptoggles, body.share-mode .discbar, body.share-mode .openwarn{display:none!important}
   /* the general terms follow the commercial ones on the same page, with a
      rule between them so the eye knows where one ends */
-  .sharetermshead{margin-top:30px;padding-top:18px;border-top:1px solid var(--line)}
+  .sharetermshead{margin-top:34px;padding-top:20px;border-top:1px solid #e6e8f0;
+    font-size:22px;font-weight:700;color:#1c2563}
+  /* The terms are typeset for paper everywhere else — 11px, and held to a
+     110-character line so a printed page does not run the width of A4. On
+     the customer link that made them a narrow grey column of small print
+     beside a table using the whole screen, reading as a different document
+     than the page it sits on. Here they are set like the rest of it. */
+  body.share-mode .termstext{max-width:none;font-size:13.5px;line-height:1.7;color:#222}
+  body.share-mode .termstext p,
+  body.share-mode .termstext li,
+  body.share-mode .termstext td,
+  body.share-mode .termstext th{font-size:13.5px;line-height:1.7}
+  body.share-mode .termstext h3{font-size:16px;font-weight:700;color:#1c2563;margin:26px 0 6px}
+  body.share-mode .termstext h4{font-size:14px;font-weight:700;color:#1c2563;margin:18px 0 4px}
+  body.share-mode .termstext h5{font-size:13.5px;font-weight:600;color:#28338A;margin:15px 0 3px}
+  body.share-mode .termstext ul{padding-left:22px;margin:6px 0 12px}
+  body.share-mode .termstext li{margin:3px 0}
+  body.share-mode .termstext table{width:100%;border-color:#e3e5ee}
+  body.share-mode .termstext th,
+  body.share-mode .termstext td{border-color:#e3e5ee;padding:8px 12px}
+  body.share-mode .termstext thead th{background:#f6f7fb;color:#1c2563}
   /* a customer opening the link must see nothing of the sales tool around
      it — only #viewShare, never the mode header or any other screen (those
      default to visible until setMode() hides them, which share-mode never
@@ -11032,9 +11052,47 @@ function deliverySectionHtml(){
    toolbar, reset button, column add/remove) that has no business in a PDF.
    The @media print rules already hide it, but stripping it here keeps the
    generated document clean if it's ever copied out of the page. */
+/* The clause numbers of the terms, renumbered to what they actually are.
+   They were imported from the reference quotations as literal text — 7.1,
+   7.2, 7.4.1 — and two of those clauses are gone, because the CPQ prints
+   the lead time and the validity itself under Commercial terms. So the
+   text ran 7.5, 7.7, 7.8: a clause 7.6 the reader looks for and never
+   finds. And on the customer link, where sections carry no chapter number
+   at all, a run of 7.x hung off a chapter 7 he was never shown.
+   Both are the same job: walk the headings, count them per level, and give
+   each one the number it has in the outline as it stands. The chapter is a
+   prefix — "7." in the printed quotation, nothing in the link, where the
+   terms are one block and the clauses number themselves 1, 2, 3.
+   The cross-references inside the text ("as described in Article 7.4.2")
+   are moved with them, off the same map, or they would point at numbers
+   that no longer exist. Every text node is rewritten exactly once, against
+   the ORIGINAL numbering, so a clause that happens to take a number another
+   clause used to have cannot be renumbered twice. */
+function renumberedTerms(prefix){
+  const raw=(CONFIG.docs&&CONFIG.docs.terms&&CONFIG.docs.terms[docLang])||"";
+  if(!String(raw).trim()) return "";
+  const box=document.createElement("div");
+  box.innerHTML=raw;
+  const map=new Map(), counters=[];
+  box.querySelectorAll("h2,h3,h4,h5,h6").forEach(h=>{
+    const m=String(h.textContent||"").match(/^\s*(\d+(?:\.\d+)+)\s/);
+    if(!m) return;
+    const old=m[1], depth=old.split(".").length-1;   // 7.1 is one level down
+    counters.length=depth;                           // anything deeper starts over
+    counters[depth-1]=(counters[depth-1]||0)+1;
+    map.set(old, prefix+counters.map(n=>n||1).join("."));
+  });
+  if(!map.size) return raw;
+  const walk=document.createTreeWalker(box, NodeFilter.SHOW_TEXT), nodes=[];
+  let n; while((n=walk.nextNode())) nodes.push(n);
+  nodes.forEach(t=>{
+    t.nodeValue=t.nodeValue.replace(/\d+(?:\.\d+)+/g, x=>map.has(x)?map.get(x):x);
+  });
+  return box.innerHTML;
+}
 function printTermsHtml(){
   return `<h2>7. General terms and conditions</h2>
-    <div class="freetext termstext">${CONFIG.docs.terms[docLang]||""}</div>`;
+    <div class="freetext termstext">${renumberedTerms("7.")}</div>`;
 }
 function printSpecsHtml(){
   return `<h2>3. Product and sleeve specifications</h2>
@@ -15807,7 +15865,8 @@ function shareTermsBlockHtml(){
   ensureLanguages();
   const txt=((CONFIG.docs&&CONFIG.docs.terms&&CONFIG.docs.terms[docLang])||"").trim();
   if(!txt) return "";
-  return printTermsHtml().replace(/<h2[^>]*>[ ]*[0-9]+[.][ ]*/i, '<h2 class="sharetermshead">');
+  return `<h2 class="sharetermshead">General terms and conditions</h2>
+    <div class="freetext termstext">${renumberedTerms("")}</div>`;
 }
 function shareStripHeading(html){
   return String(html||"").replace(/<h2\b[^>]*>[\s\S]*?<\/h2>\s*/i, "");
