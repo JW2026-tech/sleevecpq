@@ -1117,12 +1117,19 @@
      full height of the cards beside it — a stretched box has nothing left
      to scroll within, and sticky would do nothing.
      `top` clears the sticky section nav above it. */
+  /* It parks below the section nav, which is sticky itself — so the offset
+     has to be that bar's real height, not a number typed once. It was 96px
+     against a bar that is taller than that and taller again when the section
+     names wrap to a second row, and the summary's blue head slid up under it
+     on the way down the page. renderShareMode() measures the bar and writes
+     it into --sharenavh. */
   .sharesidebar{flex:0 0 300px;display:flex;flex-direction:column;gap:16px;
-    position:sticky;top:96px;align-self:flex-start;max-height:calc(100vh - 112px);overflow-y:auto}
+    position:sticky;top:calc(var(--sharenavh, 104px) + 16px);align-self:flex-start;
+    max-height:calc(100vh - var(--sharenavh, 104px) - 32px);overflow-y:auto}
   .sharesummary{border-radius:14px;overflow:hidden;border:1px solid #e3e6f0}
+  .sharesummaryhead{background:#1c2563;color:#fff;font-size:12px;font-weight:700;
+    letter-spacing:.4px;text-transform:uppercase;padding:12px 18px}
   .sharesummarybody{padding:18px 20px;background:#fff}
-  .sharesummarytitle{font-size:11.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
-    color:#1c2563;padding-bottom:11px;margin-bottom:2px;border-bottom:1px solid #e6e8f0}
   /* the lines give way, the total does not — see shareSummaryCardHtml */
   .sharesummaryrows{max-height:min(46vh,460px);overflow-y:auto;overscroll-behavior:contain;
     margin-right:-8px;padding-right:8px}
@@ -15672,11 +15679,8 @@ function shareSummaryCardHtml(frac){
   const hasChosen=takenRows.length || addList.length;
   return `<div class="sharesidebar">
     <div class="sharesummary">
+      <div class="sharesummaryhead">Investment summary</div>
       <div class="sharesummarybody">
-        ${/* the card says what it is, but in its own line rather than the
-             heavy blue bar it wore: that bar was the third dark block in one
-             screen, under a page already headed Investment proposal */""}
-        <div class="sharesummarytitle">Investment summary</div>
         ${/* The lines scroll within the card; the total below them does not.
              A long quotation, or a customer who takes nine options, grew the
              card until the one figure it exists for was off the bottom of
@@ -16047,6 +16051,15 @@ function shareDocSections(){
       of the nav rather than becoming a blank page */
    .filter(s=>s.bare || /\S/.test(String(s.html).replace(/<[^>]*>/g," ")) || /<(img|table|input)\b/i.test(s.html));
 }
+/* How tall the sticky nav actually is, for whatever has to stand clear of
+   it. It changes with the width — the section names wrap — so it is measured
+   rather than assumed, on every render and on every resize. */
+function shareMeasureNav(){
+  const n=document.querySelector(".sharenav");
+  if(!n) return;
+  document.documentElement.style.setProperty("--sharenavh", Math.round(n.offsetHeight)+"px");
+}
+window.addEventListener("resize", shareMeasureNav);
 /* one section at a time, like separate pages, instead of one long scroll —
    the nav bar and prev/next both just change shareSectionIdx and re-render */
 function renderShareMode(){
@@ -16087,6 +16100,7 @@ function renderShareMode(){
   </div>`;
 
   el.innerHTML=nav+page+pager;
+  shareMeasureNav();
   wirePriceToggles(el);
   const pdfBtn=document.getElementById("sharePdfBtn");
   if(pdfBtn) pdfBtn.onclick=()=>{ shareLog("pdf"); shareDownloadPdf(pdfBtn); };
