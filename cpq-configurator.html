@@ -13918,6 +13918,7 @@ function snapshot(){
                          draftBase, draftRev});
 }
 function saveNow(){
+  if(inShareMode()) return;              // see saveSoon
   if(!storageOK) return;
   try{
     localStorage.setItem(SAVE_KEY, snapshot());
@@ -14013,7 +14014,20 @@ function flushPendingSave(){
   clearTimeout(idleSaveTimer); idleSaveTimer=null;
   saveNow();
 }
+/* The customer link runs the same application, with the same listeners on
+   it — so his click on an optional item reached the salespersons save path
+   as well as his own. That path exists to make sure a quote someone starts
+   typing is never lost: content on screen, nobody editing an existing row,
+   so write a new one. In his browser it found exactly that, and every
+   customer who took an option minted a draft quote of his own in our list,
+   customer name and quote number and all, and then kept updating it.
+   His changes have their own way home (shareSaveSoon), and it is the only
+   one he may use. */
+function inShareMode(){
+  return !!(document.body && document.body.classList.contains("share-mode"));
+}
 function saveSoon(){
+  if(inShareMode()) return;
   if(!storageOK) return;
   clearTimeout(saveTimer);
   if(editingAField()){
@@ -16073,6 +16087,22 @@ function shareMeasureNav(){
   }
 }
 window.addEventListener("resize", shareMeasureNav);
+/* And once more while scrolling, which is when it matters and is the one
+   thing that certainly fires: the offset is only wrong while the reader is
+   travelling past it. One read per frame, and only when it has changed. */
+let shareNavTick=false;
+window.addEventListener("scroll", ()=>{
+  if(shareNavTick || !inShareMode()) return;
+  shareNavTick=true;
+  requestAnimationFrame(()=>{
+    shareNavTick=false;
+    const n=document.querySelector(".sharenav");
+    if(!n) return;
+    const h=Math.round(n.offsetHeight)+"px";
+    if(document.documentElement.style.getPropertyValue("--sharenavh")!==h)
+      document.documentElement.style.setProperty("--sharenavh", h);
+  });
+}, {passive:true});
 /* one section at a time, like separate pages, instead of one long scroll —
    the nav bar and prev/next both just change shareSectionIdx and re-render */
 function renderShareMode(){
@@ -16296,7 +16326,7 @@ function shareFlushSave(){
 
 /* catches typing, pasting, checkbox/select changes and contenteditable
    edits anywhere in the app, including elements added by later renders */
-const noteUserEdit=()=>{ userEdited=true; saveSoon(); };
+const noteUserEdit=()=>{ if(inShareMode()) return; userEdited=true; saveSoon(); };
 document.addEventListener("input", noteUserEdit, true);
 document.addEventListener("change", noteUserEdit, true);
 /* A configuration is made of clicks as well as typing — choosing an option
