@@ -1123,6 +1123,12 @@
   .sharesummaryhead{background:#1c2563;color:#fff;font-size:12px;font-weight:700;
     letter-spacing:.4px;text-transform:uppercase;padding:12px 18px}
   .sharesummarybody{padding:18px 20px;background:#fff}
+  /* the lines give way, the total does not — see shareSummaryCardHtml */
+  .sharesummaryrows{max-height:min(46vh,460px);overflow-y:auto;overscroll-behavior:contain;
+    margin-right:-8px;padding-right:8px}
+  .sharesummaryrows::-webkit-scrollbar{width:6px}
+  .sharesummaryrows::-webkit-scrollbar-thumb{background:#dcdfea;border-radius:3px}
+  .sharesummaryrow .sub i{font-style:normal;color:#EF7B0B}
   .sharesummaryrow{display:flex;justify-content:space-between;align-items:baseline;
     font-size:13px;padding:9px 0;border-bottom:1px solid #f0f0f5;gap:10px}
   .sharesummaryrow b{font-weight:600;color:#222;white-space:nowrap}
@@ -15593,6 +15599,12 @@ function shareSummaryCardHtml(frac){
   const takenRows=scaleRows(buildOptionalRows(false), frac)
     .filter(r=>!r.isGroup && !r.subtotal && r.taken);
   const takenTotal=takenRows.reduce((n,r)=>n+(+r.price||0), 0);
+  /* named, but not at any length: nine options is nine lines of grey under
+     one row. Three and a count, with the rest in the tooltip. */
+  const takenNames=takenRows.map(r=>String((r.node.o&&r.node.o.name)||""));
+  const takenShown=takenNames.length>3
+    ? takenNames.slice(0,3).map(esc).join(" &middot; ")+` &middot; <i>+${takenNames.length-3} more</i>`
+    : takenNames.map(esc).join(" &middot; ");
   takenRows.forEach(r=>{
     const home=blocks.find(b=>b.step && b.step===(r.node.root||null));
     if(home) home.price-=(+r.price||0);
@@ -15601,6 +15613,12 @@ function shareSummaryCardHtml(frac){
     <div class="sharesummary">
       <div class="sharesummaryhead">Investment summary</div>
       <div class="sharesummarybody">
+        ${/* The lines scroll within the card; the total below them does not.
+             A long quotation, or a customer who takes nine options, grew the
+             card until the one figure it exists for was off the bottom of
+             the screen — and the more he chose, the further out of sight the
+             number he was choosing against went. */""}
+        <div class="sharesummaryrows">
         ${blocks.length?blocks.map(b=>`<div class="sharesummaryrow">
           <span>${esc(b.o.name||"")}${(b.also||[]).length
             ?`<span class="sub">${b.also.map(o=>esc(o.name||"")).join(" &middot; ")}</span>`:""}</span>
@@ -15608,10 +15626,11 @@ function shareSummaryCardHtml(frac){
         </div>`).join("")
         :`<div class="sharesummaryrow"><span>Nothing in scope yet<span class="sub">Everything selected so far is optional</span></span><b>—</b></div>`}
         ${takenRows.length?`<div class="sharesummaryrow is-chosen">
-          <span>Selected options<span class="sub">${takenRows.map(r=>esc((r.node.o&&r.node.o.name)||"")).join(" &middot; ")}</span></span>
+          <span>Selected options<span class="sub" title="${esc(takenNames.join(", "))}">${takenShown}</span></span>
           <b>${takenTotal?fmt(takenTotal):"—"}</b>
         </div>`:""}
         ${svcTotal?`<div class="sharesummaryrow"><span>Installation &amp; services</span><b>${fmt(svcTotal)}</b></div>`:""}
+        </div>
         <div class="sharesummarytotal">
           <div>
             <div class="lbl">Total investment</div>
