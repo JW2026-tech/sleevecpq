@@ -15975,8 +15975,11 @@ async function bootShareMode(token){
      carrying its own date says so itself; an older one has no stamp, and
      the day the link was sent is the day that quotation reached him —
      nearer the truth than today, which is what he would otherwise see,
-     and which made a three-week-old link look freshly written. */
-  quoteCreatedAt=(data.quote && data.quote.createdAt) || data.sent_at || null;
+     and which made a three-week-old link look freshly written. A link is
+     not always marked as sent, so the copy it froze falls back on when it
+     was written away — the same day, give or take the minutes. */
+  quoteCreatedAt=(data.quote && data.quote.createdAt) || data.sent_at
+    || (data.quote && data.quote.savedAt) || null;
   renderShareMode();
 }
 /* Throw away the customer's own copy so the link shows the quotation as it
