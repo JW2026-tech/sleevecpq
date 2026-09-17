@@ -762,6 +762,9 @@
      rollup/hide-price toggles and the discount/nudge bars stay out of reach
      so nothing the sales rep pre-collapsed can be opened back up */
   body.share-mode .ptoggles, body.share-mode .discbar, body.share-mode .openwarn{display:none!important}
+  /* the general terms follow the commercial ones on the same page, with a
+     rule between them so the eye knows where one ends */
+  .sharetermshead{margin-top:30px;padding-top:18px;border-top:1px solid var(--line)}
   /* a customer opening the link must see nothing of the sales tool around
      it — only #viewShare, never the mode header or any other screen (those
      default to visible until setMode() hides them, which share-mode never
@@ -975,8 +978,14 @@
   .sharenavcur{display:none;width:100%;align-items:center;justify-content:space-between;
     color:#fff;font-weight:500;padding:12px 20px}
   .sharenavcur .chev{font-size:11px;opacity:.8}
-  .sharepager{display:flex;align-items:center;justify-content:center;gap:16px;
-    padding:16px 40px 44px;font-size:13px;color:#555}
+  /* Previous/next used to sit at the very foot of the page, so on a long
+     section — the scope of supply runs pages — you had to scroll past
+     everything to turn to the next one, and then back up to read it. It
+     stays on the screen instead, mirroring the section nav stuck to the
+     top: both ways of moving through the document are always within reach. */
+  .sharepager{position:sticky;bottom:0;z-index:9;display:flex;align-items:center;
+    justify-content:center;gap:16px;padding:11px 40px;font-size:13px;color:#555;
+    background:#fff;border-top:1px solid #e3e5ee;box-shadow:0 -2px 10px rgba(20,24,60,.07)}
   /* full front page, screen equivalent of coverPageHtml()'s print-only look.
      Full page width, same as .docsheet in the normal sales-facing tool — the
      comparison grid (.cmpgrid) especially needs the room, its columns were
@@ -15708,6 +15717,17 @@ function shareProposalHtml(){
       ${shareSummaryCardHtml(frac)}
     </div>`;
 }
+/* Which revision of the quotation this link holds. A customer who has had
+   two or three versions of the same quote has three documents carrying the
+   same number, and nothing on the page told him which one he had open —
+   so the number is followed by the revision, the way we refer to it
+   ourselves. Revision 1 is shown too: on the second one he needs to be
+   able to see that it is the second. */
+let shareRevisionNo=null;
+function shareQuoteNumber(){
+  const n=String(CONFIG.quoteNumber||"");
+  return shareRevisionNo ? n+" · rev "+shareRevisionNo : n;
+}
 function shareCoverHtml(){
   const t=activeTemplate();
   ensureCustomer();
@@ -15727,7 +15747,7 @@ function shareCoverHtml(){
     <table class="sharecovermeta">
       ${cust?`<tr><td>For</td><td>${esc(cust)}</td></tr>`:""}
       ${(()=>{const pc=primaryContact();return pc?`<tr><td>Attention of</td><td>${esc(pc.name)}${pc.role?`, ${esc(pc.role)}`:""}</td></tr>`:"";})()}
-      <tr><td>Quotation number</td><td>${esc(CONFIG.quoteNumber||"")}</td></tr>
+      <tr><td>Quotation number</td><td>${esc(shareQuoteNumber())}</td></tr>
       <tr><td>Date</td><td>${quoteDate()}</td></tr>
       <tr><td>Validity</td><td>${esc(CONFIG.validity||ensureCommercial().validity)}</td></tr>
     </table>
@@ -15752,7 +15772,7 @@ function shareLetterheadHtml(inner, pageTitle){
         ${CONFIG.model?`<div class="sharesub">${esc(CONFIG.model)}</div>`:""}
       </div>
       <div class="sharemetaboxes">
-        <div class="sharemetabox">${shareDocIconSvg()}<div><div>Quotation number</div><b>${esc(CONFIG.quoteNumber||"")}</b></div></div>
+        <div class="sharemetabox">${shareDocIconSvg()}<div><div>Quotation number</div><b>${esc(shareQuoteNumber())}</b></div></div>
         <div class="sharemetabox">${shareCalendarIconSvg()}<div><div>Date</div><b>${quoteDate()}</b></div></div>
       </div>
     </div>
@@ -15778,6 +15798,17 @@ function shareLetterheadHtml(inner, pageTitle){
    the legal text, not a chapter number to tidy away. Applied only to
    sections that generate a title of their own — never to the cover or to
    the free-text note, which have none to remove. */
+/* The terms as they sit at the foot of the commercial page. The heading
+   stays — it is the break between the two halves — but loses its printed
+   section number, since the numbers of the quotation are stripped from
+   every section title on this side. Nothing is added when there is no
+   terms text for the language, so the page does not end in a bare heading. */
+function shareTermsBlockHtml(){
+  ensureLanguages();
+  const txt=((CONFIG.docs&&CONFIG.docs.terms&&CONFIG.docs.terms[docLang])||"").trim();
+  if(!txt) return "";
+  return printTermsHtml().replace(/<h2[^>]*>[ ]*[0-9]+[.][ ]*/i, '<h2 class="sharetermshead">');
+}
 function shareStripHeading(html){
   return String(html||"").replace(/<h2\b[^>]*>[\s\S]*?<\/h2>\s*/i, "");
 }
@@ -15800,8 +15831,14 @@ function shareDocSections(){
     {id:"proposal", nav:"Investment proposal", html: shareProposalHtml()},
     {id:"optional", nav:"Optional items", html: shareOptionalHtml()},
     {id:"alternatives", nav:"Alternatives", html: shareAlternativesHtml()},
-    {id:"delivery", nav:"Commercial terms", html: deliverySectionHtml()},
-    {id:"terms", nav:"Terms & conditions", html: printTermsHtml()}
+    /* The general terms are not a chapter of their own to the customer —
+       they are the small print under what he is being offered. Behind a tab
+       of their own they read as something separate to be found; under the
+       commercial terms they read as the conditions those terms are made on,
+       which is what they are. One page: first what is agreed, then what it
+       is agreed under. */
+    {id:"delivery", nav:"Commercial terms",
+     html: deliverySectionHtml()+shareTermsBlockHtml()}
   ].filter(Boolean)
    .map(s=>(s.bare || s.ownTitle===false) ? s
         : Object.assign({}, s, {html: shareStripHeading(s.html)}))
@@ -15922,6 +15959,7 @@ async function bootShareMode(token){
   const {data, error}=await supa.rpc("get_shared_quote", {p_token: token});
   if(error || !data || !data.ok){ showShareError(data&&data.reason, data); return; }
   shareCustomerChanged = !!data.customer_changed;
+  shareRevisionNo = data.revision || (data.quote && data.quote.revision) || 1;
   shareSeenAt=Date.now();
   shareLog("opened", {revision:data.revision||null, first:(shareDocSections()[0]||{}).nav||null,
                       screen:(screen&&screen.width)?screen.width+"x"+screen.height:null});
