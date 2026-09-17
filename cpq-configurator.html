@@ -235,6 +235,17 @@
   .stepchip .x{color:var(--txt-faint);font-size:13px;line-height:1}
   .stepchip:hover .x{color:var(--bad)}
   .chiphint{font-size:11px;color:var(--txt-faint);margin-top:8px;line-height:1.5}
+  /* big enough to read across the room, because it decides what document
+     the customer ends up with */
+  .hdrtpl{display:flex;flex-direction:column;gap:1px;min-width:0}
+  .hdrtpl select{background:var(--panel-2);border:1px solid var(--line-strong);color:var(--txt);
+    border-radius:8px;padding:6px 12px;font-size:15px;font-weight:600;outline:0;cursor:pointer;
+    max-width:260px}
+  .hdrtpl select:hover{border-color:var(--accent)}
+  .hdrtpl select:focus{border-color:var(--accent)}
+  .hdrtpl .tplnote{font-size:10.5px;color:var(--txt-faint);margin:0;padding-left:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  @media(max-width:900px){ .hdrtpl .tplnote{display:none} }
   .lang-row{display:flex;align-items:center;gap:8px;margin:-2px 0 5px;font-size:12px;color:var(--txt-faint)}
   .asideopt{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
     margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line-soft);
@@ -2434,6 +2445,16 @@
        was written against. It was only said inside Admin, which is the one
        place you already know where you are — renderCatTabs() fills it in. -->
   <span class="cattabs" id="catTabs"></span>
+  <!-- The quote template decides the letterhead, the currency, the number
+       format, the delivery terms and the terms & conditions — the whole
+       document, in other words. It was a 12px line in the right-hand
+       column of one screen, below the step list, which is where you put
+       something nobody has to see. It belongs at the top, where it is
+       true on every screen and visible while you work. -->
+  <span class="hdrtpl" id="hdrTpl">
+    <select id="langSelect" title="Switches the whole quote: letterhead, currency, number format, delivery terms and terms &amp; conditions"></select>
+    <span class="tplnote" id="tplNote"></span>
+  </span>
   <span class="sub" id="modelName"></span>
   <!-- the quote as a document, merged into the header: it used to be its own
        bar, which meant three stacked bars before any content began -->
@@ -2503,11 +2524,7 @@
     <div class="aside-head">
       <h3>Configuration</h3>
     </div>
-    <div class="lang-row">
-      <span>Quote template</span>
-      <select id="langSelect" title="Switches the whole quote: letterhead, currency, number format, delivery terms and terms &amp; conditions"></select>
-    </div>
-    <div class="tplnote" id="tplNote"></div>
+
     <div class="qdetails">
       <label>Quotation no.<input class="in" id="qNum" placeholder="202837"></label>
       <label>Customer<input class="in" id="qCust" placeholder="Company name"></label>
@@ -6839,19 +6856,13 @@ function renderConfigure(){
   /* selecting an option, marking a step optional, hiding a price — none of
      these are form events, so persist from the render they trigger */
   if(typeof saveSoon==="function") saveSoon();
-  const langSel=document.getElementById("langSelect");
-  langSel.innerHTML=CONFIG.templates.map(t=>
-    `<option value="${esc(t.code)}" ${t.code===docLang?"selected":""}>${esc(t.label)}</option>`).join("");
-  /* full re-render: the template drives every price shown on this screen */
-  langSel.onchange=()=>{ docLang=langSel.value; renderConfigure(); };
+  renderTemplatePicker();
   const qn=document.getElementById("qNum"), qc=document.getElementById("qCust");
   if(qn){ qn.value=CONFIG.quoteNumber||""; qn.oninput=()=>{ CONFIG.quoteNumber=qn.value; }; }
   if(qc){ ensureCustomer();
           qc.value=CONFIG.customerInfo.company||"";
           qc.oninput=()=>{ CONFIG.customerInfo.company=qc.value; CONFIG.customer=qc.value; }; }
-  const tpl=activeTemplate();
-  document.getElementById("tplNote").innerHTML =
-    `${esc(tpl.entity||"")} &middot; ${esc(tpl.currency||"")}${tpl.altCur?" + "+esc(tpl.altCur.currency):""} &middot; ${tpl.numFmt==="us"?"1,234.56":"1.234,56"}`;
+
   /* A quote starts with only the always-needed steps; everything else is
      added deliberately from the picker. Adding or removing a step really
      adds or removes it from the configuration — reconcile() clears the
@@ -12539,6 +12550,7 @@ async function takeUpstreamCatalogue(){
   if(mode==="admin") renderAdmin();
 }
 function renderQuoteBar(){
+  renderTemplatePicker();
   const bar=document.getElementById("quoteBar");
   if(!bar) return;
   if(document.body.classList.contains("share-mode")){ bar.classList.add("hidden"); return; }
@@ -12831,6 +12843,26 @@ function watchDraft(){
    version the open quote was written against. The second only exists
    while such a quote is open, so the strip is one tab most of the time
    and two when it matters. */
+/* The template picker in the header. It lives outside any one screen, so
+   it is filled from here rather than from renderConfigure — otherwise it
+   would go stale the moment you opened Quotes or Admin. */
+function renderTemplatePicker(){
+  const sel=document.getElementById("langSelect");
+  if(!sel) return;
+  if(document.body.classList.contains("share-mode")){
+    const w=document.getElementById("hdrTpl"); if(w) w.classList.add("hidden");
+    return;
+  }
+  ensureLanguages();
+  sel.innerHTML=(CONFIG.templates||[]).map(t=>
+    `<option value="${esc(t.code)}" ${t.code===docLang?"selected":""}>${esc(t.label)}</option>`).join("");
+  /* a full re-render: the template drives every price on the screen */
+  sel.onchange=()=>{ docLang=sel.value; renderTemplatePicker(); refreshView();
+                     if(mode==="configure") renderConfigure(); saveSoon(); };
+  const tpl=activeTemplate(), note=document.getElementById("tplNote");
+  if(note) note.innerHTML=`${esc(tpl.entity||"")} &middot; ${esc(tpl.currency||"")}${
+    tpl.altCur?" + "+esc(tpl.altCur.currency):""} &middot; ${tpl.numFmt==="us"?"1,234.56":"1.234,56"}`;
+}
 function renderCatTabs(){
   const el=document.getElementById("catTabs");
   if(!el) return;
