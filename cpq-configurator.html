@@ -1120,15 +1120,12 @@
   .sharesidebar{flex:0 0 300px;display:flex;flex-direction:column;gap:16px;
     position:sticky;top:96px;align-self:flex-start;max-height:calc(100vh - 112px);overflow-y:auto}
   .sharesummary{border-radius:14px;overflow:hidden;border:1px solid #e3e6f0}
-  .sharesummaryhead{background:#1c2563;color:#fff;font-size:12px;font-weight:700;
-    letter-spacing:.4px;text-transform:uppercase;padding:12px 18px}
   .sharesummarybody{padding:18px 20px;background:#fff}
   /* the lines give way, the total does not — see shareSummaryCardHtml */
   .sharesummaryrows{max-height:min(46vh,460px);overflow-y:auto;overscroll-behavior:contain;
     margin-right:-8px;padding-right:8px}
   .sharesummaryrows::-webkit-scrollbar{width:6px}
   .sharesummaryrows::-webkit-scrollbar-thumb{background:#dcdfea;border-radius:3px}
-  .sharesummaryrow .sub i{font-style:normal;color:#EF7B0B}
   .sharesummaryrow{display:flex;justify-content:space-between;align-items:baseline;
     font-size:13px;padding:9px 0;border-bottom:1px solid #f0f0f5;gap:10px}
   .sharesummaryrow b{font-weight:600;color:#222;white-space:nowrap}
@@ -5763,8 +5760,54 @@ function altAncestorOf(id){
    optional item, swap an alternative, roll a group up or down) — the normal
    app re-renders whichever screen is open, but a customer viewing a shared
    link only ever sees the proposal, so that one gets its own render path */
+/* What the customer adds to the quotation that is not an optional item he
+   ticked. Choosing a different type for a machine — hygienic feet, an
+   automatic change-over motor — raises the price of the machine it is
+   fitted to, so the money he had just spent vanished into a line that was
+   there before he touched anything: the summary said Applicator $117,564
+   where it had said $116,664, and nothing said he had done that.
+   There is no way to read it back out of the configuration afterwards —
+   the quotation now simply has those feet — so it is taken at the moment
+   of the click: the price of every block before, the price of every block
+   after, and the difference belongs to him. Kept per machine and property,
+   so swapping the same choice twice moves one number instead of stacking
+   up, and a swap back to what we quoted removes it again. */
+let shareAdds={};            // "<stepId>|<propId>" -> {step, amount}
+let shareAddBefore=null;
+function shareBlockPrices(){
+  const m={};
+  try{
+    const rows=buildPriceRows(priceDetail==="top");
+    const frac=discountFraction(priceRowsTotal(rows)-serviceRowsTotal(rows));
+    shareStepBlocks(frac).forEach(b=>{ if(b.step&&b.step.id) m[b.step.id]=+b.price||0; });
+  }catch(err){}
+  return m;
+}
+/* capture, not display: this runs before the button's own handler */
+document.addEventListener("click", ev=>{
+  if(!document.body.classList.contains("share-mode")) return;
+  const b=ev.target.closest && ev.target.closest("[data-cmpswap],[data-propall]");
+  if(!b) return;
+  const raw=b.dataset.cmpswap||b.dataset.propall||"";
+  const pid=(raw.match(/^prop:([^:@|]+)/)||raw.match(/^([^|]+)/)||[])[1]||"prop";
+  shareAddBefore={prices:shareBlockPrices(), pid};
+}, true);
+function shareNoteAdds(){
+  const was=shareAddBefore; shareAddBefore=null;
+  if(!was) return;
+  const now=shareBlockPrices();
+  Object.keys(now).forEach(id=>{
+    const d=(+now[id]||0)-(+was.prices[id]||0);
+    if(Math.abs(d)<0.005) return;
+    const key=id+"|"+was.pid;
+    const e=shareAdds[key]||(shareAdds[key]={step:id, amount:0});
+    e.amount+=d;
+    if(Math.abs(e.amount)<0.005) delete shareAdds[key];   // back to what we quoted
+  });
+}
 function refreshView(){
   if(document.body.classList.contains("share-mode")){
+    shareNoteAdds();
     /* And it is written down. shareSaveSoon existed, and nothing ever
        called it — so everything the customer switched on or off lived in
        his browser and nowhere else: gone on the next reload, invisible to
@@ -13148,6 +13191,8 @@ function quotePayload(name){
           catalogueVersion: quoteCatVersion || loadedCatalogueVersion || publishedVersion || null,
           revision: quoteRevision || null,
           createdAt: quoteCreatedAt || null,
+          /* only a customer link ever fills this; see shareAdds */
+          customerAdds: Object.keys(shareAdds).length ? clone(shareAdds) : null,
           docLang, cursor, includedSteps:clone(includedSteps), navWidth, partsColW:clone(partsColW)};
 }
 /* the catalogue lands on top of whatever quote is open */
@@ -15598,20 +15643,28 @@ function shareSummaryCardHtml(frac){
      total cannot move by taking it apart. */
   const takenRows=scaleRows(buildOptionalRows(false), frac)
     .filter(r=>!r.isGroup && !r.subtotal && r.taken);
-  const takenTotal=takenRows.reduce((n,r)=>n+(+r.price||0), 0);
-  /* named, but not at any length: nine options is nine lines of grey under
-     one row. Three and a count, with the rest in the tooltip. */
-  const takenNames=takenRows.map(r=>String((r.node.o&&r.node.o.name)||""));
-  const takenShown=takenNames.length>3
-    ? takenNames.slice(0,3).map(esc).join(" &middot; ")+` &middot; <i>+${takenNames.length-3} more</i>`
-    : takenNames.map(esc).join(" &middot; ");
+  /* his own choices, whatever shape they took: the optional items he ticked
+     and the type swaps he made, which land on the machine they are fitted to
+     (see shareAdds). Both come out of the line they were folded into and go
+     on his own, so the summary reads as what we quoted plus what he chose.
+     What is subtracted is exactly what is added, so the total cannot move. */
+  const addList=Object.keys(shareAdds).map(k=>shareAdds[k]);
+  const takenTotal=takenRows.reduce((n,r)=>n+(+r.price||0), 0)
+                  +addList.reduce((n,a)=>n+(+a.amount||0), 0);
   takenRows.forEach(r=>{
     const home=blocks.find(b=>b.step && b.step===(r.node.root||null));
     if(home) home.price-=(+r.price||0);
   });
+  addList.forEach(a=>{
+    const home=blocks.find(b=>b.step && b.step.id===a.step);
+    if(home) home.price-=(+a.amount||0);
+  });
+  const hasChosen=takenRows.length || addList.length;
   return `<div class="sharesidebar">
     <div class="sharesummary">
-      <div class="sharesummaryhead">Investment summary</div>
+      ${/* the card wore an "INVESTMENT SUMMARY" bar; the page it stands on
+           is already headed Investment proposal and the card ends in TOTAL
+           INVESTMENT, so it was the third time in one screen */""}
       <div class="sharesummarybody">
         ${/* The lines scroll within the card; the total below them does not.
              A long quotation, or a customer who takes nine options, grew the
@@ -15620,13 +15673,12 @@ function shareSummaryCardHtml(frac){
              number he was choosing against went. */""}
         <div class="sharesummaryrows">
         ${blocks.length?blocks.map(b=>`<div class="sharesummaryrow">
-          <span>${esc(b.o.name||"")}${(b.also||[]).length
-            ?`<span class="sub">${b.also.map(o=>esc(o.name||"")).join(" &middot; ")}</span>`:""}</span>
+          <span>${esc(b.o.name||"")}</span>
           <b>${b.price?fmt(b.price):"—"}</b>
         </div>`).join("")
-        :`<div class="sharesummaryrow"><span>Nothing in scope yet<span class="sub">Everything selected so far is optional</span></span><b>—</b></div>`}
-        ${takenRows.length?`<div class="sharesummaryrow is-chosen">
-          <span>Selected options<span class="sub" title="${esc(takenNames.join(", "))}">${takenShown}</span></span>
+        :`<div class="sharesummaryrow"><span>Nothing in scope yet</span><b>—</b></div>`}
+        ${hasChosen?`<div class="sharesummaryrow is-chosen">
+          <span>Selected options</span>
           <b>${takenTotal?fmt(takenTotal):"—"}</b>
         </div>`:""}
         ${svcTotal?`<div class="sharesummaryrow"><span>Installation &amp; services</span><b>${fmt(svcTotal)}</b></div>`:""}
@@ -16119,6 +16171,7 @@ async function bootShareMode(token){
      and which made a three-week-old link look freshly written. A link is
      not always marked as sent, so the copy it froze falls back on when it
      was written away — the same day, give or take the minutes. */
+  shareAdds=(data.quote && data.quote.customerAdds) || {};
   quoteCreatedAt=(data.quote && data.quote.createdAt) || data.sent_at
     || (data.quote && data.quote.savedAt) || null;
   renderShareMode();
