@@ -5789,7 +5789,15 @@ document.addEventListener("click", ev=>{
   const b=ev.target.closest && ev.target.closest("[data-cmpswap],[data-propall]");
   if(!b) return;
   const raw=b.dataset.cmpswap||b.dataset.propall||"";
-  const pid=(raw.match(/^prop:([^:@|]+)/)||raw.match(/^([^|]+)/)||[])[1]||"prop";
+  /* only the types — feet, doors, a change-over motor — which are fitted ON
+     TOP of a machine. The same control swaps whole machines on the
+     Alternatives page, and that is a replacement, not something added: the
+     machine he chose belongs on its own line at its own price, not as an
+     extra beside the one he did not take. */
+  const isProp=!!b.dataset.propall || /^prop:/.test(raw);
+  if(!isProp) return;
+  const pid=b.dataset.propall ? String(raw).split("|")[0]
+                              : (raw.match(/^prop:([^:@|]+)/)||[])[1]||"prop";
   shareAddBefore={prices:shareBlockPrices(), pid};
 }, true);
 function shareNoteAdds(){
