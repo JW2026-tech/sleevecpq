@@ -10785,8 +10785,15 @@ function logoBlock(cls){
   return `<div class="stlogo ${cls||""}">${logoSvg()}<div class="stword">${esc(t.entity||"")}</div></div>`;
 }
 
+/* The date on a quotation is the day it was written, not the day it is
+   being looked at. It was new Date(), so every quotation was dated today —
+   a customer opening a link from three weeks ago saw today's date on it,
+   and the same document printed twice carried two different dates.
+   It travels in the quote itself, which is what the link freezes, so what
+   he sees stays what it was when it went out. */
+let quoteCreatedAt=null;
 function quoteDate(){
-  const d=new Date();
+  const d=quoteCreatedAt?new Date(quoteCreatedAt):new Date();
   const p=n=>String(n).padStart(2,"0");
   return `${p(d.getDate())}-${p(d.getMonth()+1)}-${d.getFullYear()}`;
 }
@@ -11549,7 +11556,7 @@ async function createRevisionOn(version, quoteId){
   if(!supa || !id) return null;
   try{
     if(id===cloudQuoteId) await flushQuoteNow();
-    const args={p_quote_id:id, p_days:14};
+    const args={p_quote_id:id, p_days:shareDays()};
     /* the quote decides which catalogue its link shows. Without this the
        database picked the newest published one, which need not be the one
        the quote was priced against — the customer would then open prices
@@ -13040,6 +13047,7 @@ function quotePayload(name){
              which is also what a customer link would pin to. */
           catalogueVersion: quoteCatVersion || loadedCatalogueVersion || publishedVersion || null,
           revision: quoteRevision || null,
+          createdAt: quoteCreatedAt || null,
           docLang, cursor, includedSteps:clone(includedSteps), navWidth, partsColW:clone(partsColW)};
 }
 /* the catalogue lands on top of whatever quote is open */
@@ -13376,9 +13384,12 @@ async function cloudCreateQuote(){
     const {data:num} = await supa.rpc("next_quote_number");
     if(num) CONFIG.quoteNumber=num;
   }catch(err){}
-  const {data:ins, error} = await supa.from("quotes").insert(quoteRowPayload()).select("id,rev").single();
+  const {data:ins, error} = await supa.from("quotes").insert(quoteRowPayload()).select("id,rev,created_at").single();
   if(error) throw error;
-  cloudQuoteId=ins.id; cloudQuoteRev=ins.rev; cloudSavedSig=quoteContentSig(quotePayload());
+  cloudQuoteId=ins.id; cloudQuoteRev=ins.rev;
+  /* stamped once, here, and never again — this is the day it was written */
+  if(!quoteCreatedAt){ quoteCreatedAt=ins.created_at||new Date().toISOString(); saveSoon(); }
+  cloudSavedSig=quoteContentSig(quotePayload());
   quoteStatus="draft"; quoteShare=null;
   loadQuoteMeta().then(()=>renderQuoteBar());
   return cloudQuoteId;
@@ -13550,7 +13561,7 @@ async function quoteCatalogueVersion(id, payload){
 }
 async function cloudOpenQuote(id){
   if(!supa) return false;
-  const {data, error} = await supa.from("quotes").select("data,rev").eq("id", id).single();
+  const {data, error} = await supa.from("quotes").select("data,rev,created_at").eq("id", id).single();
   if(error || !data) return false;
   /* The catalogue comes first: opening a quote on today's prices and only
      then noticing it was written on version 17 is exactly the silent
@@ -13569,6 +13580,10 @@ async function cloudOpenQuote(id){
   }
   quoteCatVersion=want||null;
   quoteRevision=(data.data&&data.data.revision)||null;
+  /* the date the quotation carries. Written into the quote the first time
+     it is saved, so it is frozen into every link; for quotes made before
+     that, the row knows when it was created. */
+  quoteCreatedAt=(data.data&&data.data.createdAt)||data.created_at||null;
   if(!applyAnyFile(data.data)) return false;
   /* after the quote, not before: applying it normalises the catalogue
      (ensureParts, ensureProps, seeded defaults), and taking the baseline
@@ -13608,7 +13623,7 @@ async function reattachCloudQuote(){
   if(!supa || !restoredQuoteId || cloudQuoteId) return false;
   const id=restoredQuoteId; restoredQuoteId=null;
   try{
-    const {data, error}=await supa.from("quotes").select("id,rev,updated_at,status,data")
+    const {data, error}=await supa.from("quotes").select("id,rev,updated_at,created_at,status,data")
       .eq("id", id).maybeSingle();
     if(error || !data) return false;        // deleted while the tab was closed
     cloudQuoteId=data.id; cloudQuoteRev=data.rev;
@@ -13626,6 +13641,10 @@ async function reattachCloudQuote(){
        quote that is already open, they press Continue. */
     quoteCatVersion=await quoteCatalogueVersion(data.id, data.data);
     quoteRevision=(data.data&&data.data.revision)||null;
+    /* the date the quotation carries. Written into the quote the first time
+       it is saved, so it is frozen into every link; for quotes made before
+       that, the row knows when it was created. */
+    quoteCreatedAt=(data.data&&data.data.createdAt)||data.created_at||null;
     return true;
   }catch(err){ return false; }
 }
@@ -13667,6 +13686,7 @@ function clearQuoteSide(){
   cloudQuoteId=null; cloudQuoteRev=null; cloudConflictPaused=false; cloudSavedSig=null;
   removeCloudConflictBanner();
   quoteShare=null; quoteStatus="draft"; quoteEvents=[]; quoteVersions=[]; quoteRevision=null;
+  quoteCreatedAt=null;
   quoteUpdatedAt=null; linkBarSnoozed=null; quoteCatVersion=null;
   /* No number yet, on purpose: next_quote_number() is a shared counter, so
      handing one out before the quote is saved would burn numbers on quotes
@@ -15933,6 +15953,22 @@ async function shareResetToSent(btn){
     alert("Sorry, that did not work just now. Please try again, or ask your contact at Sleeve Technology.");
   }
 }
+/* How long a customer link stays open. It was fourteen days everywhere,
+   while the quotation on the page said it was valid for sixty — so the
+   link died six weeks before the offer did, and the customer was sent back
+   to us for a new one while the price was still standing. The validity is
+   written as a sentence ("60 days from the date above"), so the number of
+   days is read out of it; months are counted at thirty. */
+function shareDays(){
+  const t=String(CONFIG.validity||"");
+  const d=t.match(/(\d+)\s*(day|dag)/i);
+  if(d) return Math.max(1, +d[1]);
+  const m=t.match(/(\d+)\s*(month|maand)/i);
+  if(m) return Math.max(1, +m[1]*30);
+  const w=t.match(/(\d+)\s*(week|weken)/i);
+  if(w) return Math.max(1, +w[1]*7);
+  return 60;                       // the commercial default, when it cannot be read
+}
 function shareSaveSoon(){
   if(!shareToken || !supa) return;
   /* from the first change on there is something to go back from, so the
@@ -16056,7 +16092,7 @@ document.getElementById("btnShareLink").onclick=async ()=>{
        still in flight — would be left out of the copy and the link would be
        born already behind */
     await flushQuoteNow();
-    const {data, error}=await supa.rpc("create_quote_share", {p_quote_id: cloudQuoteId, p_days: 14});
+    const {data, error}=await supa.rpc("create_quote_share", {p_quote_id: cloudQuoteId, p_days: shareDays()});
     if(error || !data) throw error||new Error("no data");
     await giveShareItsOwnCatalogue(data.id);
     loadQuoteMeta().then(()=>renderQuoteBar());
