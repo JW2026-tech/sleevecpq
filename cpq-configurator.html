@@ -11088,6 +11088,13 @@ function renumberedTerms(prefix){
   nodes.forEach(t=>{
     t.nodeValue=t.nodeValue.replace(/\d+(?:\.\d+)+/g, x=>map.has(x)?map.get(x):x);
   });
+  /* a whole clause reads "1. PRICES" the way a sub-clause reads "4.1
+     Warranty Coverage" — the dot only went missing with the chapter number
+     it used to hang from */
+  box.querySelectorAll("h2,h3,h4,h5,h6").forEach(h=>{
+    const t=h.firstChild;
+    if(t && t.nodeType===3) t.nodeValue=t.nodeValue.replace(/^(\s*)(\d+)(\s)/, "$1$2.$3");
+  });
   return box.innerHTML;
 }
 function printTermsHtml(){
