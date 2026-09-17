@@ -16052,12 +16052,25 @@ function shareDocSections(){
    .filter(s=>s.bare || /\S/.test(String(s.html).replace(/<[^>]*>/g," ")) || /<(img|table|input)\b/i.test(s.html));
 }
 /* How tall the sticky nav actually is, for whatever has to stand clear of
-   it. It changes with the width — the section names wrap — so it is measured
-   rather than assumed, on every render and on every resize. */
+   it. It is not one number: the section names wrap at a narrower window and
+   the bar grows a row, from 118px to 159px on this quotation. A resize
+   listener is not enough either — it fires before the wrap is laid out, and
+   nothing fires at all when the bar changes for another reason — so the bar
+   itself is watched and the measurement follows it. */
+let shareNavWatch=null;
+function shareNavHeight(n){
+  if(!n) return;
+  document.documentElement.style.setProperty("--sharenavh", Math.round(n.offsetHeight)+"px");
+}
 function shareMeasureNav(){
   const n=document.querySelector(".sharenav");
   if(!n) return;
-  document.documentElement.style.setProperty("--sharenavh", Math.round(n.offsetHeight)+"px");
+  shareNavHeight(n);
+  if(window.ResizeObserver){
+    if(!shareNavWatch) shareNavWatch=new ResizeObserver(es=>shareNavHeight(es[0]&&es[0].target));
+    shareNavWatch.disconnect();          // the bar is rebuilt on every render
+    shareNavWatch.observe(n);
+  }
 }
 window.addEventListener("resize", shareMeasureNav);
 /* one section at a time, like separate pages, instead of one long scroll —
