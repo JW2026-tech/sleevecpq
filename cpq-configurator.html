@@ -15640,6 +15640,20 @@ function shareUpgradeCardsHtml(frac, blocks){
     </div>
     <div class="shareupgrades">${rows.map(shareUpgradeCardHtml).join("")}</div>`;
 }
+/* A page with the investment summary beside it. The summary belongs on
+   every page where the customer is weighing something to add or swap: an
+   upgrade is "+ 18,356.98" and an alternative "+ 4,200" against a total he
+   could only see by going back to the proposal, so he was adding up two
+   pages in his head. Beside it, the figure it changes is in the same view.
+   A page with nothing on it stays empty so it drops out of the nav rather
+   than becoming a summary with no subject. */
+function shareWithSummaryHtml(main, frac){
+  if(!String(main||"").trim()) return "";
+  return `<div class="shareproposalwrap">
+      <div class="shareproposalmain">${main}</div>
+      ${shareSummaryCardHtml(frac)}
+    </div>`;
+}
 /* the page itself, worked out the same way the proposal is */
 function shareOptionalHtml(){
   const inScopeRows=buildPriceRows(priceDetail==="top");
@@ -15649,7 +15663,8 @@ function shareOptionalHtml(){
      cable tray are all "the line has these, and a better one costs extra".
      Standing in the investment proposal it put a wall of prices nobody is
      being charged in the middle of the one figure that is being asked for. */
-  return shareUpgradeCardsHtml(frac, shareStepBlocks(frac)) + sharePropTablesHtml(frac);
+  return shareWithSummaryHtml(shareUpgradeCardsHtml(frac, shareStepBlocks(frac))
+    + sharePropTablesHtml(frac), frac);
 }
 /* the machines offered instead of the one in scope, side by side as cards.
    The full spec-by-spec comparison table still follows below (altCompareHtml
@@ -15672,7 +15687,7 @@ function shareAlternativesHtml(){
   const inScopeRows=buildPriceRows(priceDetail==="top");
   const subtotal=priceRowsTotal(inScopeRows);
   const frac=discountFraction(subtotal-serviceRowsTotal(inScopeRows));
-  return shareAltCardsHtml(frac, shareStepBlocks(frac));
+  return shareWithSummaryHtml(shareAltCardsHtml(frac, shareStepBlocks(frac)), frac);
 }
 function shareAltGroupHtml(c, frac){
     /* a property only an alternative would bring: visible so the customer
@@ -15775,18 +15790,14 @@ function shareProposalHtml(){
   const fromFmt=fmtIdx<0?[]:blocks.slice(fmtIdx);
   let n=0;
   const card=b=>shareHeroCardHtml(b, n++===0, frac);
-  return `<div class="shareproposalwrap">
-      <div class="shareproposalmain">
+  return shareWithSummaryHtml(`
         <div class="shareheroes">${beforeFmt.map(card).join("")}</div>
         ${fromFmt.length?`<div class="shareheroes shareheroes-after">${fromFmt.map(card).join("")}</div>`:""}
         <div class="sharesectionhead">
           <h3>Detailed breakdown</h3>
           <div class="sharesectionsub">Every item in the scope of this quotation, with its price.</div>
         </div>
-        ${proposalHtml({skipHeader:true, skipOptional:true, skipAlts:true})}
-      </div>
-      ${shareSummaryCardHtml(frac)}
-    </div>`;
+        ${proposalHtml({skipHeader:true, skipOptional:true, skipAlts:true})}`, frac);
 }
 /* Which revision of the quotation this link holds. A customer who has had
    two or three versions of the same quote has three documents carrying the
