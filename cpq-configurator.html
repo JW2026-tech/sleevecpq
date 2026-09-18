@@ -1003,6 +1003,8 @@
      two buttons of different sizes sitting a pixel apart. One height, one
      type size, one radius — only the colour tells them apart, which is the
      one difference that means anything: the orange one is the thing to do. */
+  .sharenavquote{margin-left:26px;font-size:12px;color:rgba(255,255,255,.7);white-space:nowrap}
+  .sharenavquote b{color:#fff;font-weight:600;margin-left:5px}
   .sharenavacts{margin-left:auto;display:flex;align-items:center;gap:12px}
   .sharenav .sharenavacts button{display:inline-flex;align-items:center;justify-content:center;
     gap:9px;height:42px;padding:0 20px;font-size:13.5px;font-weight:600;line-height:1;
@@ -1363,6 +1365,7 @@
        the list itself becomes a dropdown instead of a wrapped button row */
     .sharenavcur{display:flex}
     .sharenavbrand{padding:12px 16px 0;flex-wrap:wrap}
+    .sharenavquote{margin-left:0;flex:1 1 100%;padding-top:8px}
     .sharenavacts{width:100%;margin-left:0;padding-top:10px}
     .sharenav .sharenavacts button{flex:1 1 0;height:44px;padding:0 12px}
     .sharenavlist{display:none;flex-direction:column;padding:6px 16px 10px}
@@ -16230,6 +16233,13 @@ function renderShareMode(){
       <div class="stword">${esc(t.entity||"")}</div>
       <div class="sttag">INNOVATION IN SLEEVING</div>
     </div>
+    ${/* Which quotation, and which version of it, on the bar that never
+         leaves the screen. It was on the letterhead of each page, which
+         scrolls away — so halfway down the scope of supply there was
+         nothing on screen saying what he was reading. It is the number he
+         quotes back at us on the phone, and the revision is what tells the
+         two of us we are talking about the same document. */""}
+    ${CONFIG.quoteNumber?`<div class="sharenavquote">Quotation <b>${esc(shareQuoteNumber())}</b></div>`:""}
     ${/* Once something is switched on or off the page shows the customer his
           own version, and there was no way back to ours — he may only have
           wanted to see what something costs. Offered only when there is
