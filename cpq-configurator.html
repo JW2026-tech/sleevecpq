@@ -5701,7 +5701,28 @@ function optionOrderIndex(){
   (function walk(nodes){
     for(const nd of nodes){ pos.set(String((nd.o&&nd.o.id)||""), ++n); walk(nd.kids); }
   })(optionTree());
+  /* The format parts are not options in the tree — they are made up on the
+     spot from the parts list, with ids like __genp_<part> or __ofp_<product>_
+     <part>. Unknown to this index they all scored the same and kept whatever
+     order they happened to arrive in, which is why the rotary cutters still
+     swapped places on being taken. Their own order is the order of the parts
+     list, which does not move. */
+  (CONFIG.parts||[]).forEach((part,i)=>{ if(part&&part.id) pos.set("part:"+part.id, 1e6+i); });
   return pos;
+}
+/* the position of a row, whether it is an option or a made-up parts line */
+function orderKeyOf(pos, id){
+  const s=String(id||"");
+  const i=pos.get(s);
+  if(typeof i==="number") return i;
+  for(const part of (CONFIG.parts||[])){
+    const pid=part&&part.id;
+    if(pid && (s===pid || s.endsWith("_"+pid))){
+      const j=pos.get("part:"+pid);
+      if(typeof j==="number") return j;
+    }
+  }
+  return 1e9;
 }
 /* The optional list, held in that order. A taken item comes back into this
    list as a ghost built from the in-scope pass, carrying the position it had
@@ -5712,10 +5733,7 @@ function optionOrderIndex(){
    the lines under them are put back in their own order. */
 function sortByCatalogue(rows){
   const pos=optionOrderIndex();
-  const key=r=>{
-    const i=pos.get(String((r.node&&r.node.o&&r.node.o.id)||""));
-    return (typeof i==="number") ? i : 1e9;
-  };
+  const key=r=>orderKeyOf(pos, (r.node&&r.node.o&&r.node.o.id)||"");
   const out=[]; let run=[];
   const flush=()=>{ if(run.length){ run.sort((a,b)=>key(a)-key(b)); out.push.apply(out, run); run=[]; } };
   for(const r of rows){ if(r.isGroup){ flush(); out.push(r); } else run.push(r); }
