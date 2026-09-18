@@ -793,6 +793,8 @@
   .quotebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
     padding:8px 16px;border-bottom:1px solid var(--line);background:var(--rail);font-size:12.5px}
   .qbnum{font-weight:600;color:var(--txt)}
+  .qbrev{margin-left:7px;font-weight:500;font-size:11px;color:var(--txt-faint);
+    border:1px solid var(--line);border-radius:999px;padding:1px 7px;white-space:nowrap}
   .qbcust{color:var(--txt-dim)}
   .qbsep{width:1px;height:18px;background:var(--line);flex:0 0 auto}
   .qbstatus{font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;
@@ -12802,11 +12804,23 @@ function renderQuoteBar(){
   bar.classList.remove("hidden");
   renderLinkBar();
   const num=CONFIG.quoteNumber||"(no number yet)";
+  /* Which revision this is. The number alone says which quotation you have
+     open, not which version of it — and a quote that has been out three
+     times is three different documents under one number. Whether it has a
+     link of its own is the other half of the answer: a revision nobody has
+     been given is still yours to change. */
+  const rev=quoteRevision || (quoteShare && quoteShare.revision) || null;
+  const revLive=rev && (quoteShares||[]).some(x=>x && x.revision===rev && !x.revoked_at);
+  const revSent=rev && (quoteShares||[]).some(x=>x && x.revision===rev && x.sent_at);
   const cust=(CONFIG.customer||(CONFIG.customerInfo&&CONFIG.customerInfo.company)||"").trim();
   const st=QUOTE_STATUSES.find(s=>s.id===quoteStatus)||QUOTE_STATUSES[0];
   const custChanged=quoteShare&&quoteShare.customer_changed_at;
   bar.innerHTML=`
-    <span class="qbnum">${esc(num)}</span>
+    <span class="qbnum">${esc(num)}${rev?`<span class="qbrev" title="${esc(
+      revSent ? "Revision "+rev+" has been sent. It stays as it is; start a new revision to change anything."
+      : revLive ? "Revision "+rev+" has a link. Update it after a change, or start a new revision."
+      : "Revision "+rev+" has no link yet — nobody outside has seen it, so it is still yours to change.")}">rev ${rev}${
+      revLive||revSent?"":" &middot; in progress"}</span>`:""}</span>
     ${cust?`<span class="qbcust">${esc(cust)}</span>`:""}
     <span class="qbsep"></span>
     <span class="qbsep"></span>
