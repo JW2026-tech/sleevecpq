@@ -5719,6 +5719,26 @@ function sortByCatalogue(rows){
   flush();
   return out;
 }
+/* A taken item, shown back in the optional list so it can be put back.
+   It is built from the IN-SCOPE pass, and for a part counted per piece that
+   pass holds the whole line — the machine takes two rotary cutters, one of
+   them standard and one offered, and once the offered one was taken the card
+   read "2 × 7,700 = 15,400". Which is what the line costs, but not what he
+   chose: taking it cost 7,700 and putting it back returns 7,700.
+   The quantity he actually took is recorded when he takes it (markTaken's
+   n, "so putting back returns exactly these"), so the ghost is priced on
+   that rather than on the line it landed in. */
+function ghostRow(r){
+  const g=Object.assign({}, r, {taken:true});
+  const o=r.node&&r.node.o;
+  const unit=+((o&&o.unitPrice)||0);
+  const rec=o?takenRec(String(o.id||"")):null;
+  if(o && unit && rec && rec.n>0){
+    g.node=Object.assign({}, r.node, {o:Object.assign({}, o, {qty:rec.n>1?rec.n:0})});
+    g.price=unit*rec.n;
+  }
+  return g;
+}
 function buildOptionalRows(forceTop){
   const rows=buildItemRows(forceTop, true);
   const taken=takenSet();
@@ -5734,7 +5754,7 @@ function buildOptionalRows(forceTop){
     .filter(r=>!r.isGroup)
     .filter(r=>{ const id=String((r.node&&r.node.o&&r.node.o.id)||"");
                  return taken.includes(id) && !already.has(id); })
-    .map(r=>Object.assign({}, r, {taken:true}));
+    .map(r=>ghostRow(r));
   /* A rolled-up step folds its items into one line, so a taken item can be
      missing from that pass. Then its line is made from the tree itself —
      it must never simply vanish from this list. */
