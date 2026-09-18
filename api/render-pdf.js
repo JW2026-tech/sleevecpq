@@ -16,6 +16,40 @@ const chromium = require('@sparticuz/chromium');
 const puppeteer = require('puppeteer-core');
 
 module.exports = async (req, res) => {
+  // A way to ask this function what is wrong with it. Every failure used to
+  // read "Quote not found" or "This link is no longer active", whether the
+  // quote was genuinely missing, the service key was wrong, or the function
+  // was talking to another project altogether — and none of that can be seen
+  // from the outside. GET ?check=1 answers with what it has (names and hosts,
+  // never the keys) and whether the database actually answers.
+  if (req.method === 'GET' && (req.query || {}).check) {
+    const url = process.env.SUPABASE_URL || '';
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    const app = process.env.APP_URL || '';
+    const out = {
+      env: {
+        SUPABASE_URL: url ? url.replace(/^https?:\/\//, '').split('.')[0] : '(missing)',
+        SUPABASE_SERVICE_ROLE_KEY: key ? `set, ${key.length} characters` : '(missing)',
+        APP_URL: app || '(missing)',
+      },
+      database: null, render_page: null,
+    };
+    if (url && key) {
+      try {
+        const probe = createClient(url, key);
+        const { count, error } = await probe.from('quotes').select('id', { count: 'exact', head: true });
+        out.database = error ? { ok: false, error: error.message } : { ok: true, quotes: count };
+      } catch (err) { out.database = { ok: false, error: String(err && err.message || err) }; }
+    }
+    if (app) {
+      try {
+        const r = await fetch(`${app}/?render=1`, { method: 'GET' });
+        out.render_page = { ok: r.ok, status: r.status };
+      } catch (err) { out.render_page = { ok: false, error: String(err && err.message || err) }; }
+    }
+    res.status(200).json(out);
+    return;
+  }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'POST only' });
     return;
@@ -39,7 +73,11 @@ module.exports = async (req, res) => {
     // by the same RPC the share page uses, so no bearer is required here.
     const { data: shared, error: sharedErr } = await admin.rpc('get_shared_quote', { p_token: token });
     if (sharedErr || !shared || !shared.ok) {
-      res.status(404).json({ error: 'This link is no longer active' });
+      // the customer sees the sentence; the detail is for whoever is looking
+      // into it, and says whether the link is dead or the server cannot reach
+      // the database at all
+      res.status(404).json({ error: 'This link is no longer active',
+        detail: sharedErr ? `database: ${sharedErr.message}` : `link: ${(shared && shared.reason) || 'unknown'}` });
       return;
     }
     quoteData = shared.quote;
@@ -63,13 +101,15 @@ module.exports = async (req, res) => {
     const { data: quoteRow, error: quoteErr } = await admin
       .from('quotes').select('data,number').eq('id', quoteId).single();
     if (quoteErr || !quoteRow) {
-      res.status(404).json({ error: 'Quote not found' });
+      res.status(404).json({ error: 'Quote not found',
+        detail: quoteErr ? `database: ${quoteErr.message}` : 'no row with that id' });
       return;
     }
     const { data: catRow, error: catErr } = await admin
       .from('catalogue_versions').select('data').order('version', { ascending: false }).limit(1).single();
     if (catErr || !catRow) {
-      res.status(404).json({ error: 'No catalogue published yet' });
+      res.status(404).json({ error: 'No catalogue published yet',
+        detail: catErr ? `database: ${catErr.message}` : 'no published version' });
       return;
     }
     quoteData = quoteRow.data;
