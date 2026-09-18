@@ -12043,20 +12043,6 @@ function renderNotices(){
     </div>`);
   }
 
-  /* ---- 0b. the same key stood in two places with different contents ---- */
-  if(keyConflicts.length){
-    rows.push(`<div class="notice is-stray">
-      <span class="catdot"></span>
-      <span class="catmsg"><b>${keyConflicts.length===1?"One option stood":"Some options stood"}
-        in more than one place with different contents.</b>
-        ${keyConflicts.slice(0,4).map(c=>`<code>${esc(c.id)}</code> ${esc(c.name)}
-          (${esc(c.fields.join(", "))})`).join(" · ")}${keyConflicts.length>4?` and ${keyConflicts.length-4} more`:""}.
-        The same key is the same thing, so every place now shares one — the first
-        one in the catalogue. Check it is the right one; from here on, editing it
-        anywhere edits it everywhere.</span>
-    </div>`);
-  }
-
   /* ---- 1. the catalogue on screen is not the newest one ---- */
   if(catUpstream){
     const who=(catUpstream.updated_by && catUpstream.updated_by!=="unknown")
@@ -13411,14 +13397,13 @@ function quotePayload(name){
    description, the specification lines, the functionalities, whatever hangs
    underneath it — one of each, shared. Editing it anywhere is editing it
    everywhere, which is what a part number means.
-   The first place it appears is the one that survives, and where the copies
-   were not identical that is said out loud (see renderNotices) rather than
-   quietly picking one. An option that would end up inside itself is left
-   alone: that is not a duplicate, that is a loop. */
-let keyConflicts=[];
-const LINK_FIELDS=["name","price","cost","text","qty","tag","cls","image","specs","functionalities","features","children"];
+   The first place it appears is the one that survives. That used to be
+   announced in the notice bar whenever the copies were not identical; it
+   said the same thing every time you loaded the catalogue and was asked to
+   go. An option that would end up inside itself is left alone: that is not
+   a duplicate, that is a loop. */
 function linkOptionsByKey(){
-  const first=new Map(); keyConflicts=[];
+  const first=new Map(); let linked=0;
   (function walk(mods, ancestors){
     for(const m of (mods||[])){
       const opts=m.options||[];
@@ -13428,10 +13413,7 @@ function linkOptionsByKey(){
           const seen=first.get(k);
           if(seen && seen!==o){
             if(ancestors.indexOf(seen)>=0) continue;      // inside itself: leave it
-            const anders=LINK_FIELDS.filter(f=>
-              stableStringify(o[f]===undefined?null:o[f]) !== stableStringify(seen[f]===undefined?null:seen[f]));
-            if(anders.length) keyConflicts.push({id:k, name:seen.name||o.name||k, fields:anders});
-            opts[i]=seen;                                  // the same object, from now on
+            opts[i]=seen; linked++;                        // the same object, from now on
             continue;                                      // its children were walked with it
           }
           if(!seen) first.set(k, o);
@@ -13440,7 +13422,7 @@ function linkOptionsByKey(){
       }
     }
   })(CONFIG.modules||[], []);
-  return keyConflicts.length;
+  return linked;
 }
 function applyCatalogue(d){
   const c=(d&&d.catalogue)||(d&&Array.isArray(d.modules)?d:null);
