@@ -13830,6 +13830,27 @@ async function reattachCloudQuote(){
     return true;
   }catch(err){ return false; }
 }
+/* A quotation that already carries a number belongs to the row with that
+   number — whatever this browser remembers. The id is kept in the local
+   snapshot, and a snapshot can arrive without one: the customer link ran the
+   same application and wrote its own state over it, and that state has no row
+   of its own. The next edit here then found content, no id, and did what it
+   is supposed to do for a quote someone has just started — mint a new one.
+   Twice, with a number of its own each time, while 202848 sat right there.
+   So before a number is drawn, the number on screen is looked up. Only a
+   quotation that carries none — a genuinely new one, since New quote clears
+   it on purpose — makes a row. */
+async function reattachByNumber(){
+  if(!supa || cloudQuoteId || restoredQuoteId) return false;
+  const nr=String(CONFIG.quoteNumber||"").trim();
+  if(!nr) return false;
+  try{
+    const {data, error}=await supa.from("quotes").select("id").eq("number", nr).maybeSingle();
+    if(error || !data) return false;        // the number is ours but the row is gone
+    restoredQuoteId=data.id;
+    return await reattachCloudQuote();
+  }catch(err){ return false; }
+}
 /* ---------------------- STARTING A NEW QUOTE ----------------------
    Getting an empty quote used to mean saving by hand and then pressing
    Reset, and Reset is a blunt instrument: in Admin it throws away the whole
@@ -13969,7 +13990,10 @@ function saveNow(){
      and it is new"; a screen that is merely being looked at is not. */
   if(supa && bootDone && userEdited && !restoredQuoteId && !cloudQuoteId && !creatingQuote && quoteHasContent()){
     creatingQuote=true;
-    cloudCreateQuote()
+    /* the last word before a number is drawn: if the quotation on screen
+       already has one, it has a row, and this is that row being edited */
+    reattachByNumber()
+      .then(ok=>ok?null:cloudCreateQuote())
       .then(()=>loadQuoteMeta()).then(()=>renderQuoteBar())
       .catch(()=>flagSaved("Not saved to the cloud — retrying", true))
       .finally(()=>{ creatingQuote=false; });
@@ -16646,6 +16670,8 @@ async function boot(){
      about — otherwise the link, the history and the reminder all come back
      empty after a refresh */
   await reattachCloudQuote();
+  /* the snapshot had no row to point at; the number on screen may still */
+  await reattachByNumber();
   await loadQuoteMeta();
   renderCatTabs();
   renderQuoteBar();
