@@ -10895,6 +10895,26 @@ const LOGO_MARK = '<path fill="#28338A" d="M184.8,0.0C186.8,-0.5 185.5,0.2 185.3
 function logoSvg(cls){
   return `<svg class="${cls||"stmark"}" viewBox="-5 -5 339 315" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sleeve Technology">${LOGO_MARK}</svg>`;
 }
+/* The tab itself. A browser with no icon to show falls back to a grey globe,
+   and the customer had our quotation open under "Machine Configurator" — the
+   name of the tool we build quotes with, which is ours and means nothing to
+   him. The mark is drawn on a white tile so it reads on a light tab strip
+   and on a dark one, and it is built from the same paths as the letterhead,
+   so there is no second copy of the logo to keep in step. */
+function applyFavicon(){
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">`
+    +`<rect width="64" height="64" rx="13" fill="#ffffff"/>`
+    +`<svg x="9" y="11" width="46" height="42" viewBox="-5 -5 339 315">${LOGO_MARK}</svg></svg>`;
+  let l=document.querySelector('link[rel="icon"]');
+  if(!l){ l=document.createElement("link"); l.rel="icon"; document.head.appendChild(l); }
+  l.type="image/svg+xml";
+  l.href="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);
+}
+/* what the tab says on the customer's side */
+function shareTabTitle(){
+  const nr=String(CONFIG.quoteNumber||"").trim();
+  document.title=(nr?`Quotation ${nr} · `:"")+"Sleeve Technology";
+}
 function logoBlock(cls){
   const t=activeTemplate();
   return `<div class="stlogo ${cls||""}">${logoSvg()}<div class="stword">${esc(t.entity||"")}</div></div>`;
@@ -16210,6 +16230,7 @@ async function bootShareMode(token){
      expired or taken offline showed the customer the message AND the
      configurator behind it, quote number and all. */
   document.body.classList.add("share-mode");
+  document.title="Sleeve Technology";      // before the quotation is even loaded
   document.getElementById("viewShare").classList.remove("hidden");
   /* the quotation look is fixed/light regardless of the viewer's own
      light/dark preference — .sharewrap's white background assumes the
@@ -16232,6 +16253,7 @@ async function bootShareMode(token){
   });
   applyCatalogue({catalogue: data.catalogue});
   applyQuote(data.quote);
+  shareTabTitle();
   /* The date the customer reads. A quotation written since it began
      carrying its own date says so itself; an older one has no stamp, and
      the day the link was sent is the day that quotation reached him —
@@ -16559,6 +16581,7 @@ document.getElementById("btnEmailPdf").onclick=async ()=>{
 
 /* ---- boot ---- */
 async function boot(){
+  applyFavicon();                    // the tab carries the mark, on both sides
   const params=new URLSearchParams(location.search);
 
   /* a headless render (see api/render-pdf.js) skips auth, storage and every
