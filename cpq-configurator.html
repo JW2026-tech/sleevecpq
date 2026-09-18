@@ -10938,7 +10938,7 @@ function quoteDocDate(){
   const rev=quoteRevision||null;
   const s=(rev && Array.isArray(quoteShares))
     ? quoteShares.find(x=>x && x.revision===rev) : null;
-  if(s) return s.sent_at||s.pushed_at||s.created_at||null;
+  if(s) return s.pushed_at||s.sent_at||s.created_at||null;   // bijwerken maakt er een andere offerte van
   if(rev && rev>1) return null;          // being prepared: dated the day it goes out
   return quoteCreatedAt||null;
 }
