@@ -14088,11 +14088,15 @@ function clearQuoteSide(){
      handing one out before the quote is saved would burn numbers on quotes
      that never happen. "Save as new quote" draws the number. */
 }
+/* Someone asked for a quote. From here on this screen may save itself
+   without asking again — that is the whole point of the button. */
+let newQuoteAsked=false;
 async function newQuote(){
   /* Never lose the quote on screen. If it is already a cloud row it is
      safe; if it is not and there is something in it, it becomes one first,
      so "New quote" can be pressed without thinking about it. */
   let kept=null;
+  newQuoteAsked=true;
   if(!cloudQuoteId && quoteHasContent() && supa){
     try{ await cloudCreateQuote(); kept=CONFIG.quoteNumber; }
     catch(err){
@@ -14184,9 +14188,27 @@ function saveNow(){
   if(supa && bootDone && userEdited && !restoredQuoteId && !cloudQuoteId && !creatingQuote && quoteHasContent()){
     creatingQuote=true;
     /* the last word before a number is drawn: if the quotation on screen
-       already has one, it has a row, and this is that row being edited */
+       already has one, it has a row, and this is that row being edited.
+       And if it has none, it is asked for rather than taken. A quote that
+       saves itself the moment it says something is right for a quote you
+       just started — but the same rule, meeting a configuration that came
+       from somewhere else and lost its row, minted 202870, 202871 and
+       202872 while nobody had asked for a quote at all. Starting one is
+       deliberate (New quote), and then it still saves itself silently;
+       anything else now has to be confirmed, with the screen named so it
+       can be recognised. */
     reattachByNumber()
-      .then(ok=>ok?null:cloudCreateQuote())
+      .then(ok=>{
+        if(ok) return null;
+        if(!newQuoteAsked && !confirm(
+          `This screen is not saved as a quote yet.\n\n`+
+          `${(CONFIG.customer||CONFIG.customerInfo&&CONFIG.customerInfo.company||"No customer name")} — `+
+          `${(CONFIG.model||"no model")}\n\nSave it as a new quote? It gets a number of its own.`)){
+          userEdited=false;            // asked and declined: do not ask again on the next keystroke
+          return null;
+        }
+        return cloudCreateQuote();
+      })
       .then(()=>loadQuoteMeta()).then(()=>renderQuoteBar())
       .catch(()=>flagSaved("Not saved to the cloud — retrying", true))
       .finally(()=>{ creatingQuote=false; });
