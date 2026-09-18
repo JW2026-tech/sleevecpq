@@ -1131,7 +1131,6 @@
   /* his own line on the card, in the accent the summary uses for it */
   .sharebasechosen{margin-top:7px;font-size:12px;color:#666}
   .sharebasechosen b{color:#EF7B0B;font-weight:700;margin-right:4px}
-  .sharebasechosen span{display:block;font-size:11px;color:#999;margin-top:2px}
   .sharebadge{background:#1c2563;color:#fff;font-size:11.5px;font-weight:500;line-height:1.45;
     padding:12px 16px;border-radius:10px;max-width:215px;display:flex;align-items:center;gap:9px}
   .sharebadge b{font-weight:700;font-size:12.5px}
@@ -15950,10 +15949,6 @@ function shareHeroCardHtml(block, first, frac){
   const addsHere=Object.keys(shareAdds).map(k=>shareAdds[k])
     .filter(a=>block.step && a.step===block.step.id);
   const addsSum=addsHere.reduce((n,a)=>n+(+a.amount||0), 0);
-  /* named where we know the name; a swap made before the names were kept
-     falls back on saying that it was a type */
-  const addsNames=addsHere.map(a=>esc(a.label||"")).filter(Boolean);
-  if(addsHere.length>addsNames.length) addsNames.push("the types you changed");
   const chosenSum=chosenHere.reduce((n,r)=>n+(+r.price||0), 0)+addsSum;
   const blockBase=(+block.price||0)-chosenSum;
   const specs=(featuresOf(o).length
@@ -15983,11 +15978,11 @@ function shareHeroCardHtml(block, first, frac){
           <div class="sharebaseprice">${blockBase?fmt(blockBase):"—"}</div>
           ${(block.also||[]).length?`<div class="sharebaseincl">${
             block.also.map(o=>esc(o.name||"")).join(" &middot; ")}</div>`:""}
+          ${/* the amount, not the list: which options he chose is the whole
+               of the Optional items page, and repeating them here under every
+               machine put the same grey sentence on three cards */""}
           ${(chosenHere.length||addsSum)?`<div class="sharebasechosen">
-            <b>+ ${fmt(chosenSum)}</b> selected options
-            <span>${chosenHere.map(r=>esc((r.node.o&&r.node.o.name)||""))
-              .concat(addsNames).join(" &middot; ")}</span>
-          </div>`:""}
+            <b>+ ${fmt(chosenSum)}</b> selected options</div>`:""}
         </div>
         ${/* a figure the customer can hold us to, rather than a slogan —
               worded exactly as sleevetechnology.com states it, so the
