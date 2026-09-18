@@ -1128,6 +1128,10 @@
   .sharebaselbl{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#888}
   .sharebaseprice{font-size:25px;font-weight:700;color:#EF7B0B}
   .sharebaseincl{font-size:11px;color:#888;margin-top:2px}
+  /* his own line on the card, in the accent the summary uses for it */
+  .sharebasechosen{margin-top:7px;font-size:12px;color:#666}
+  .sharebasechosen b{color:#EF7B0B;font-weight:700;margin-right:4px}
+  .sharebasechosen span{display:block;font-size:11px;color:#999;margin-top:2px}
   .sharebadge{background:#1c2563;color:#fff;font-size:11.5px;font-weight:500;line-height:1.45;
     padding:12px 16px;border-radius:10px;max-width:215px;display:flex;align-items:center;gap:9px}
   .sharebadge b{font-weight:700;font-size:12.5px}
@@ -15921,6 +15925,13 @@ function blockPicture(block){
 }
 function shareHeroCardHtml(block, first, frac){
   const o=block.o, pic=blockPicture(block);
+  /* worked out exactly as shareSummaryCardHtml does, so the two cannot
+     disagree: the optional rows he has taken, at this page's discount,
+     belonging to this block's step */
+  const chosenHere=scaleRows(buildOptionalRows(false), frac)
+    .filter(r=>!r.isGroup && !r.subtotal && r.taken && (r.node.root||null)===(block.step||null));
+  const chosenSum=chosenHere.reduce((n,r)=>n+(+r.price||0), 0);
+  const blockBase=(+block.price||0)-chosenSum;
   const specs=(featuresOf(o).length
       ? featuresOf(o).map(f=>({label:f.label, value:f.value||"yes"}))
       : (o.specs||[]).map(sp=>({label:fillSupply(sp.label||""), value:fillSupply(sp.value||"")})))
@@ -15938,12 +15949,20 @@ function shareHeroCardHtml(block, first, frac){
         </div>`).join("")}</div>`:""}
       <div class="sharebasebar">
         <div>
+          ${/* The machine as we quoted it, and what he chose on top of it,
+               apart — the same split the summary on the right makes. The card
+               used to add his choices into the machine's own figure, so one
+               screen carried two prices for one machine: 123,688.04 here and
+               118,688.04 beside it, five thousand apart with nothing saying
+               why. Now both say 118,688.04 and both name the 5,000. */""}
           <div class="sharebaselbl">${esc(o.name||"")} — investment</div>
-          <div class="sharebaseprice">${block.price?fmt(block.price):"—"}</div>
+          <div class="sharebaseprice">${blockBase?fmt(blockBase):"—"}</div>
           ${(block.also||[]).length?`<div class="sharebaseincl">${
             block.also.map(o=>esc(o.name||"")).join(" &middot; ")}</div>`:""}
-          ${block.taken.length?`<div class="sharebaseincl">incl. ${
-            block.taken.map(r=>esc(r.node.o.name||"")).join(", ")}</div>`:""}
+          ${chosenHere.length?`<div class="sharebasechosen">
+            <b>+ ${fmt(chosenSum)}</b> selected options
+            <span>${chosenHere.map(r=>esc((r.node.o&&r.node.o.name)||"")).join(" &middot; ")}</span>
+          </div>`:""}
         </div>
         ${/* a figure the customer can hold us to, rather than a slogan —
               worded exactly as sleevetechnology.com states it, so the
