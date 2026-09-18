@@ -15863,8 +15863,30 @@ function shareStepChosen(m){
 /* one product card per top-level item in the quote. `first` gets the
    reassurance badge — repeating it on every card would turn a claim into
    wallpaper. */
+/* The picture on a product card. It was the chosen option's own image and
+   nothing else, so a step whose machine carries no photo of its own — the
+   steam tunnel, the airknives — showed a grey box on the customer's page
+   while a photo of exactly that machine sat one level down in the very
+   branch he had configured. So the branch is walked, in its own order, and
+   the first picture in it is the one shown: his configuration's own
+   photograph rather than none at all. */
+function blockPicture(block){
+  if(block && block.o && block.o.image) return block.o.image;
+  const step=(block && block.step)||null;
+  let found="";
+  (function walk(nodes){
+    for(const nd of nodes){
+      if(found) return;
+      /* what is IN the quotation: an alternative standing beside it, or an
+         optional item offered on top of it, is not the machine on this card */
+      if(nd && nd.o && nd.o.image && !nd.o.alt && !nd.o.optional && (!step || nd.root===step)){ found=nd.o.image; return; }
+      walk(nd.kids||[]);
+    }
+  })(optionTree());
+  return found || (step?stepPicture(step):"");
+}
 function shareHeroCardHtml(block, first, frac){
-  const o=block.o, pic=rowPicture(o);
+  const o=block.o, pic=blockPicture(block);
   const specs=(featuresOf(o).length
       ? featuresOf(o).map(f=>({label:f.label, value:f.value||"yes"}))
       : (o.specs||[]).map(sp=>({label:fillSupply(sp.label||""), value:fillSupply(sp.value||"")})))
