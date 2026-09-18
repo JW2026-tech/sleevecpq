@@ -1103,8 +1103,18 @@
   /* one card per top-level item in the quote, stacked down the left */
   .shareheroes{display:flex;flex-direction:column;gap:20px;margin-bottom:8px}
   .sharehero{flex:0 0 auto;min-width:0;border:1px solid #e3e6f0;border-radius:14px;overflow:hidden;background:#fbfbfd}
-  .shareheroimg{width:100%;max-height:300px;object-fit:contain;background:#eef0f7;display:block}
-  .shareherobody{padding:22px 24px}
+  /* The photograph beside what it is a photograph of. It used to run the full
+     width of the card as a 1019×300 band, and the pictures are square or
+     upright — the applicator is 900×900, the airknives 600×900 — so fitting
+     them inside that band left 569 to 819 pixels of grey beside the machine,
+     more empty panel than photograph. In a column of its own the shapes we
+     actually have fill it, and the name, the specifications and the price
+     stand next to the thing they describe. */
+  .sharehero.has-pic{display:flex;align-items:stretch}
+  .shareheropic{flex:0 0 340px;min-height:250px;display:flex;align-items:center;justify-content:center;
+    padding:18px;background:#fff;border-right:1px solid #eceef5}
+  .shareheroimg{max-width:100%;max-height:330px;object-fit:contain;display:block}
+  .shareherobody{flex:1;min-width:0;padding:22px 24px}
   .shareherotitle{font-size:21px;font-weight:700;color:#1c2563;margin:0}
   .shareherodesc{font-size:13px;color:#666;margin-top:4px;line-height:1.4}
   .sharespecs{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 20px;margin:18px 0}
@@ -1357,6 +1367,10 @@
        park on top of the very list it is summarising */
     .shareproposalwrap{flex-direction:column}
     .shareproposalmain{order:2}
+    /* no room for two columns: the photograph goes back on top */
+    .sharehero.has-pic{flex-direction:column}
+    .shareheropic{flex:0 0 auto;min-height:0;border-right:0;border-bottom:1px solid #eceef5}
+    .shareheroimg{max-height:260px}
     .sharesidebar{order:1;flex:1 1 auto;width:100%;position:static;max-height:none;overflow:visible}
   }
   @media (max-width:480px){
@@ -15892,8 +15906,8 @@ function shareHeroCardHtml(block, first, frac){
       : (o.specs||[]).map(sp=>({label:fillSupply(sp.label||""), value:fillSupply(sp.value||"")})))
     .filter(x=>x.label&&x.value).slice(0,4);
   const qty=+(o.qty||0)||optQty(o);
-  return `<div class="sharehero">
-    ${pic?`<img class="shareheroimg" src="${pic}" alt="${esc(o.name||"")}">`:""}
+  return `<div class="sharehero${pic?" has-pic":""}">
+    ${pic?`<div class="shareheropic"><img class="shareheroimg" src="${pic}" alt="${esc(o.name||"")}"></div>`:""}
     <div class="shareherobody">
       <h3 class="shareherotitle">${qty>1?`${qty}&times; `:""}${esc(o.name||"")}</h3>
       ${(o.text||"").trim()?`<div class="shareherodesc">${esc((o.text||"").trim())}</div>`:""}
