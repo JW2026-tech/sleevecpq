@@ -5660,10 +5660,39 @@ function buildItemRows(forceTop, wantOptional){
   return out;
 }
 const buildPriceRows    = forceTop => buildItemRows(forceTop, false);
+/* Where every option stands in the catalogue, walked once. This is the one
+   order that does not move: which step it hangs from and where it sits in
+   that step, whatever happens to be in scope at the moment. */
+function optionOrderIndex(){
+  const pos=new Map(); let n=0;
+  (function walk(nodes){
+    for(const nd of nodes){ pos.set(String((nd.o&&nd.o.id)||""), ++n); walk(nd.kids); }
+  })(optionTree());
+  return pos;
+}
+/* The optional list, held in that order. A taken item comes back into this
+   list as a ghost built from the in-scope pass, carrying the position it had
+   THERE — a different numbering altogether — so taking one option or putting
+   it back shuffled the cards on the customer's page: he clicked "Add
+   upgrade" on the fourth card and the fourth card became something else.
+   Sorted per run of items, so group headings stay where they are and only
+   the lines under them are put back in their own order. */
+function sortByCatalogue(rows){
+  const pos=optionOrderIndex();
+  const key=r=>{
+    const i=pos.get(String((r.node&&r.node.o&&r.node.o.id)||""));
+    return (typeof i==="number") ? i : 1e9;
+  };
+  const out=[]; let run=[];
+  const flush=()=>{ if(run.length){ run.sort((a,b)=>key(a)-key(b)); out.push.apply(out, run); run=[]; } };
+  for(const r of rows){ if(r.isGroup){ flush(); out.push(r); } else run.push(r); }
+  flush();
+  return out;
+}
 function buildOptionalRows(forceTop){
   const rows=buildItemRows(forceTop, true);
   const taken=takenSet();
-  if(!taken.length) return rows;
+  if(!taken.length) return sortByCatalogue(rows);
   /* whatever was taken out of this list is shown here as well, marked, so
      it can be put back — it counts in the machine, never in this total */
   /* Something can sit on both sides at once — two rotary cutters, one
@@ -5693,9 +5722,9 @@ function buildOptionalRows(forceTop){
       walk(nd.kids);
     }
   })(optionTree());
-  if(!ghosts.length) return rows;
+  if(!ghosts.length) return sortByCatalogue(rows);
   /* back into the list where it was, not at the end of it */
-  return rows.concat(ghosts).sort((a,b)=>(a.ord||0)-(b.ord||0));
+  return sortByCatalogue(rows.concat(ghosts).sort((a,b)=>(a.ord||0)-(b.ord||0)));
 }
 const buildAltRows      = forceTop => buildItemRows(forceTop, "alt");
 
