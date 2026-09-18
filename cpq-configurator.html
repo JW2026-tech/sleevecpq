@@ -106,6 +106,11 @@
   .cattab.on{background:var(--track-on);color:var(--txt);box-shadow:0 1px 2px var(--shadow)}
   .catdotlive{width:6px;height:6px;border-radius:50%;background:var(--ok)}
   .cattab:not(.on) .catdotlive{background:var(--line-strong)}
+  /* not a tab you can be on: the version the last publish produced */
+  .catlatest{display:inline-flex;align-items:center;gap:5px;font-size:11px;
+    color:var(--txt-faint);padding:4px 10px;margin-left:2px;
+    border-left:1px solid var(--line);white-space:nowrap}
+  .catlatest b{color:var(--txt-dim);font-weight:600}
   .hdrquote .btn{white-space:nowrap}
   .hdrquote b{font-variant-numeric:tabular-nums}
   /* Configure's own sub-tabs: format parts and services are steps in the
@@ -13126,10 +13131,24 @@ function renderTemplatePicker(){
   if(note) note.innerHTML=`${esc(tpl.entity||"")} &middot; ${esc(tpl.currency||"")}${
     tpl.altCur?" + "+esc(tpl.altCur.currency):""} &middot; ${tpl.numFmt==="us"?"1,234.56":"1.234,56"}`;
 }
+/* The newest published version, asked for once. It was only ever learned as
+   a side effect — opening a quote, or visiting the Quotes screen — so the
+   strip could sit there all morning with no idea what the newest catalogue
+   is, which is exactly what you want to know while editing the live one. */
+let askingPublished=false;
+function ensurePublishedVersion(){
+  if(publishedVersion!==null || askingPublished || !supa) return;
+  askingPublished=true;
+  supa.from("catalogue_versions").select("version").order("version",{ascending:false}).limit(1).maybeSingle()
+    .then(({data})=>{ if(data && data.version){ publishedVersion=data.version; renderCatTabs(); } })
+    .catch(()=>{})
+    .then(()=>{ askingPublished=false; });
+}
 function renderCatTabs(){
   const el=document.getElementById("catTabs");
   if(!el) return;
   if(document.body.classList.contains("share-mode")){ el.innerHTML=""; return; }
+  ensurePublishedVersion();
   const pinned=quoteCatVersion || null;
   const onVersion=draftRev===null && !!loadedCatalogueVersion;
   el.innerHTML=`
@@ -13148,7 +13167,12 @@ function renderCatTabs(){
     ${(pinned && publishedVersion && publishedVersion>pinned)
       ? `<button class="cattab moveto" id="catTabMove"
           title="Put this quote on catalogue version ${publishedVersion}: today's prices and steps. Anything the catalogue no longer has drops out. Links already made stay where they are until you update them.">&rarr; v${publishedVersion}</button>`
-      : ""}`;
+      : ""}
+    ${/* What the newest published catalogue is. The strip said which one you
+         are IN — the live one, or the version a quote is pinned to — and
+         never what the latest one is, so editing the live catalogue told you
+         nothing about what the last publish produced. */""}
+    ${publishedVersion?`<span class="catlatest" title="The newest published catalogue version. The live catalogue is the working copy it is published from; a quote keeps the version it was written against until you move it.">newest published &nbsp;<b>v${publishedVersion}</b></span>`:""}`;
   const live=document.getElementById("catTabLive");
   if(live) live.onclick=async ()=>{
     if(draftRev!==null) return;                       // already there
