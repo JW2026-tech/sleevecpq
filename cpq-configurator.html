@@ -660,6 +660,8 @@
   .partstable td{padding:3px 6px;border-bottom:1px solid var(--line-soft)}
   .pricebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
   .pricebar .in{max-width:320px}
+  .pricetable .keycell{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:11.5px;color:var(--txt-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pricebar .meta b{color:var(--txt)}
   .pricetable td{padding:2px 6px}
   .pricetable .pathcell{color:var(--txt-faint);font-size:11.5px}
@@ -8117,7 +8119,7 @@ function priceListRows(){
     }
   })(CONFIG.modules||[], []);
   const f=priceFilter.trim().toLowerCase();
-  return f ? out.filter(r=>(r.path+" "+(r.o.name||"")+" "+(r.o.text||"")).toLowerCase().includes(f)) : out;
+  return f ? out.filter(r=>(r.path+" "+(r.o.name||"")+" "+(r.o.id||"")+" "+(r.o.text||"")).toLowerCase().includes(f)) : out;
 }
 function renderCommercialAdmin(){
   const c=ensureCommercial();
@@ -8216,18 +8218,26 @@ function renderPriceListAdmin(){
     <div class="ed-head"><h2 style="margin:0;font-size:21px;font-weight:600">All prices</h2></div>
     <div class="sublbl" style="margin:2px 0 14px">Every option in the catalogue, wherever it sits. Fill in cost and price here and it lands on the option itself — the same figures the tree shows.</div>
     <div class="pricebar">
-      <input class="in" id="priceSearch" value="${esc(priceFilter)}" placeholder="Filter by step, option or description…">
+      <input class="in" id="priceSearch" value="${esc(priceFilter)}" placeholder="Filter by step, option, key or description…">
       <span class="meta">${rows.length} of ${all} option${all===1?"":"s"}</span>
       <span class="spacer"></span>
       <span class="meta">cost <b>${fmt(sum("cost"))}</b> · price <b>${fmt(sum("price"))}</b></span>
       <button class="btn sm" id="priceCsv">Export CSV</button>
     </div>
     ${rows.length?`<div class="tablewrap"><table class="partstable pricetable">
-      <colgroup><col style="width:26%"><col style="width:22%"><col style="width:11%"><col style="width:11%"><col style="width:6%"><col style="width:24%"></colgroup>
-      <tr><th>Step</th><th>Option</th><th class="num">Cost</th><th class="num">Price</th><th class="num">Margin</th><th>Description</th></tr>
+      ${/* The key as well. It is what the option is called everywhere that
+           is not this screen — in the export, in an order, in a mail from
+           the works — and this list, the one place you go to compare prices
+           across the whole catalogue, was the one place you could not see
+           it. Shown, not editable: changing a key is a different act with
+           consequences elsewhere, and it has its place in the option
+           itself. */""}
+      <colgroup><col style="width:24%"><col style="width:20%"><col style="width:12%"><col style="width:10%"><col style="width:10%"><col style="width:6%"><col style="width:18%"></colgroup>
+      <tr><th>Step</th><th>Option</th><th>Key</th><th class="num">Cost</th><th class="num">Price</th><th class="num">Margin</th><th>Description</th></tr>
       ${rows.map((r,i)=>`<tr data-pri="${i}">
         <td class="pathcell">${esc(r.path)}</td>
         <td><input class="in" value="${esc(r.o.name||"")}" data-pf2="name"></td>
+        <td class="keycell" title="The option's key — edit it on the option itself">${esc(r.o.id||"")}</td>
         <td><input class="in num" type="number" step="100" value="${+r.o.cost||0}" data-pf2="cost"></td>
         <td><input class="in num" type="number" step="100" value="${+r.o.price||0}" data-pf2="price"></td>
         <td class="num margin ${marg(r.o)!==null&&marg(r.o)<0?"bad":""}">${marg(r.o)===null?"—":marg(r.o)+"%"}</td>
