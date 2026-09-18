@@ -5890,7 +5890,20 @@ document.addEventListener("click", ev=>{
   if(!isProp) return;
   const pid=b.dataset.propall ? String(raw).split("|")[0]
                               : (raw.match(/^prop:([^:@|]+)/)||[])[1]||"prop";
-  shareAddBefore={prices:shareBlockPrices(), pid};
+  /* which type he picked, read off the column he clicked in — the table
+     header carries the name ("Hygenic feet"), and without it his own line on
+     the card could only say that something had been changed. */
+  let label="";
+  try{
+    const td=b.closest("td"), tbl=b.closest("table");
+    if(td && tbl){
+      const i=Array.prototype.indexOf.call(td.parentElement.children, td);
+      const th=tbl.querySelectorAll("thead th")[i];
+      const nm=th && th.querySelector(".tname");
+      label=((nm&&nm.textContent)||"").trim();
+    }
+  }catch(err){}
+  shareAddBefore={prices:shareBlockPrices(), pid, label};
 }, true);
 function shareNoteAdds(){
   const was=shareAddBefore; shareAddBefore=null;
@@ -5902,6 +5915,7 @@ function shareNoteAdds(){
     const key=id+"|"+was.pid;
     const e=shareAdds[key]||(shareAdds[key]={step:id, amount:0});
     e.amount+=d;
+    if(was.label) e.label=was.label;      // the newest choice is the one that stands
     if(Math.abs(e.amount)<0.005) delete shareAdds[key];   // back to what we quoted
   });
 }
@@ -15936,6 +15950,10 @@ function shareHeroCardHtml(block, first, frac){
   const addsHere=Object.keys(shareAdds).map(k=>shareAdds[k])
     .filter(a=>block.step && a.step===block.step.id);
   const addsSum=addsHere.reduce((n,a)=>n+(+a.amount||0), 0);
+  /* named where we know the name; a swap made before the names were kept
+     falls back on saying that it was a type */
+  const addsNames=addsHere.map(a=>esc(a.label||"")).filter(Boolean);
+  if(addsHere.length>addsNames.length) addsNames.push("the types you changed");
   const chosenSum=chosenHere.reduce((n,r)=>n+(+r.price||0), 0)+addsSum;
   const blockBase=(+block.price||0)-chosenSum;
   const specs=(featuresOf(o).length
@@ -15967,8 +15985,8 @@ function shareHeroCardHtml(block, first, frac){
             block.also.map(o=>esc(o.name||"")).join(" &middot; ")}</div>`:""}
           ${(chosenHere.length||addsSum)?`<div class="sharebasechosen">
             <b>+ ${fmt(chosenSum)}</b> selected options
-            <span>${chosenHere.map(r=>esc((r.node.o&&r.node.o.name)||"")).join(" &middot; ")}${
-              addsSum?(chosenHere.length?" &middot; ":"")+"the types you changed":""}</span>
+            <span>${chosenHere.map(r=>esc((r.node.o&&r.node.o.name)||""))
+              .concat(addsNames).join(" &middot; ")}</span>
           </div>`:""}
         </div>
         ${/* a figure the customer can hold us to, rather than a slogan —
