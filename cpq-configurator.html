@@ -9000,6 +9000,46 @@ function renderSpecAdmin(){
   });
 }
 
+/* Typing a key that already exists. The same key is the same thing (see
+   linkOptionsByKey), so an option that takes the key of another IS that
+   other one — and if nothing is said, the next catalogue load quietly makes
+   it so, with the first place in the catalogue winning and whatever was
+   typed here thrown away. That is exactly the kind of silent replacement
+   the price of a machine should never suffer, so it is asked here, at the
+   moment the key is entered, while both answers are still open:
+   take everything from the option that exists, or keep this one apart and
+   give it a key of its own. */
+function adoptByKey(m, i, el){
+  const o=m && m.options && m.options[i];
+  if(!o) return;
+  const key=String(o.id||"").trim();
+  if(!key) return;
+  const twins=[];
+  (function walk(mods){
+    for(const mod of (mods||[])) for(const x of (mod.options||[])){
+      if(x!==o && String(x.id||"")===key) twins.push(x);
+      if(x.children && x.children.length) walk(x.children);
+    }
+  })(CONFIG.modules||[]);
+  if(!twins.length) return;
+  const twin=twins[0], was=el.defaultValue||"";
+  const bits=[];
+  if(+twin.price) bits.push("price "+fmt(+twin.price));
+  if(+twin.cost)  bits.push("cost "+fmt(+twin.cost));
+  if((twin.specs||[]).length) bits.push((twin.specs||[]).length+" specification line"+((twin.specs||[]).length===1?"":"s"));
+  if((twin.children||[]).length) bits.push((twin.children||[]).length+" sub-step"+((twin.children||[]).length===1?"":"s"));
+  const ok=confirm(
+    `The key ${key} already belongs to "${twin.name||key}"`+
+    (twins.length>1?` — in ${twins.length} places.`:".")+
+    `\n\nThe same key is the same thing, so this option can become that one:`+
+    (bits.length?` ${bits.join(", ")},`:"")+
+    ` its description, dependencies and everything under it — one option, edited in one place from now on.`+
+    `\n\nOK  —  take everything from the existing option. What you filled in here is replaced.`+
+    `\nCancel  —  keep this one separate; the key goes back to ${was||"(empty)"}.`);
+  if(ok){ m.options[i]=twin; }
+  else { o.id=was; }
+  renderConfigureQuiet();
+}
 function wireEditor(m,list,idx){
   const ed=document.getElementById("editor");
 
@@ -9018,7 +9058,8 @@ function wireEditor(m,list,idx){
           if(row) row.textContent=el.value||"Untitled";
         }
       };
-      if(f==="id"||f==="name") el.onchange=()=>renderAdmin();
+      if(f==="id"&&card) el.onchange=()=>{ adoptByKey(m, +card.dataset.oi, el); renderAdmin(); };
+      else if(f==="id"||f==="name") el.onchange=()=>renderAdmin();
       if(f==="defScope") el.onchange=()=>{ target.defScope=el.value; renderConfigureQuiet(); renderAdmin(); };
       if(f==="packaging") el.onchange=()=>{
         const v=Math.max(0,+el.value||0);
