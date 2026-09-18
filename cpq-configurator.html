@@ -10920,15 +10920,31 @@ function logoBlock(cls){
   return `<div class="stlogo ${cls||""}">${logoSvg()}<div class="stword">${esc(t.entity||"")}</div></div>`;
 }
 
-/* The date on a quotation is the day it was written, not the day it is
-   being looked at. It was new Date(), so every quotation was dated today —
-   a customer opening a link from three weeks ago saw today's date on it,
-   and the same document printed twice carried two different dates.
-   It travels in the quote itself, which is what the link freezes, so what
-   he sees stays what it was when it went out. */
-let quoteCreatedAt=null;
+/* The date on a quotation is the day THIS VERSION was written, not the day
+   it is being looked at and not the day the quote was first started.
+   It began as new Date(), so a link from three weeks ago was dated today.
+   The repair took the day the quote was created — and that was wrong the
+   other way round: 202848 began on 8 September, but the customer is holding
+   revision 12, which went out on the 17th. He is not reading a document from
+   the 8th; that one has been superseded twice over.
+   So: the revision in front of you is dated when it went out. A link knows
+   that of itself (version_at, from get_shared_quote). On our side it is the
+   link belonging to the revision on screen. A revision still being prepared
+   has no date yet — it gets one the day it leaves, so until then it shows
+   today; and a quote that has never been shared at all keeps the day it was
+   started, which is the only date it has. */
+let quoteCreatedAt=null;      // in the link: the day that version went out
+function quoteDocDate(){
+  const rev=quoteRevision||null;
+  const s=(rev && Array.isArray(quoteShares))
+    ? quoteShares.find(x=>x && x.revision===rev) : null;
+  if(s) return s.sent_at||s.pushed_at||s.created_at||null;
+  if(rev && rev>1) return null;          // being prepared: dated the day it goes out
+  return quoteCreatedAt||null;
+}
 function quoteDate(){
-  const d=quoteCreatedAt?new Date(quoteCreatedAt):new Date();
+  const v=quoteDocDate();
+  const d=v?new Date(v):new Date();
   const p=n=>String(n).padStart(2,"0");
   return `${p(d.getDate())}-${p(d.getMonth()+1)}-${d.getFullYear()}`;
 }
@@ -16278,16 +16294,17 @@ async function bootShareMode(token){
   applyCatalogue({catalogue: data.catalogue});
   applyQuote(data.quote);
   shareTabTitle();
-  /* The date the customer reads. A quotation written since it began
-     carrying its own date says so itself; an older one has no stamp, and
-     the day the link was sent is the day that quotation reached him —
-     nearer the truth than today, which is what he would otherwise see,
-     and which made a three-week-old link look freshly written. A link is
-     not always marked as sent, so the copy it froze falls back on when it
-     was written away — the same day, give or take the minutes. */
+  /* The date the customer reads: the day THIS link went out — sent if we
+     marked it so, otherwise updated, otherwise made (version_at). The copy
+     the link carries cannot answer it: the moment he changes anything, that
+     copy is his and carries the minute he clicked, and the quotation would
+     start to be dated by the day he was reading it. version_at comes from
+     the database; the rest is what an older database can still tell us, and
+     the copy's own stamp only while he has changed nothing. */
   shareAdds=(data.quote && data.quote.customerAdds) || {};
-  quoteCreatedAt=(data.quote && data.quote.createdAt) || data.sent_at
-    || (data.quote && data.quote.savedAt) || null;
+  quoteCreatedAt=data.version_at || data.sent_at
+    || (!data.customer_changed && data.quote && data.quote.savedAt)
+    || (data.quote && data.quote.createdAt) || null;
   renderShareMode();
 }
 /* Throw away the customer's own copy so the link shows the quotation as it
