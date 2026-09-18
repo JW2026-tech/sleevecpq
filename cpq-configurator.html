@@ -1632,7 +1632,10 @@
   .opt.blocked{opacity:.78}
   .clashnote{color:var(--bad);font-size:11px;margin-top:5px}
   .dupnote{font-size:10.5px;color:var(--warn);border:1px solid var(--warn-border);border-radius:20px;
-    padding:1px 8px;white-space:nowrap;align-self:center}
+    padding:1px 8px;white-space:nowrap;align-self:center;display:inline-flex;align-items:center;gap:7px}
+  .dupdel{font:inherit;color:var(--warn);background:none;border:0;border-left:1px solid var(--warn-border);
+    padding:1px 0 1px 7px;margin:0;cursor:pointer;text-decoration:underline}
+  .dupdel:hover{color:var(--bad)}
   .altnote{color:#8b5cf6;font-size:11px;margin-top:5px}
   /* an extra offered on top of an alternative: amber like the other
      optional cues, but tied to the purple of the alternative it hangs on */
@@ -7752,7 +7755,13 @@ function renderAdmin(){
           </div>
           <div class="row">
             <input class="in mono ${dup.has(o.id)?"dup":""}" value="${esc(o.id)}" data-f="id" placeholder="key">
-            ${optionPlaces(o.id).length>1?`<span class="dupnote" title="${esc(optionPlaces(o.id).map(pl=>pl.path).join(" | "))}">also in ${optionPlaces(o.id).length-1} other place${optionPlaces(o.id).length>2?"s":""} — deleting removes all</span>`:""}
+            ${/* An option in more than one place: the × on this card takes it
+                 out of THIS step and leaves it standing in the others, which
+                 is what a × on a card ought to mean. Removing the option from
+                 the catalogue altogether is a different act and has its own
+                 button here, next to the places it would empty. */""}
+            ${optionPlaces(o.id).length>1?`<span class="dupnote" title="${esc(optionPlaces(o.id).map(pl=>pl.path).join(" | "))}">also in ${optionPlaces(o.id).length-1} other place${optionPlaces(o.id).length>2?"s":""}
+              <button class="dupdel" data-act="odelall" title="Remove this option from every place it stands in">remove everywhere</button></span>`:""}
             <input class="in" value="${esc(o.tag||"")}" data-f="tag" placeholder="Tag (optional)">
           </div>
           ${/* Two columns of always-open cards. These four used to be
@@ -9310,11 +9319,17 @@ function wireEditor(m,list,idx){
       else if(act==="oadd") m.options.push({id:uid("opt"),name:"New option",note:"",price:0,tag:""});
       else if(act==="odel"){
         const o=m.options[oi], places=optionPlaces(o.id);
-        const msg = places.length>1
-          ? `"${o.name}" sits in ${places.length} places in the catalogue:\n\n${places.map(pl=>"• "+pl.path).join("\n")}\n\nDelete all of them?`
+        const elders=places.filter(pl=>!(pl.m===m && pl.i===oi));
+        const msg = elders.length
+          ? `Take "${o.name}" out of this step?\n\nIt stays where it also stands:\n${elders.map(pl=>"• "+pl.path).join("\n")}\n\nUse "remove everywhere" beside the key to take it out of all of them.`
           : "Delete this option and any sub-steps under it?";
         if(!confirm(msg)) return;
-        if(places.length>1) deleteOptionEverywhere(o.id); else m.options.splice(oi,1);
+        m.options.splice(oi,1);
+      }
+      else if(act==="odelall"){
+        const o=m.options[oi], places=optionPlaces(o.id);
+        if(!confirm(`"${o.name}" stands in ${places.length} places:\n\n${places.map(pl=>"• "+pl.path).join("\n")}\n\nRemove it from all of them?`)) return;
+        deleteOptionEverywhere(o.id);
       }
       else if(act==="oup"){ const t=m.options; [t[oi-1],t[oi]]=[t[oi],t[oi-1]]; }
       else if(act==="odown"){ const t=m.options; [t[oi+1],t[oi]]=[t[oi],t[oi+1]]; }
