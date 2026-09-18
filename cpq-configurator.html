@@ -15930,7 +15930,13 @@ function shareHeroCardHtml(block, first, frac){
      belonging to this block's step */
   const chosenHere=scaleRows(buildOptionalRows(false), frac)
     .filter(r=>!r.isGroup && !r.subtotal && r.taken && (r.node.root||null)===(block.step||null));
-  const chosenSum=chosenHere.reduce((n,r)=>n+(+r.price||0), 0);
+  /* and the type swaps he made on this machine, which land on it the same
+     way — the summary takes both out of the machine line, so the card has to
+     take out both or the two figures part company again */
+  const addsHere=Object.keys(shareAdds).map(k=>shareAdds[k])
+    .filter(a=>block.step && a.step===block.step.id);
+  const addsSum=addsHere.reduce((n,a)=>n+(+a.amount||0), 0);
+  const chosenSum=chosenHere.reduce((n,r)=>n+(+r.price||0), 0)+addsSum;
   const blockBase=(+block.price||0)-chosenSum;
   const specs=(featuresOf(o).length
       ? featuresOf(o).map(f=>({label:f.label, value:f.value||"yes"}))
@@ -15959,9 +15965,10 @@ function shareHeroCardHtml(block, first, frac){
           <div class="sharebaseprice">${blockBase?fmt(blockBase):"—"}</div>
           ${(block.also||[]).length?`<div class="sharebaseincl">${
             block.also.map(o=>esc(o.name||"")).join(" &middot; ")}</div>`:""}
-          ${chosenHere.length?`<div class="sharebasechosen">
+          ${(chosenHere.length||addsSum)?`<div class="sharebasechosen">
             <b>+ ${fmt(chosenSum)}</b> selected options
-            <span>${chosenHere.map(r=>esc((r.node.o&&r.node.o.name)||"")).join(" &middot; ")}</span>
+            <span>${chosenHere.map(r=>esc((r.node.o&&r.node.o.name)||"")).join(" &middot; ")}${
+              addsSum?(chosenHere.length?" &middot; ":"")+"the types you changed":""}</span>
           </div>`:""}
         </div>
         ${/* a figure the customer can hold us to, rather than a slogan —
