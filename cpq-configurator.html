@@ -10042,6 +10042,10 @@ document.getElementById("comNavBtn").onclick=()=>{ adminSection="commercial"; re
    page, so "export" is browser print → Save as PDF. */
 const DOC_TABS=[
   {id:"customer", label:"Customer",                          kind:"customer"},
+  /* section 1 of the printed quotation — it had no tab at all, so the one
+     page of the document nobody could read on screen was the one that says
+     what the rest of it contains */
+  {id:"intro",    label:"Introduction",                      kind:"intro"},
   {id:"memo",     label:"Header memo",                       kind:"free"},
   {id:"scope",    label:"Scope of supply",                   kind:"gen"},
   {id:"products", label:"Products & sleeve specifications",  kind:"specs"},
@@ -10909,6 +10913,7 @@ function renderDocs(){
   if(docsTab==="proposal"){ el.innerHTML=proposalHtml(); wirePriceToggles(el); wireOpenWarn(el); wireDiscount(el); return; }
   if(docsTab==="commercial"){ seedCommercial(); el.innerHTML=commercialPageHtml(); wireCommercialTerms(el); return; }
   if(docsTab==="terms"){ renderTerms(el); return; }
+  if(docsTab==="intro"){ renderIntro(el); return; }
   if(docsTab==="products"){ renderProductSpecs(el); return; }
   if(docsTab==="machine"){ renderMachineSpecs(el); return; }
 
@@ -10926,6 +10931,34 @@ function renderDocs(){
   ft.addEventListener("blur",()=>{ if(!ft.textContent.trim()){ CONFIG.docs[docsTab]=""; renderDocs(); } });
 }
 
+/* The introduction, as it will be printed. It is the same text for every
+   quotation until someone rewords it, so the tab shows the standard text
+   rather than an empty box asking for one — with the standard clearly
+   marked as standard, and a way back to it once it has been changed. What
+   is stored is only what THIS quote says differently (CONFIG.docs.intro),
+   so leaving it alone keeps every quotation in step with the house text. */
+function renderIntro(el){
+  CONFIG.docs=CONFIG.docs||{};
+  const own=(CONFIG.docs.intro||"").trim();
+  el.innerHTML=`<h2>Introduction</h2>
+    <div class="docsub">Printed as section 1, and shown to the customer as the first page of the link.
+      ${own?"This quotation has its own wording.":"This is the standard text — edit it and only this quotation changes."}</div>
+    <div class="actions no-print" style="margin:10px 0 6px">
+      <button class="btn sm" id="introReset" ${own?"":"disabled"}
+        title="${own?"Go back to the standard introduction":"This quotation already uses the standard text"}">Back to the standard text</button>
+    </div>
+    ${richToolbarHtml()}
+    <div class="freetext" contenteditable="true" data-key="intro">${own||standardIntroHtml()}</div>`;
+  const reset=document.getElementById("introReset");
+  if(reset) reset.onclick=()=>{
+    if(!confirm("Put the standard introduction back? What this quotation says instead is lost.")) return;
+    CONFIG.docs.intro=""; renderDocs();
+  };
+  const ft=el.querySelector(".freetext");
+  wireRichText(ft, el.querySelector(".rtbar"));
+  ft.addEventListener("input",()=>{ CONFIG.docs.intro=ft.innerHTML; });
+  ft.addEventListener("blur",()=>{ if(!ft.textContent.trim()){ CONFIG.docs.intro=""; renderDocs(); } });
+}
 /* Terms & Conditions shows one text block per language/country. Which
    language is active is decided in Configure (or by clicking a pill here —
    both control the same docLang); managing the list of languages and their
@@ -11206,8 +11239,12 @@ function contactPageHtml(){
 }
 function introSectionHtml(){
   const custom=(CONFIG.docs&&CONFIG.docs.intro||"").trim();
-  if(custom) return `<h2>1. Introduction</h2>${custom}`;
-  return `<h2>1. Introduction</h2>
+  return `<h2>1. Introduction</h2>${custom||standardIntroHtml()}`;
+}
+/* the house text, on its own so the Introduction tab can show what is going
+   to be printed instead of an empty box */
+function standardIntroHtml(){
+  return `
     <p>This quotation is about our sleeving equipment intended to fulfil your sleeving needs.</p>
     <p>Our sleeve application machines are specially designed to suit the customers' individual requirements, but are all based on well proven principles and are equipped with the latest control technology. The machines are reliable, simple to use, flexible and they have an efficiency of &ge;98%.</p>
     <h4>Machine performance efficiency</h4>
@@ -16473,6 +16510,12 @@ function shareDocSections(){
   return [
     {id:"cover", nav:"Cover", html: shareCoverHtml(), bare:true},
     memo && {id:"memo", nav:"Note", html: memo, ownTitle:false},
+    /* Section 1, which used to be left out of the link on the grounds that a
+       nav bar says by itself what each chapter contains. It says more than
+       that — the efficiency we guarantee, how it is measured, what the
+       quotation is based on — and it is the page the printed document opens
+       with, so the link opens with it too. */
+    {id:"intro", nav:"Introduction", html: introSectionHtml()},
     {id:"scope", nav:"Scope of supply", html: scopeHtml()},
     {id:"specs", nav:"Product & sleeve specs", html: printSpecsHtml()},
     {id:"machinespecs", nav:"Machine specs", html: machineSpecSectionHtml()},
