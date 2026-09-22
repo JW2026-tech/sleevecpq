@@ -11126,7 +11126,12 @@ function logoBlock(cls){
    today; and a quote that has never been shared at all keeps the day it was
    started, which is the only date it has. */
 let quoteCreatedAt=null;      // in the link: the day that version went out
+/* A headless render is handed the date the document must carry: it has no
+   link rows to look in, and the day it happens to run is nobody's idea of
+   when the quotation was written. */
+let quoteDocOverride=null;
 function quoteDocDate(){
+  if(quoteDocOverride) return quoteDocOverride;
   const rev=quoteRevision||null;
   const s=(rev && Array.isArray(quoteShares))
     ? quoteShares.find(x=>x && x.revision===rev) : null;
@@ -16996,6 +17001,7 @@ async function boot(){
   if(params.get("render")==="1"){
     window.__cpqRenderReady=false;
     window.__cpqRenderQuote=async function(payload){
+      quoteDocOverride=payload.versionAt||null;
       applyCatalogue({catalogue: payload.catalogue});
       applyQuote(payload.quote);
       document.getElementById("allDocsBody").innerHTML=buildAllDocsHtml();

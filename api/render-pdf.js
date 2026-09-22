@@ -109,7 +109,7 @@ module.exports = async (req, res) => {
     return;
   }
 
-  let quoteData, quoteNumber, catalogueData;
+  let quoteData, quoteNumber, catalogueData, versionAt = null;
 
   if (token) {
     // Customer downloading their own proposal from the share link — the
@@ -127,6 +127,7 @@ module.exports = async (req, res) => {
     quoteData = shared.quote;
     quoteNumber = shared.number;
     catalogueData = shared.catalogue;
+    versionAt = shared.version_at || shared.sent_at || null;
   } else {
     // TEMPORARY TEST MODE: a missing/invalid bearer is allowed through so PDF
     // rendering can be tried before Microsoft/Azure sign-in is set up (see the
@@ -161,7 +162,9 @@ module.exports = async (req, res) => {
     catalogueData = catRow.data;
   }
 
-  const payload = { quote: quoteData, catalogue: catalogueData };
+  // the day this version went out, so the printed document is dated like
+  // the page it was printed from instead of like the day it was printed
+  const payload = { quote: quoteData, catalogue: catalogueData, versionAt };
 
   let browser;
   try {
