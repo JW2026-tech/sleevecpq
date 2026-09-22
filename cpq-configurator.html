@@ -7611,8 +7611,14 @@ function exportStepsCsv(){
   setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   flagSaved("Exported");
 }
+/* A new step allows more than one choice unless someone says otherwise.
+   Single-choice was the default because the first steps built here were
+   either/or machines, but most of what has been added since - options,
+   upgrades, accessories - is not, and every one of them had to have the box
+   ticked by hand. The box is still there for the steps that really are a
+   choice between one thing and another. */
 function blankModule(){
-  return {id:uid("step"),title:"New step",desc:"",multi:false,
+  return {id:uid("step"),title:"New step",desc:"",multi:true,
     options:[{id:uid("opt"),name:"New option",note:"",price:0,tag:""}]};
 }
 /* total module count in a subtree — used to show "N steps hidden" on a
