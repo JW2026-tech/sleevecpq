@@ -6164,6 +6164,27 @@ function stepPicture(m){
   return o?o.image:"";
 }
 const rowPicture = o => (o && o.image) ? o.image : "";
+/* The picture for a line in the breakdown. Its own, and otherwise the first
+   one in the branch it stands for: the Shrinking line carries no photograph,
+   the steam tunnel chosen under it does, and a list of machines with one
+   picture in it reads like a mistake. Alternatives and optional items are
+   skipped — the line is about what is in the quotation. The step's own
+   picture is the last resort, which is what a collapsed group already uses. */
+function rowPictureDeep(r){
+  const nd=r&&r.node, o=nd&&nd.o;
+  if(o&&o.image) return o.image;
+  let found="";
+  (function deep(kids){
+    for(const k of (kids||[])){
+      if(found) return;
+      if(k.o && k.o.image && !k.o.alt && !k.o.optional){ found=k.o.image; return; }
+      deep(k.kids);
+    }
+  })(nd?nd.kids:[]);
+  if(found) return found;
+  const step=(r&&r.group)||(nd&&nd.root)||null;
+  return step?stepPicture(step):"";
+}
 function priceRowHtml(r, actPrefix){
   const nd=r.node, o=nd.o, top=nd.depth===0;
   const canHide = r.canHide===undefined ? true : r.canHide;
@@ -6183,14 +6204,15 @@ function priceRowHtml(r, actPrefix){
   /* A top item with a picture is set as a tile: the photograph beside the
      name, the money large on the right and a few lines from its own
      functionalities or specifications underneath. */
-  if(top && rowPicture(o) && !r.subtotal){
+  const tilePic=top&&!r.subtotal?rowPictureDeep(r):"";
+  if(tilePic){
     const specs=(featuresOf(o).length
         ? featuresOf(o).map(f=>({label:f.label, value:f.value||"yes"}))
         : (o.specs||[]).map(sp=>({label:fillSupply(sp.label||""), value:fillSupply(sp.value||"")})))
       .filter(x=>x.label||x.value).slice(0,4);
     return `<div class="pline lvl0 tilerow ${r.taken?"is-taken":""}">
       <div class="ptilewrap">
-        <img class="plinepic big" src="${rowPicture(o)}" alt="${esc(o.name||"")}">
+        <img class="plinepic big" src="${tilePic}" alt="${esc(o.name||"")}">
         <div class="ptilebody">
           <div class="ptilehead">
             <div class="ptitle">${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${
