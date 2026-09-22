@@ -47,6 +47,32 @@ module.exports = async (req, res) => {
         out.render_page = { ok: r.ok, status: r.status };
       } catch (err) { out.render_page = { ok: false, error: String(err && err.message || err) }; }
     }
+    // The other half of the machine: a browser that has to start inside a
+    // serverless function and print a page. It can fail on its own account
+    // (no binary, too little memory, a page that never becomes ready) and
+    // that has nothing to do with the database, so it can be asked on its
+    // own too: ?check=render prints the app with no quote in it and reports
+    // what came out. Nothing is read or written anywhere.
+    if (String((req.query || {}).check) === 'render') {
+      const t0 = Date.now();
+      let browser;
+      try {
+        browser = await puppeteer.launch({
+          args: chromium.args,
+          executablePath: await chromium.executablePath(),
+          headless: chromium.headless,
+        });
+        const page = await browser.newPage();
+        await page.goto(`${process.env.APP_URL}/?render=1`, { waitUntil: 'networkidle0' });
+        await page.waitForFunction('typeof window.__cpqRenderQuote === "function"', { timeout: 20000 });
+        const pdf = await page.pdf({ format: 'A4', printBackground: true });
+        out.browser = { ok: true, seconds: Math.round((Date.now() - t0) / 100) / 10,
+                        pdf_kilobytes: Math.round(pdf.length / 1024) };
+      } catch (err) {
+        out.browser = { ok: false, seconds: Math.round((Date.now() - t0) / 100) / 10,
+                        error: String(err && err.message || err).slice(0, 300) };
+      } finally { if (browser) await browser.close(); }
+    }
     res.status(200).json(out);
     return;
   }
