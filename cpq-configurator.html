@@ -10706,7 +10706,7 @@ function investmentGrandTotal(){
 /* `opts.skipOptional`/`opts.skipAlts` leave out the optional-items and
    alternatives sections — used by the customer link, which shows those two
    as card grids of their own above the itemised list (see
-   shareProposalHtml()) and would otherwise say everything twice. */
+   shareProposalBody()) and would otherwise say everything twice. */
 function proposalHtml(opts){
   const o_=opts||{};
   /* the two lists are now split at source — buildItemRows() emits either
@@ -11397,10 +11397,6 @@ function renumberedTerms(prefix){
   });
   return box.innerHTML;
 }
-function printTermsHtml(){
-  return `<h2>6. General terms and conditions</h2>
-    <div class="freetext termstext">${renumberedTerms("6.")}</div>`;
-}
 function printSpecsHtml(){
   return `<h2>2. Product and sleeve specifications</h2>
     <p>This quotation is based on the following information:</p>
@@ -11408,25 +11404,72 @@ function printSpecsHtml(){
     ${specTableHtml("sleeve","Sleeve properties",true)}`;
 }
 
+/* ============================================================
+   THE QUOTATION, ONCE
+   The printed document and the customer link were two documents that
+   happened to call the same builders. Two lists, two titles for the same
+   page — "Machine scope and specifications" on paper, "Scope of supply" in
+   the link — chapter numbers typed by hand into seven separate strings, and
+   two of those overwritten again by a regex in the assembler. Everything
+   that drifted this week drifted through that seam: a chapter that exists on
+   one side only, numbers that stop matching when a chapter goes, clause
+   numbers in the terms derived from a section number nobody updated.
+   So the quotation is described once, here. A chapter says what it is called
+   and how to build itself; its number is its place in the list, not
+   something written into its heading. The PDF prints them in order with
+   their numbers; the link shows the same chapters as pages under the same
+   titles. Neither side can gain or lose one without the other.
+   Two differences remain, on purpose. The PDF carries the contact and bank
+   page, which the link does not need — it has our details beside every page
+   already. And the customer's own summary travels down the three pages where
+   he is choosing something, which is furniture for a screen, not for paper.
+   ============================================================ */
+function quoteChapters(){
+  ensureLanguages(); ensureSpecs();
+  return [
+    {id:"scope",    title:"Scope of supply",                   cls:"pg-scope",
+     body:()=>stripOwnHeading(scopeHtml())},
+    {id:"specs",    title:"Product and sleeve specifications", cls:"",
+     body:()=>stripOwnHeading(printSpecsHtml())},
+    {id:"machine",  title:"Machine specifications",            cls:"",
+     body:()=>stripOwnHeading(machineSpecSectionHtml())},
+    {id:"proposal", title:"Investment proposal",               cls:"pg-proposal", summary:true,
+     body:()=>shareProposalBody()},
+    {id:"optional", title:"Optional items",                    cls:"pg-cards",    summary:true,
+     body:()=>shareOptionalBody()},
+    {id:"alts",     title:"Alternatives",                      cls:"pg-cards",    summary:true,
+     body:()=>shareAlternativesBody()},
+    {id:"terms",    title:"Commercial terms and conditions",   cls:"",
+     body:(no)=>stripOwnHeading(deliverySectionHtml())+termsChapterHtml(no)},
+  ];
+}
+/* the builders still write a heading of their own; the chapter owns the
+   title now, so that one comes off */
+function stripOwnHeading(html){
+  return String(html||"").replace(/<h2\b[^>]*>[\s\S]*?<\/h2>\s*/i, "");
+}
+/* the general terms, numbered from the chapter they sit in — 7.1, 7.2 on
+   paper; in the link, where no chapter carries a number, 1, 2, 3 */
+function termsChapterHtml(no){
+  const txt=((CONFIG.docs&&CONFIG.docs.terms&&CONFIG.docs.terms[docLang])||"").trim();
+  if(!txt) return "";
+  return `<h3 class="termshead">General terms and conditions</h3>
+    <div class="freetext termstext">${renumberedTerms(no?no+".":"")}</div>`;
+}
 function buildAllDocsHtml(){
   ensureLanguages();
   ensureSpecs();
   const memo=(CONFIG.docs&&CONFIG.docs.memo||"").trim();
-  /* section bodies in the reference documents' fixed order */
+  /* front matter — who it is for, who we are, anything written for this one
+     quotation — and then the chapters, numbered by their place in the list */
   const bodies=[
     contactPageHtml(),
-    /* The introduction is gone — it said what each following chapter
-       contains, which the chapters do themselves, and it was the one page of
-       the quotation nobody ever changed. Everything after it moves up a
-       number, here and in the sections that print their own heading. */
     memo?`${memo}`:"",
-    {cls:"pg-scope", html:`<h2>1. Machine scope and specifications</h2>${scopeHtml().replace(/^[\s\S]*?<\/h2>/,"")}`},
-    printSpecsHtml(),
-    machineSpecSectionHtml(),
-    {cls:"pg-proposal", html:`<h2>4. Investment proposal</h2>${proposalHtml().replace(/^[\s\S]*?<\/h2>/,"")}`},
-    deliverySectionHtml(),
-    printTermsHtml()
-  ].filter(Boolean).map(b=>typeof b==="string"?{cls:"",html:b}:b);
+  ].concat(quoteChapters().map((c,i)=>({
+      cls:c.cls,
+      html:`<h2>${i+1}. ${esc(c.title)}</h2>${c.body(i+1)}`
+    })))
+   .filter(Boolean).map(b=>typeof b==="string"?{cls:"",html:b}:b);
   const total=bodies.length+1; // +1 for the cover
   return coverPageHtml(total) + bodies.map((b,i)=>docPage(b.html, i+2, total, b.cls)).join("");
 }
@@ -15700,7 +15743,7 @@ function shareStepBlocks(frac){
      that machine's card rather than in one long list at the bottom where the
      reader has to work out for themselves which item an upgrade is for. Same
      root-step match as above. Anything with no matching block stays in the
-     leftover list (see shareProposalHtml) so no upgrade can go missing. */
+     leftover list (see shareProposalBody) so no upgrade can go missing. */
   for(const u of shareUpgradeRows(frac)){
     const home=blocks.find(b=>b.step && b.step===(u.node.root||null));
     if(home) (home.upgrades||(home.upgrades=[])).push(u);
@@ -16204,16 +16247,18 @@ function shareWithSummaryHtml(main, frac){
     </div>`;
 }
 /* the page itself, worked out the same way the proposal is */
-function shareOptionalHtml(){
-  const inScopeRows=buildPriceRows(priceDetail==="top");
-  const subtotal=priceRowsTotal(inScopeRows);
-  const frac=discountFraction(subtotal-serviceRowsTotal(inScopeRows));
-  /* The types table belongs here too: feet, counters, access doors and
-     cable tray are all "the line has these, and a better one costs extra".
-     Standing in the investment proposal it put a wall of prices nobody is
-     being charged in the middle of the one figure that is being asked for. */
-  return shareWithSummaryHtml(shareUpgradeCardsHtml(frac, shareStepBlocks(frac))
-    + sharePropTablesHtml(frac), frac);
+/* The page, and the page WITHOUT the summary beside it. The chapter is the
+   body; the sticky summary is furniture the link puts next to it, and paper
+   has no use for a column that follows you down the page. */
+function shareOptionalBody(){
+  const rows=buildPriceRows(priceDetail==="top");
+  const frac=discountFraction(priceRowsTotal(rows)-serviceRowsTotal(rows));
+  return shareUpgradeCardsHtml(frac, shareStepBlocks(frac)) + sharePropTablesHtml(frac);
+}
+function shareAlternativesBody(){
+  const rows=buildPriceRows(priceDetail==="top");
+  const frac=discountFraction(priceRowsTotal(rows)-serviceRowsTotal(rows));
+  return shareAltCardsHtml(frac, shareStepBlocks(frac));
 }
 /* the machines offered instead of the one in scope, side by side as cards.
    The full spec-by-spec comparison table still follows below (altCompareHtml
@@ -16232,12 +16277,6 @@ function shareAltCardsHtml(frac, blocks){
     </div>` + list.map(c=>shareAltGroupHtml(c, frac)).join("");
 }
 /* the page itself, worked out the same way the proposal is */
-function shareAlternativesHtml(){
-  const inScopeRows=buildPriceRows(priceDetail==="top");
-  const subtotal=priceRowsTotal(inScopeRows);
-  const frac=discountFraction(subtotal-serviceRowsTotal(inScopeRows));
-  return shareWithSummaryHtml(shareAltCardsHtml(frac, shareStepBlocks(frac)), frac);
-}
 function shareAltGroupHtml(c, frac){
     /* a property only an alternative would bring: visible so the customer
        knows it exists, greyed and buttonless because there is nothing to
@@ -16321,7 +16360,15 @@ function shareAltGroupHtml(c, frac){
       ${c.note?`<div class="secnote">${esc(c.note)}</div>`:""}
     </div>`;
 }
-function shareProposalHtml(){
+/* the discount everything on these pages is priced at, worked out the same
+   way wherever it is needed */
+function shareFracNow(){
+  const rows=buildPriceRows(priceDetail==="top");
+  return discountFraction(priceRowsTotal(rows)-serviceRowsTotal(rows));
+}
+/* the page, and the page without the column that follows the reader down it:
+   the chapter is the body, the summary is furniture the link puts beside it */
+function shareProposalBody(){
   const inScopeRows=buildPriceRows(priceDetail==="top");
   const optRowsAll=buildOptionalRows(priceDetail==="top");
   if(!inScopeRows.length && !optRowsAll.length)
@@ -16339,14 +16386,14 @@ function shareProposalHtml(){
   const fromFmt=fmtIdx<0?[]:blocks.slice(fmtIdx);
   let n=0;
   const card=b=>shareHeroCardHtml(b, n++===0, frac);
-  return shareWithSummaryHtml(`
+  return `
         <div class="shareheroes">${beforeFmt.map(card).join("")}</div>
         ${fromFmt.length?`<div class="shareheroes shareheroes-after">${fromFmt.map(card).join("")}</div>`:""}
         <div class="sharesectionhead">
           <h3>Detailed breakdown</h3>
           <div class="sharesectionsub">Every item in the scope of this quotation, with its price.</div>
         </div>
-        ${proposalHtml({skipHeader:true, skipOptional:true, skipAlts:true})}`, frac);
+        ${proposalHtml({skipHeader:true, skipOptional:true, skipAlts:true})}`;
 }
 /* Which revision of the quotation this link holds. A customer who has had
    two or three versions of the same quote has three documents carrying the
@@ -16434,16 +16481,6 @@ function shareLetterheadHtml(inner, pageTitle){
    section number, since the numbers of the quotation are stripped from
    every section title on this side. Nothing is added when there is no
    terms text for the language, so the page does not end in a bare heading. */
-function shareTermsBlockHtml(){
-  ensureLanguages();
-  const txt=((CONFIG.docs&&CONFIG.docs.terms&&CONFIG.docs.terms[docLang])||"").trim();
-  if(!txt) return "";
-  return `<h2 class="sharetermshead">General terms and conditions</h2>
-    <div class="freetext termstext">${renumberedTerms("")}</div>`;
-}
-function shareStripHeading(html){
-  return String(html||"").replace(/<h2\b[^>]*>[\s\S]*?<\/h2>\s*/i, "");
-}
 /* every section "Create complete PDF" prints, minus the cover, the contact
    pages and the introduction — the introduction is boilerplate explaining
    what each following chapter contains, which a page-per-section link with
@@ -16458,23 +16495,17 @@ function shareDocSections(){
     {id:"cover", nav:"Cover", html: shareCoverHtml(), bare:true},
     memo && {id:"memo", nav:"Note", html: memo, ownTitle:false},
 
-    {id:"scope", nav:"Scope of supply", html: scopeHtml()},
-    {id:"specs", nav:"Product & sleeve specs", html: printSpecsHtml()},
-    {id:"machinespecs", nav:"Machine specs", html: machineSpecSectionHtml()},
-    {id:"proposal", nav:"Investment proposal", html: shareProposalHtml()},
-    {id:"optional", nav:"Optional items", html: shareOptionalHtml()},
-    {id:"alternatives", nav:"Alternatives", html: shareAlternativesHtml()},
-    /* The general terms are not a chapter of their own to the customer —
-       they are the small print under what he is being offered. Behind a tab
-       of their own they read as something separate to be found; under the
-       commercial terms they read as the conditions those terms are made on,
-       which is what they are. One page: first what is agreed, then what it
-       is agreed under. */
-    {id:"delivery", nav:"Commercial terms",
-     html: deliverySectionHtml()+shareTermsBlockHtml()}
-  ].filter(Boolean)
-   .map(s=>(s.bare || s.ownTitle===false) ? s
-        : Object.assign({}, s, {html: shareStripHeading(s.html)}))
+  ].concat(quoteChapters().map(c=>{
+      /* the same chapters the printed quotation has, under the same titles.
+         No numbers: a page with a nav bar above it does not need to say it
+         is the fourth of seven, and the terms are numbered from nothing here
+         (1, 2, 3) because nothing above them carries a number either. */
+      const body=c.body(0);
+      return {id:c.id, nav:c.title, html:c.summary?shareWithSummaryHtml(body, shareFracNow()):body};
+    }))
+   /* nothing to strip any more: a chapter body never carries its own title,
+      quoteChapters() owns it */
+   .filter(Boolean)
    /* a section whose only content WAS its heading (an empty Terms text, say)
       has nothing left to show once the heading is stripped, so it drops out
       of the nav rather than becoming a blank page */
