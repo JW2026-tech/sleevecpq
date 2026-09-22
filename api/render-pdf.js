@@ -205,6 +205,15 @@ module.exports = async (req, res) => {
           const e = document.querySelector('#allDocsBody ' + sel);
           return sel + ' = ' + (e ? Math.round(e.getBoundingClientRect().width) + 'px' : 'not found');
         }),
+        // waar staat dat 'SERVICES'-blok precies, en hoe breed is het
+        services: (function(){
+          const all=[...document.querySelectorAll('#allDocsBody .pg-proposal *')]
+            .filter(e=>e.children.length===0 && /Installation/.test(e.textContent||''));
+          return all.slice(0,3).map(e=>{
+            const r=e.getBoundingClientRect(), p=e.parentElement, pr=p?p.getBoundingClientRect():null;
+            return e.className+' w='+Math.round(r.width)+' | ouder '+(p?p.className:'-')+' w='+(pr?Math.round(pr.width):'-');
+          });
+        })(),
         pictures: {
           tiles: document.querySelectorAll('#allDocsBody .plinepic').length,
           heroes: document.querySelectorAll('#allDocsBody .shareheroimg').length,
