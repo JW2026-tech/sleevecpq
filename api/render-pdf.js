@@ -40,6 +40,18 @@ module.exports = async (req, res) => {
         const { count, error } = await probe.from('quotes').select('id', { count: 'exact', head: true });
         out.database = error ? { ok: false, error: error.message } : { ok: true, quotes: count };
       } catch (err) { out.database = { ok: false, error: String(err && err.message || err) }; }
+      // The library reports a refused key as an empty message, which says
+      // nothing about WHY it was refused. The same request without the
+      // library does say: the status and the answer PostgREST actually gave.
+      // The key is never echoed back — only what the server said about it.
+      try {
+        const raw = await fetch(`${url}/rest/v1/quotes?select=id&limit=1`, {
+          headers: { apikey: key, Authorization: `Bearer ${key}` },
+        });
+        out.database_raw = { status: raw.status, answer: (await raw.text()).slice(0, 200) };
+      } catch (err) { out.database_raw = { error: String(err && err.message || err) }; }
+      out.key_shape = { starts: key.slice(0, 10), dots: (key.match(/\./g) || []).length,
+                        spaces: /\s/.test(key) };
     }
     if (app) {
       try {
