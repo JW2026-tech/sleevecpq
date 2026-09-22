@@ -12515,7 +12515,14 @@ function quoteFiguresNow(){
 }
 async function shareDiffSummary(){
   if(!quoteShare || !quoteShare.data) return null;
-  const theirQuote=quoteShare.data;
+  /* What HE is looking at, which is his own copy once he has touched
+     anything — not the copy we sent him. Measured against what we sent, the
+     panel answered "nothing has changed for him" while the bar above it said
+     he had changed something himself: both true, and together nonsense. It
+     is also the honest answer to the question the panel is asked, since
+     updating the link now drops his copy — so what he will see change is
+     the distance from where he is, not from where we left him. */
+  const theirQuote=quoteShare.customer_data || quoteShare.data;
   let theirCat=null;
   if(quoteShare.catalogue_version && supa){
     try{
