@@ -179,13 +179,21 @@ module.exports = async (req, res) => {
     // what the browser actually has in front of it at the moment of printing —
     // asked for with { debug: true }, because a 200 and 35 KB can still be a
     // photograph of the wrong screen
-    const seen = await page.evaluate(() => ({
-      ready: window.__cpqRenderReady === true,
-      printAll: document.body.classList.contains('print-all'),
-      pages: document.querySelectorAll('#allDocsBody .docpage').length,
-      quoteNumber: (window.CONFIG && CONFIG.quoteNumber) || null,
-      firstText: document.body.innerText.replace(/s+/g, ' ').slice(0, 120),
-    }));
+    await page.emulateMediaType('print');
+    const seen = await page.evaluate(() => {
+      const docs = document.getElementById('allDocsBody');
+      const app  = document.getElementById('docBody') || document.querySelector('main');
+      return {
+        ready: window.__cpqRenderReady === true,
+        printAll: document.body.classList.contains('print-all'),
+        pages: document.querySelectorAll('#allDocsBody .docpage').length,
+        printMediaMatches: window.matchMedia('print').matches,
+        docsDisplay: docs ? getComputedStyle(docs).display : '(no element)',
+        docsHeight: docs ? Math.round(docs.getBoundingClientRect().height) : null,
+        appDisplay: app ? getComputedStyle(app).display : '(no element)',
+        styleBlocks: document.querySelectorAll('style').length,
+      };
+    });
 
     // The document only exists under the print stylesheet: on screen the
     // app shows the configurator and keeps #allDocsBody hidden, and every
@@ -194,7 +202,6 @@ module.exports = async (req, res) => {
     // of the configurator — it was being rendered as a screen. Asked for
     // explicitly rather than relying on what page.pdf() emulates by default,
     // which is not the same across puppeteer versions.
-    await page.emulateMediaType('print');
     const pdf = await page.pdf({ format: 'A4', printBackground: true });
     res.status(200).json({
       ok: true,
