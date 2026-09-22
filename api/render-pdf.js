@@ -180,7 +180,11 @@ module.exports = async (req, res) => {
     res.status(200).json({
       ok: true,
       filename: `Quotation-${quoteNumber || 'draft'}.pdf`,
-      pdfBase64: pdf.toString('base64'),
+      // puppeteer 24 hands back a Uint8Array, not a Buffer, and a Uint8Array
+      // answers toString('base64') with its bytes spelled out in decimal —
+      // 37,80,68,70 instead of JVBERi0. Wrapped first, so what goes over the
+      // wire is the base64 the browser expects.
+      pdfBase64: Buffer.from(pdf).toString('base64'),
     });
   } catch (err) {
     res.status(500).json({ error: 'Rendering failed', detail: String(err && err.message || err) });
