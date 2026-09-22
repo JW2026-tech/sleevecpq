@@ -293,14 +293,7 @@
   .pbreak.muted{color:var(--txt-faint);font-style:italic}
   /* depth markers, matching the Scope of supply so the two read alike */
   .pline .bullet{flex:0 0 7px;height:7px;border-radius:2px;background:var(--txt-dim);align-self:center}
-  /* a picture turns a top line into a tile, in the same key as the
-     alternatives: image on the left, name beside it, money large on the right */
-  .plinepic{width:104px;height:74px;flex:0 0 104px;object-fit:contain;background:#fff;padding:5px;
-    border:1px solid var(--line);border-radius:10px;align-self:center}
   .pline.lvl0 .ptitle,.grouphead .ghtitle{display:flex;align-items:center;gap:12px}
-  .grouphead.collapsed.haspic{padding:10px 0 9px}
-  .grouphead.collapsed.haspic .ghtitle{font-size:14.5px}
-  .grouphead.collapsed.haspic .pval{font-size:16px;font-weight:600;color:var(--txt)}
   .pline.lvl0{padding:6px 0}
   .pline.lvl0 .ptitle{font-weight:600}
   .pline.lvl0 .bullet{background:var(--accent)}
@@ -1199,12 +1192,6 @@
   .shareheroalts .sharealtgroup + .sharealtgroup{margin-top:16px}
   .shareheroalts .sharealts{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
   .shareheroalts .secnote{font-size:11px;color:#999;margin-top:6px}
-  /* No photographs in the itemised breakdown. The machine cards at the top of
-     the page already show them at a useful size; repeated at line-height they
-     only pad the list out. .plinepic appears nowhere else on the customer's
-     page — the hero and alternative cards use their own classes — so this
-     reaches exactly the breakdown. */
-  body.share-mode .plinepic{display:none!important}
   .sharesectionhead{margin:34px 0 14px}
   .sharesectionhead h3{margin:0;font-size:14.5px;font-weight:700;color:#222;text-transform:uppercase;letter-spacing:.3px}
   .sharesectionsub{font-size:12.5px;color:#777;margin-top:2px}
@@ -1448,7 +1435,6 @@
        idea: the price was sitting on the same line as the picture+title
        via justify-content:space-between, squeezing the title down to
        almost nothing. Stack them instead. */
-    .grouphead.haspic .ghmain{flex-direction:column;align-items:flex-start;gap:6px}
     /* compare-card header: pill, name and button were fighting for space
        in one flex row — .cmpname's min-width:0 let it shrink to near
        nothing and wrap letter by letter instead of the row wrapping.
@@ -2496,7 +2482,6 @@
     body.print-all .grouphead .ghtitle{color:#28338A}
     body.print-all .pline.lvl0 .bullet{background:#EF7B0B!important}
     body.print-all .pline .qnote{color:#EF7B0B}
-    .plinepic{width:22mm;height:15mm;flex-basis:22mm;padding:.6mm;border-color:#c9cee0}
     /* On a screen the name of a machine sits in a row beside its sub-item
        list and its "incl. sub-items" tag — .ptitle is a flex container, and
        with a thousand pixels to share nobody notices. On A4 there are about
@@ -6186,7 +6171,7 @@ function priceRowHtml(r, actPrefix){
   const shareMode=document.body.classList.contains("share-mode");
   const movePriceDown = shareMode && takeBtn;
   const pvalBlock=`<div class="pval">${priceTxt}</div>${altTxt}`;
-  return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""} ${(nd.depth===0&&rowPicture(o))?"haspic":""}" style="padding-left:${nd.depth*18}px">
+  return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""}" style="padding-left:${nd.depth*18}px">
     <div class="pmain">
       <div class="ptitle"><span class="bullet"></span>${
         (nd.depth===0 && rowPicture(o))?`<img class="plinepic" src="${rowPicture(o)}" alt="">`:""}${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${(o.unitPrice && o.qty>1)?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
@@ -6208,10 +6193,14 @@ function groupHeadHtml(m, actPrefix, collapsed, price, propsAgg){
      property counts — otherwise collapsing would quietly drop them */
   const props = collapsed && propsMapLabel(propsAgg)
     ? ` <span class="proplbl">${propsMapLabel(propsAgg)}</span>` : "";
-  const pic = collapsed ? stepPicture(m) : "";
-  return `<div class="grouphead ${collapsed?"collapsed":""} ${pic?"haspic":""}">
+  /* No picture here either. A folded-up step used to carry the photograph of
+     what was chosen in it, which was a help when this list was the only place
+     the machines appeared. They have a card of their own at the head of the
+     chapter now, with the photograph and the specifications on it, and the
+     list underneath is for what things cost. */
+  return `<div class="grouphead ${collapsed?"collapsed":""}">
     <div class="ghmain">
-      <div class="ghtitle">${pic?`<img class="plinepic" src="${pic}" alt="">`:""}${esc(m.title||"")}${props}</div>
+      <div class="ghtitle">${esc(m.title||"")}${props}</div>
       <div class="pval">${collapsed?(price?fmt(price):"—"):""}</div>
       ${collapsed&&hasAltCur()?`<div class="pval alt">${price?fmtAlt(price):"—"}</div>`:""}
     </div>
