@@ -2515,6 +2515,31 @@
     .plinepic.big{width:34mm;height:24mm;flex-basis:34mm;padding:.8mm}
     .pline.tilerow{padding:2mm 0;break-inside:avoid}
     .ptilewrap{gap:4mm}
+    /* On a screen the name of a machine sits in a row beside its sub-item
+       list and its "incl. sub-items" tag — .ptitle is a flex container, and
+       with a thousand pixels to share nobody notices. On A4 there are about
+       six hundred, the bare name is the one flex item with nothing to defend
+       it, and it was squeezed to a column one letter wide. On paper it is
+       text with its labels behind it, which is all it ever was. */
+    body.print-all .pline.lvl0 .ptitle{display:block}
+    body.print-all .pline.lvl0 .ptitle .proplbl,
+    body.print-all .pline.lvl0 .ptitle .snote,
+    body.print-all .pline.lvl0 .ptitle .qty,
+    body.print-all .pline.lvl0 .ptitle .tag{display:inline;margin-left:1.5mm;white-space:normal}
+    /* A block is a block: the heading of a table with its table, a machine
+       card with its price, an alternative with the row that explains it. They
+       were laid out as a long ribbon and cut wherever the sheet ran out — the
+       Adjustments table lost its heading to the bottom of one page and its
+       rows to the top of the next. */
+    body.print-all .sharepropt,
+    body.print-all .shareupcard,
+    body.print-all .sharehero,
+    body.print-all .sharealtgroup,
+    body.print-all .sharealtcard,
+    body.print-all .sharesummary,
+    body.print-all .propsum{break-inside:avoid}
+    /* and a section title never stands at the foot of a page on its own */
+    body.print-all .sharesectionhead{break-after:avoid;break-inside:avoid}
     .ptilespecs{font-size:.9em;gap:.4mm 4mm;margin-top:1.2mm}
     .pxtext{font-size:9pt;color:#28338A;font-style:italic}
     body.print-all .pline.discountrow .ptitle,body.print-all .pline.discountrow .pval{color:#EF7B0B}
