@@ -11992,7 +11992,7 @@ async function pushShareNow(){
      !confirm("This link shows catalogue version "+quoteShare.catalogue_version+
               ". Updating it moves the customer to version "+(quoteCatVersion||publishedVersion)+
               ", so the prices and pictures they see change to the ones published now.\n\nUpdate the link?")) return;
-  if(quoteShare.customer_changed_at &&
+  if(customerCopyDiffers() &&
      !confirm("The customer has changed their own selection in this link.\n\nUpdating the link replaces their copy with yours and their changes are lost. Take their changes first if you want to keep them.\n\nUpdate anyway?")) return;
   try{
     /* awaited, not fire-and-forget: the push copies the quote row, so the
@@ -12132,7 +12132,7 @@ function renderNotices(){
 
   /* ---- 2. this quote has a live link that is behind ---- */
   const stamp=quoteUpdatedAt||"";
-  const custEdited = shareIsLive() && !!quoteShare.customer_changed_at;
+  const custEdited = shareIsLive() && customerCopyDiffers();
   if(shareIsLive() && (shareIsBehind() || shareCatalogueBehind() || custEdited) && linkBarSnoozed!==stamp){
     const who=(CONFIG.customer||(CONFIG.customerInfo&&CONFIG.customerInfo.company)||"").trim();
     const qB=shareIsBehind(), cB=shareCatalogueBehind();
@@ -12204,6 +12204,27 @@ function renderLinkBar(){ renderNotices(); }
    every save checks, and repaints only when the answer really changed, so
    typing does not rebuild a bar you might be about to click. */
 let noticeWasBehind=null;
+/* Has the customer actually changed anything that is not already here?
+   The database records that he WROTE a copy — one click on an optional item
+   is enough, and clicking it back writes another. It does not record whether
+   that copy still differs from the quote. So the bar announced "Sidel has
+   made changes of his own" while the panel behind "See what changed" said,
+   truthfully, that there was nothing: he had put it back himself, or we had
+   already taken his changes over.
+   The copy travels with the link row, so the question can simply be asked:
+   the same content signature the cloud save uses, which ignores the stamps
+   that move on their own. If it cannot be worked out, the flag is believed —
+   better a notice too many than a change of his that nobody sees. */
+function customerCopyDiffers(){
+  if(!quoteShare || !quoteShare.customer_changed_at) return false;
+  const his=quoteShare.customer_data;
+  if(!his) return true;                       // an older row that does not carry it
+  try{
+    const a=quoteContentSig(his), b=quoteContentSig(quotePayload());
+    if(a===null || b===null) return true;
+    return a!==b;
+  }catch(err){ return true; }
+}
 function refreshShareNotice(){
   const now = shareIsLive() && (shareIsBehind() || shareCatalogueBehind());
   if(now===noticeWasBehind) return;
@@ -12593,7 +12614,7 @@ async function showShareDiff(){
         few(s.scoped.length)):""}
     ${s.fields.length?`<div class="qbrow"><span class="who">also changed</span>
         <span class="what">${s.fields.map(esc).join(", ")}</span></div>`:""}
-    ${quoteShare.customer_changed_at?`<div class="qbrow is-gone"><span class="who">careful</span>
+    ${customerCopyDiffers()?`<div class="qbrow is-gone"><span class="who">careful</span>
         <span class="what">${esc(who)} changed his own selection in this link. Updating replaces his copy and those changes are lost — take them first if you want to keep them.</span></div>`:""}`}`;
   /* his link is pinned to one version, your screen sits on another */
   const mineV = quoteCatVersion || loadedCatalogueVersion || publishedVersion || null;
@@ -12958,7 +12979,7 @@ function renderQuoteBar(){
   const revSent=rev && (quoteShares||[]).some(x=>x && x.revision===rev && x.sent_at);
   const cust=(CONFIG.customer||(CONFIG.customerInfo&&CONFIG.customerInfo.company)||"").trim();
   const st=QUOTE_STATUSES.find(s=>s.id===quoteStatus)||QUOTE_STATUSES[0];
-  const custChanged=quoteShare&&quoteShare.customer_changed_at;
+  const custChanged=customerCopyDiffers();
   bar.innerHTML=`
     <span class="qbnum">${esc(num)}${rev?`<span class="qbrev" title="${esc(
       revSent ? "Revision "+rev+" has been sent. It stays as it is; start a new revision to change anything."
