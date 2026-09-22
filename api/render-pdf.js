@@ -195,6 +195,21 @@ module.exports = async (req, res) => {
         docsHeight: docs ? Math.round(docs.getBoundingClientRect().height) : null,
         appDisplay: app ? getComputedStyle(app).display : '(no element)',
         styleBlocks: document.querySelectorAll('style').length,
+        // how wide the squeezable parts end up under the print stylesheet,
+        // and how many pictures the printed document actually carries
+        widths: ['.pg-proposal .grouphead .ghtitle',
+                 '.pg-proposal .pline .ptitle',
+                 '.pg-proposal .pline.tilerow .ptitle',
+                 '.pg-scope .scopeline .stitle',
+                 '.pg-proposal .pline .pval'].map(sel => {
+          const e = document.querySelector('#allDocsBody ' + sel);
+          return sel + ' = ' + (e ? Math.round(e.getBoundingClientRect().width) + 'px' : 'not found');
+        }),
+        pictures: {
+          tiles: document.querySelectorAll('#allDocsBody .plinepic').length,
+          heroes: document.querySelectorAll('#allDocsBody .shareheroimg').length,
+          all: document.querySelectorAll('#allDocsBody img').length,
+        },
       };
     });
 
