@@ -298,16 +298,6 @@
   .plinepic{width:104px;height:74px;flex:0 0 104px;object-fit:contain;background:#fff;padding:5px;
     border:1px solid var(--line);border-radius:10px;align-self:center}
   .pline.lvl0 .ptitle,.grouphead .ghtitle{display:flex;align-items:center;gap:12px}
-  .pline.tilerow{padding:12px 0 13px}
-  .ptilewrap{display:flex;align-items:flex-start;gap:18px}
-  .plinepic.big{width:190px;height:135px;flex:0 0 190px;padding:6px;border-radius:12px}
-  .ptilebody{flex:1;min-width:0}
-  .ptilehead{display:flex;align-items:baseline;gap:12px}
-  .pline.tilerow .ptitle{font-size:15px;font-weight:600;flex:1;min-width:0}
-  .pline.tilerow .pval{font-size:17px;font-weight:600;color:var(--txt)}
-  .ptilespecs{display:grid;grid-template-columns:auto 1fr;gap:3px 16px;margin:8px 0 0;font-size:12.5px}
-  .ptilespecs dt{color:var(--txt-faint)}
-  .ptilespecs dd{margin:0;color:var(--txt-dim)}
   .grouphead.collapsed.haspic{padding:10px 0 9px}
   .grouphead.collapsed.haspic .ghtitle{font-size:14.5px}
   .grouphead.collapsed.haspic .pval{font-size:16px;font-weight:600;color:var(--txt)}
@@ -1397,17 +1387,12 @@
     .sharenavlist button{text-align:left;padding:9px 10px}
     /* the picture-and-price tile: photo on top, details below, instead of
        side by side with no room to breathe */
-    .ptilewrap{flex-direction:column}
-    .ptilehead{flex-wrap:wrap}
-    .ptilehead .pval{white-space:normal}
     /* .ptitle (name + the feet/adjustments pill + the "incl. sub-items"
        tag) was flex:1;min-width:0 — sharing the row with the price let it
        shrink into a narrow column, which squeezed the pill's own text into
        a jumble of numbers and words instead of just wrapping normally.
        Full width here means the price (already set to wrap above) simply
        drops to its own line below instead. */
-    .pline.tilerow .ptitle{flex:1 1 100%}
-    .ptilespecs{grid-template-columns:1fr}
     /* an optional item's own .ptitle is a flex row too (bullet, name, the
        "Take this option" button, a pill), all baseline-aligned in one
        line — when the name is long enough to wrap to several lines the
@@ -2512,9 +2497,6 @@
     body.print-all .pline.lvl0 .bullet{background:#EF7B0B!important}
     body.print-all .pline .qnote{color:#EF7B0B}
     .plinepic{width:22mm;height:15mm;flex-basis:22mm;padding:.6mm;border-color:#c9cee0}
-    .plinepic.big{width:34mm;height:24mm;flex-basis:34mm;padding:.8mm}
-    .pline.tilerow{padding:2mm 0;break-inside:avoid}
-    .ptilewrap{gap:4mm}
     /* On a screen the name of a machine sits in a row beside its sub-item
        list and its "incl. sub-items" tag — .ptitle is a flex container, and
        with a thousand pixels to share nobody notices. On A4 there are about
@@ -2540,7 +2522,6 @@
     body.print-all .propsum{break-inside:avoid}
     /* and a section title never stands at the foot of a page on its own */
     body.print-all .sharesectionhead{break-after:avoid;break-inside:avoid}
-    .ptilespecs{font-size:.9em;gap:.4mm 4mm;margin-top:1.2mm}
     .pxtext{font-size:9pt;color:#28338A;font-style:italic}
     body.print-all .pline.discountrow .ptitle,body.print-all .pline.discountrow .pval{color:#EF7B0B}
     .discintro{color:#222;font-size:9.5pt;margin:10px 0 4px}
@@ -6168,27 +6149,6 @@ function stepPicture(m){
   return o?o.image:"";
 }
 const rowPicture = o => (o && o.image) ? o.image : "";
-/* The picture for a line in the breakdown. Its own, and otherwise the first
-   one in the branch it stands for: the Shrinking line carries no photograph,
-   the steam tunnel chosen under it does, and a list of machines with one
-   picture in it reads like a mistake. Alternatives and optional items are
-   skipped — the line is about what is in the quotation. The step's own
-   picture is the last resort, which is what a collapsed group already uses. */
-function rowPictureDeep(r){
-  const nd=r&&r.node, o=nd&&nd.o;
-  if(o&&o.image) return o.image;
-  let found="";
-  (function deep(kids){
-    for(const k of (kids||[])){
-      if(found) return;
-      if(k.o && k.o.image && !k.o.alt && !k.o.optional){ found=k.o.image; return; }
-      deep(k.kids);
-    }
-  })(nd?nd.kids:[]);
-  if(found) return found;
-  const step=(r&&r.group)||(nd&&nd.root)||null;
-  return step?stepPicture(step):"";
-}
 function priceRowHtml(r, actPrefix){
   const nd=r.node, o=nd.o, top=nd.depth===0;
   const canHide = r.canHide===undefined ? true : r.canHide;
@@ -6205,34 +6165,13 @@ function priceRowHtml(r, actPrefix){
       ${top?`<button class="pbtn ${rollupOn?"active":""}" data-oid="${esc(o.id)}" data-act="${actPrefix}rollup">${rollupOn?"Show all levels":"Only show top price"}</button>`:""}
     </div>` : "";
   const breakdown = "";
-  /* A top item with a picture is set as a tile: the photograph beside the
-     name, the money large on the right and a few lines from its own
-     functionalities or specifications underneath. */
-  const tilePic=top&&!r.subtotal?rowPictureDeep(r):"";
-  if(tilePic){
-    const specs=(featuresOf(o).length
-        ? featuresOf(o).map(f=>({label:f.label, value:f.value||"yes"}))
-        : (o.specs||[]).map(sp=>({label:fillSupply(sp.label||""), value:fillSupply(sp.value||"")})))
-      .filter(x=>x.label||x.value).slice(0,4);
-    return `<div class="pline lvl0 tilerow ${r.taken?"is-taken":""}">
-      <div class="ptilewrap">
-        <img class="plinepic big" src="${tilePic}" alt="${esc(o.name||"")}">
-        <div class="ptilebody">
-          <div class="ptilehead">
-            <div class="ptitle">${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${
-              (!o.isPropLine && optQty(o)>1 && +o.price)?` <span class="snote">(${fmt(+o.price)} each)</span>`:""}${
-              propsMapLabel(r.propsAgg)?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${
-              r.rolled?'<span class="tag rollup">incl. sub-items</span>':""}</div>
-            <div class="pval">${priceTxt}</div>
-            ${altTxt}
-          </div>
-          ${specs.length?`<dl class="ptilespecs">${specs.map(x=>`
-            <dt>${esc(x.label)}</dt><dd>${esc(x.value)}</dd>`).join("")}</dl>`:""}
-        </div>
-      </div>
-      ${toggles}
-    </div>`;
-  }
+  /* No photograph and no specification lines here. A top item used to be set
+     as a tile — picture beside the name, a few spec lines underneath — and in
+     the chapter as it now reads that is the third time the customer meets the
+     same machine: once as a card with its photograph and specs, once in the
+     scope, and then again here. This list answers one question, what each
+     item costs, and reads better as a list.
+     The photograph lives on the card at the head of the chapter. */
   const takeBtn=(actPrefix==="opt"&&takeableId(o))
     ? (r.taken
        ? `<button class="pbtn takeopt taken no-print" data-untake="${esc(takeableId(o))}" title="Put it back among the optional items">In the machine — undo</button>`
