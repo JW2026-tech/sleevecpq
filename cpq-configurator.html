@@ -11145,7 +11145,14 @@ function quoteDate(){
   const p=n=>String(n).padStart(2,"0");
   return `${p(d.getDate())}-${p(d.getMonth()+1)}-${d.getFullYear()}`;
 }
-function docPage(inner, pageNo, total, cls){
+/* One section per sheet was true when every section was short. A chapter of
+   machine cards runs over two or three, and the running header went on
+   announcing "Page 7/10" on the fifth sheet of eight — a number that counted
+   sections, not paper. Nothing in the page can count sheets, so the header
+   says which chapter you are in, which is what a reader leafing through it
+   wants anyway, and the real page numbers are printed by whatever turns this
+   into a PDF (see api/render-pdf.js, footerTemplate). */
+function docPage(inner, chapter, cls){
   const t=activeTemplate();
   return `<section class="docpage ${cls||""}">
     <div class="pghead">
@@ -11153,14 +11160,14 @@ function docPage(inner, pageNo, total, cls){
       <div class="pgmeta">
         <div><span>Quotation number</span> ${esc(CONFIG.quoteNumber||"")}</div>
         <div><span>Date:</span> ${quoteDate()}</div>
-        <div><span>Page</span> ${pageNo}/${total}</div>
+        ${chapter?`<div><span>Section</span> ${esc(chapter)}</div>`:""}
       </div>
     </div>
     <div class="pgbody">${inner}</div>
-    <div class="pgfoot"><span class="site">www.sleevetechnology.com</span><span class="pgno">${pageNo}/${total}</span></div>
+    <div class="pgfoot"><span class="site">www.sleevetechnology.com</span></div>
   </section>`;
 }
-function coverPageHtml(total){
+function coverPageHtml(){
   const t=activeTemplate();
   ensureCustomer();
   const cust=(CONFIG.customer||"").trim();
@@ -11180,7 +11187,7 @@ function coverPageHtml(total){
         <tr><td>Validity</td><td>${esc(CONFIG.validity||ensureCommercial().validity)}</td></tr>
       </table>
     </div>
-    <div class="pgfoot"><span class="site">www.sleevetechnology.com</span><span class="pgno">1/${total}</span></div>
+    <div class="pgfoot"><span class="site">www.sleevetechnology.com</span></div>
   </section>`;
 }
 function contactPageHtml(){
@@ -11467,11 +11474,11 @@ function buildAllDocsHtml(){
     memo?`${memo}`:"",
   ].concat(quoteChapters().map((c,i)=>({
       cls:c.cls,
+      chapter:`${i+1}. ${c.title}`,
       html:`<h2>${i+1}. ${esc(c.title)}</h2>${c.body(i+1)}`
     })))
    .filter(Boolean).map(b=>typeof b==="string"?{cls:"",html:b}:b);
-  const total=bodies.length+1; // +1 for the cover
-  return coverPageHtml(total) + bodies.map((b,i)=>docPage(b.html, i+2, total, b.cls)).join("");
+  return coverPageHtml() + bodies.map(b=>docPage(b.html, b.chapter, b.cls)).join("");
 }
 document.getElementById("btnPrintAll").onclick=()=>{
   document.getElementById("allDocsBody").innerHTML=buildAllDocsHtml();

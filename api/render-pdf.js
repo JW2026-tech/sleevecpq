@@ -205,7 +205,20 @@ module.exports = async (req, res) => {
     // of the configurator — it was being rendered as a screen. Asked for
     // explicitly rather than relying on what page.pdf() emulates by default,
     // which is not the same across puppeteer versions.
-    const pdf = await page.pdf({ format: 'A4', printBackground: true });
+    // The page numbers. Nothing inside the document can count sheets — a
+    // chapter of machine cards runs over two or three — so they are printed
+    // here, where the paging actually happens.
+    const footer =
+      '<div style="width:100%;font-size:8pt;color:#777;font-family:Segoe UI,Arial,sans-serif;' +
+      'padding:0 15mm;text-align:right;">' +
+      '<span class="pageNumber"></span> / <span class="totalPages"></span></div>';
+    const pdf = await page.pdf({
+      format: 'A4', printBackground: true,
+      displayHeaderFooter: true,
+      headerTemplate: '<span></span>',
+      footerTemplate: footer,
+      margin: { top: '0mm', bottom: '12mm', left: '0mm', right: '0mm' },
+    });
     res.status(200).json({
       ok: true,
       filename: `Quotation-${quoteNumber || 'draft'}.pdf`,
