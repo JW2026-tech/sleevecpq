@@ -4617,7 +4617,7 @@ function transportCostText(){
 const transportTotal = () => transportAtCost() ? 0 : Math.max(0, +transEntry().amount||0);
 /* …but the line still belongs in the quote */
 const transportShown = () => transportAtCost() || transportTotal()>0;
-const transportLabel = () => `Transport${transEntry().incoterm?` — ${transEntry().incoterm}`:""}`;
+const transportLabel = () => `Transport${transEntry().incoterm?`: ${transEntry().incoterm}`:""}`;
 const INCOTERMS=["Ex Works","Free Carrier","Free Alongside Ship","Free On Board","Cost and Freight",
                  "Cost, Insurance and Freight","Carriage Paid To","Carriage and Insurance Paid To",
                  "Delivered at Place","Delivered at Place Unloaded","Delivered Duty Paid"];
@@ -5652,7 +5652,11 @@ function buildItemRows(forceTop, wantOptional){
         isPropLine:true, price:x.price, rolled:false, hide:false, canHide:false,
         node:{ m:ss, root:ss, depth:0, trail:[],
                o:{ id:"__svc_"+x.line.id,
-                   name:`${x.line.label} — ${x.charged} day${x.charged===1?"":"s"}${
+                   /* "Installation: 4 days (2 work + 2 travel)". It was an em
+                      dash, which reads as an aside in prose but as a stray
+                      stroke in a column of four service lines — these are a
+                      label and its value, and that is what a colon is for. */
+                   name:`${x.line.label}: ${x.charged} day${x.charged===1?"":"s"}${
                      x.travel?` (${x.work} work + ${x.travel} travel)`:""}${x.eng>1?` · ${x.eng} engineers, ${x.days} on site`:""}`,
                    qty:0, unitPrice:x.rate, isPropLine:true, optional:isOpt } }
       }));
@@ -5666,7 +5670,7 @@ function buildItemRows(forceTop, wantOptional){
                o:{ id, name, qty:0, isPropLine:true, optional:scope==="opt" } }
       }));
     };
-    add("__svc_pack", `Packaging${packType().label?` — ${packType().label.toLowerCase()}`:""}`,
+    add("__svc_pack", `Packaging${packType().label?`: ${packType().label.toLowerCase()}`:""}`,
         packagingTotal(), packEntry().scope);
     if(transportAtCost()){
       if((transEntry().scope==="opt")===!!wantOptional) raw.push(at({
@@ -10502,12 +10506,12 @@ function serviceScopeHtml(){
       <div class="stitle">${opt?'<span class="optpill">optional</span> ':""}${label}</div>
     </div>`;
   return `<div class="grouphead"><div class="ghmain"><div class="ghtitle">Services</div></div></div>`
-    + (pk?line(`Packaging${packType().label?` <span class="snote">— ${esc(packType().label.toLowerCase())}</span>`:""}`, packEntry().scope==="opt"):"")
-    + (tr?line(`Transport${transEntry().incoterm?` <span class="snote">— ${esc(incotermLine())}</span>`:""}${
-        transportAtCost()&&transportCostText()?` <span class="snote">— ${esc(transportCostText())}</span>`:""}`, transEntry().scope==="opt"):"")
+    + (pk?line(`Packaging${packType().label?`<span class="snote">: ${esc(packType().label.toLowerCase())}</span>`:""}`, packEntry().scope==="opt"):"")
+    + (tr?line(`Transport${transEntry().incoterm?`<span class="snote">: ${esc(incotermLine())}</span>`:""}${
+        transportAtCost()&&transportCostText()?` <span class="snote">(${esc(transportCostText())})</span>`:""}`, transEntry().scope==="opt"):"")
     + rows.map(x=>`<div class="scopeline lvl1${x.entry.scope==="opt"?" is-optional":""}" style="padding-left:18px">
         <span class="bullet"></span>
-        <div class="stitle">${x.entry.scope==="opt"?'<span class="optpill">optional</span> ':""}${esc(x.line.label)} <span class="snote">— ${x.work} day${x.work===1?"":"s"} on site${x.travel?` plus ${x.travel} travel`:""}${x.eng>1?`, ${x.eng} engineers`:""}</span></div>
+        <div class="stitle">${x.entry.scope==="opt"?'<span class="optpill">optional</span> ':""}${esc(x.line.label)}<span class="snote">: ${x.work} day${x.work===1?"":"s"} on site${x.travel?` plus ${x.travel} travel`:""}${x.eng>1?`, ${x.eng} engineers`:""}</span></div>
       </div>`).join("")
     + ((rows.length && serviceNote().trim())
         ? `<div class="scopenote">${esc(serviceNote())}</div>` : "");
