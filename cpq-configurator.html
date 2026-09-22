@@ -10508,7 +10508,7 @@ function serviceScopeHtml(){
   return `<div class="grouphead"><div class="ghmain"><div class="ghtitle">Services</div></div></div>`
     + (pk?line(`Packaging${packType().label?`<span class="snote">: ${esc(packType().label.toLowerCase())}</span>`:""}`, packEntry().scope==="opt"):"")
     + (tr?line(`Transport${transEntry().incoterm?`<span class="snote">: ${esc(incotermLine())}</span>`:""}${
-        transportAtCost()&&transportCostText()?` <span class="snote">(${esc(transportCostText())})</span>`:""}`, transEntry().scope==="opt"):"")
+        transportAtCost()&&transportCostText()?` <span class="snote"> (${esc(transportCostText())})</span>`:""}`, transEntry().scope==="opt"):"")
     + rows.map(x=>`<div class="scopeline lvl1${x.entry.scope==="opt"?" is-optional":""}" style="padding-left:18px">
         <span class="bullet"></span>
         <div class="stitle">${x.entry.scope==="opt"?'<span class="optpill">optional</span> ':""}${esc(x.line.label)}<span class="snote">: ${x.work} day${x.work===1?"":"s"} on site${x.travel?` plus ${x.travel} travel`:""}${x.eng>1?`, ${x.eng} engineers`:""}</span></div>
