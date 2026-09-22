@@ -176,6 +176,17 @@ module.exports = async (req, res) => {
     await page.evaluate((p) => window.__cpqRenderQuote(p), payload);
     await page.waitForFunction('window.__cpqRenderReady === true', { timeout: 20000 });
 
+    // what the browser actually has in front of it at the moment of printing —
+    // asked for with { debug: true }, because a 200 and 35 KB can still be a
+    // photograph of the wrong screen
+    const seen = await page.evaluate(() => ({
+      ready: window.__cpqRenderReady === true,
+      printAll: document.body.classList.contains('print-all'),
+      pages: document.querySelectorAll('#allDocsBody .docpage').length,
+      quoteNumber: (window.CONFIG && CONFIG.quoteNumber) || null,
+      firstText: document.body.innerText.replace(/s+/g, ' ').slice(0, 120),
+    }));
+
     const pdf = await page.pdf({ format: 'A4', printBackground: true });
     res.status(200).json({
       ok: true,
@@ -185,6 +196,7 @@ module.exports = async (req, res) => {
       // 37,80,68,70 instead of JVBERi0. Wrapped first, so what goes over the
       // wire is the base64 the browser expects.
       pdfBase64: Buffer.from(pdf).toString('base64'),
+      seen: (req.body || {}).debug ? seen : undefined,
     });
   } catch (err) {
     res.status(500).json({ error: 'Rendering failed', detail: String(err && err.message || err) });
