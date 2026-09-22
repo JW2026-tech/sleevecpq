@@ -2383,6 +2383,23 @@
        active tab, one section per page, in the house quote layout. */
     body.print-all #docBody{display:none!important}
     body.print-all #allDocsBody{display:block!important}
+    /* And the screen the document lives on, whichever screen you were
+       looking at. #allDocsBody sits inside the Documents view; pressing the
+       button from the Documents tab meant that view was already open, so
+       nothing ever said so. The server renders the quotation with nobody
+       looking, on the configurator, and the ten pages it had just built sat
+       in a container of zero height while what printed was the configurator
+       behind them. The others go, or they would print alongside it. */
+    body.print-all #viewDocs{display:block!important}
+    body.print-all #viewConfigure,
+    body.print-all #viewFormats,
+    body.print-all #viewService,
+    body.print-all #viewAdmin,
+    body.print-all #viewQuotes,
+    body.print-all #viewShare,
+    body.print-all #notices,
+    body.print-all .quotebar,
+    body.print-all .subtabs{display:none!important}
     .docpage{page-break-after:always}
     .docpage:last-child{page-break-after:auto}
     /* full quote chrome: running header, footer, A4 page box */
