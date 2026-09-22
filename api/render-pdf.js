@@ -187,6 +187,14 @@ module.exports = async (req, res) => {
       firstText: document.body.innerText.replace(/s+/g, ' ').slice(0, 120),
     }));
 
+    // The document only exists under the print stylesheet: on screen the
+    // app shows the configurator and keeps #allDocsBody hidden, and every
+    // rule that flips that round lives in @media print. The page reported
+    // ready, print-all set and ten pages built, and still printed one page
+    // of the configurator — it was being rendered as a screen. Asked for
+    // explicitly rather than relying on what page.pdf() emulates by default,
+    // which is not the same across puppeteer versions.
+    await page.emulateMediaType('print');
     const pdf = await page.pdf({ format: 'A4', printBackground: true });
     res.status(200).json({
       ok: true,
