@@ -27,6 +27,12 @@ module.exports = async (req, res) => {
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     const app = process.env.APP_URL || '';
     const out = {
+      // which deployment is actually answering: an environment variable
+      // only reaches a NEW build, so a stale alias looks exactly like a
+      // value that was never saved
+      deployment: { commit: (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || '(unknown)',
+                    environment: process.env.VERCEL_ENV || '(unknown)',
+                    node: process.version },
       env: {
         SUPABASE_URL: url ? url.replace(/^https?:\/\//, '').split('.')[0] : '(missing)',
         SUPABASE_SERVICE_ROLE_KEY: key ? `set, ${key.length} characters` : '(missing)',
