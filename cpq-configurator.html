@@ -4247,6 +4247,11 @@ function offerEnabler(p, v, optionId){
   for(const src of (CONFIG.props||[])){
     if(src===p) continue;
     if(!propContributors(src).some(c=>c.o.id===optionId)) continue;
+    /* it has to be the property that is holding it shut. Without this every
+       other offer counted: hygienic feet offered on the same item read as
+       the reason a counter might become possible. */
+    const curId=assignedVariantId(src, optionId) || (propDefaultVariant(src)||{}).id;
+    if(!curId || !typeRulesOut(src, curId, p, v)) continue;
     const e=assignEntry(src, optionId);
     for(const k of Object.keys(e)){
       if((e[k]||[]).includes("in")) continue;        // that is what is supplied
@@ -16424,6 +16429,23 @@ function sharePropTables(frac){
       const e=byMachine.get(key);
       e.qty+=c.qty; e.optIds.push(c.o.id); e.items.push({id:c.o.id, qty:c.qty});
     }
+    /* A machine whose positions are not all alike is not one row. Which of
+       them can take which type is what a rule decides, so the signature is
+       taken from that: all the same, and the machine stays one row the way
+       feet and access doors always have; different, and it falls apart into
+       the items themselves, each with its own name. */
+    if(anyRules()) for(const [key, e] of [...byMachine.entries()]){
+      if(e.optIds.length<2) continue;
+      const sig=oid=>(p.variants||[]).map(v=>variantBlock(p, v, oid, "in")?"0":"1").join("");
+      const sigs=new Set(e.optIds.map(sig));
+      if(sigs.size<2) continue;
+      byMachine.delete(key);
+      for(const it of (e.items||[])){
+        const o=optionById(it.id);
+        byMachine.set(key+"|"+it.id, {top:e.top, kind:e.kind, qty:it.qty, optIds:[it.id],
+          items:[it], via:(o&&o.name)||e.via, label:(o&&o.name)||e.label});
+      }
+    }
     if(!byMachine.size) continue;
     /* only types that are actually in play — supplied or offered somewhere */
     const live=new Set();
@@ -16503,8 +16525,7 @@ function sharePropTables(frac){
          when several items contribute (the applicator's adjustments come
          from the feedscrew, the brushes and the photocell together), because
          then no single machine name would be true. */
-      const single = e.kind==="in" && e.optIds.length===1
-        ? (optionById(e.optIds[0])||{}).name : "";
+      const single = e.optIds.length===1 ? (optionById(e.optIds[0])||{}).name : "";
       const row={machine:single||e.label||e.top.title||"", via:e.via, qty:e.qty,
                  stepId:e.top.id, suppliedId, mixed, cells};
       (e.kind==="in"?rows:locked).push(row);
