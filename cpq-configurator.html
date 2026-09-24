@@ -1263,6 +1263,10 @@
   .pmixed{display:block;font-size:10px;color:#c15c00;font-style:italic;white-space:nowrap}
   /* a property only an alternative would bring: shown, but plainly not yet
      available — dashed and faded, with no button to press */
+  /* a type that waits on another one being taken first */
+  .sharepropt .ppartial{display:block;font-size:10.5px;color:#999;margin-top:2px}
+  .sharepropt .pwaits{display:block;color:#999;font-size:12px;line-height:1.35}
+  .sharepropt .pwaits i{display:block;font-style:normal;font-size:10.5px;color:#aaa;margin-top:1px}
   .sharealtcard.is-locked{background:#f7f7fa;border-style:dashed;border-color:#d8dbe8;opacity:.7}
   .sharealtcard.is-locked .sharealtname{color:#666}
   .sharealtcard.is-locked .sharealtprice{color:#999}
@@ -2168,6 +2172,11 @@
   .ps-amt{flex:0 0 auto;color:var(--txt-dim);font-variant-numeric:tabular-nums}
   .asg-todo{color:var(--warn);font-style:italic;font-size:11.5px}
   .offeredsum{font-size:11.5px;color:var(--warn);margin-right:10px}
+  /* what an offered type on this row is leaning on */
+  .asgtable tr.asgdep td{padding:0 10px 7px 26px;border-top:0;position:relative;
+    font-size:11px;color:var(--txt-dim);line-height:1.45}
+  .asgtable tr.asgdep b{color:var(--txt);font-weight:500}
+  .asgtable .asgdeparrow{position:absolute;left:10px;top:-1px;color:var(--txt-faint);font-size:13px}
   .assigntotals{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:16px;padding-top:12px;
     border-top:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums}
   .tallypill{font-size:11px;color:var(--txt-dim);background:var(--panel-2);border-radius:20px;padding:3px 10px}
@@ -4192,6 +4201,27 @@ function variantBlock(p, v, optionId, scope){
     if(!ids.every(id=>typeRulesOut(src, id, p, v))) continue;   // something there allows it
     const cur=(src.variants||[]).find(x=>x.id===ids[0]);
     return {p:src, v:cur, assumed:!asked && !Object.keys(e).length};
+  }
+  return null;
+}
+/* What makes this type possible on this item, when what is SUPPLIED there
+   does not. A digital counter offered on the photocell stands on the
+   photosensor with a spindle being offered beside it: take that one and the
+   counter can follow, leave it and the counter cannot. Null when the type
+   stands on its own, and null when nothing can save it. */
+function offerEnabler(p, v, optionId){
+  if(!p || !v || !anyRules()) return null;
+  if(!variantBlock(p, v, optionId, "in")) return null;   // stands on its own
+  for(const src of (CONFIG.props||[])){
+    if(src===p) continue;
+    if(!propContributors(src).some(c=>c.o.id===optionId)) continue;
+    const e=assignEntry(src, optionId);
+    for(const k of Object.keys(e)){
+      if((e[k]||[]).includes("in")) continue;        // that is what is supplied
+      if(typeRulesOut(src, k, p, v)) continue;       // it would not help
+      const bv=(src.variants||[]).find(x=>x.id===k);
+      if(bv) return {p:src, v:bv};
+    }
   }
   return null;
 }
@@ -9981,7 +10011,28 @@ function assignScreenHtml(m){
         }).join("")}
         <td class="asgcost">${vid?(cost?fmt(cost):"included"):(answered?'<i class="asg-none">nothing supplied</i>':'<i class="asg-todo">choose one</i>')}${
           extra?`<div class="asg-extra">+ ${fmt(extra)} offered</div>`:""}</td>
-      </tr>`;
+      </tr>
+      ${/* What the right-hand dots on this row are standing on. A type that
+           cannot be supplied here but can be offered is leaning on something
+           offered at another property, and without saying so the open dot
+           beside a shut one reads as an inconsistency rather than as a
+           condition. */""}
+      ${(()=>{
+        const leaning=vars.map(x=>({x, en:offerEnabler(p, x, c.o.id)})).filter(z=>z.en);
+        if(!leaning.length) return "";
+        const by=new Map();
+        for(const z of leaning){
+          const k=z.en.p.id+":"+z.en.v.id;
+          if(!by.has(k)) by.set(k, {en:z.en, names:[]});
+          by.get(k).names.push(z.x.name);
+        }
+        return [...by.values()].map(g=>`<tr class="asgdep"><td class="asgdep" colspan="${span}">
+          <span class="asgdeparrow">&#8627;</span>
+          ${esc(g.names.join(", "))} ${g.names.length>1?"are":"is"} only possible here together with
+          <b>${esc(g.en.v.name)}</b>, which is offered on this item under ${esc(g.en.p.label)}.
+          ${g.names.length>1?"They":"It"} can be offered beside it, not supplied on ${g.names.length>1?"their":"its"} own.
+        </td></tr>`).join("");
+      })()}`;
     }).join("")}`).join("")}</tbody>`;
 
   const tally=propTally(p);
@@ -16353,20 +16404,48 @@ function sharePropTables(frac){
          decides whether to take it. Every item in the row is asked for its
          own price and the row is their sum: the items under one machine can
          sit in different classes. */
-      const priceOf = v => (e.items||[]).reduce((t,it)=>t+it.qty*variantPriceFor(v, it.id), 0);
-      const baseTotal = supplied ? priceOf(supplied) : 0;
       const mixed=assigned.length>1 || !!tally[""];
-      const cells=types.map(v=>({
-        vid:v.id,
-        current: !!supplied && supplied.id===v.id,
-        delta: cut(priceOf(v)-baseTotal),
-        /* in a mixed row a type some items already carry has to be clickable
-           too, otherwise there is no way to bring the machine onto one type */
-        offered: e.optIds.some(oid=>{
-          const st=assignEntry(p,oid)[v.id]||[];
-          return st.some(s=>s==="opt"||s==="alt") || (mixed && st.includes("in"));
-        })
-      }));
+      /* A row is a whole machine, and a rule can rule the type out on some
+         of the positions under it but not on others: the photocell in the
+         applicator cannot have a counter while the brushes can. So the
+         money is worked out over the positions that can actually have it,
+         and the cell says how many of them there are. Priced over all six
+         it offered the customer two counters that would never be fitted.
+         None of them able is the other case: then the cell is not a price
+         at all but what it is waiting for. */
+      const ableFor=v=>(e.items||[]).filter(it=>!variantBlock(p, v, it.id, "in"));
+      const sumOver=(list,v)=>list.reduce((t,it)=>t+it.qty*variantPriceFor(v, it.id), 0);
+      const blockOf=v=>{
+        const ids=e.optIds;
+        if(!ids.length) return null;
+        const en=ids.map(oid=>offerEnabler(p, v, oid)).filter(Boolean)[0]||null;
+        /* what it would come to if the condition were met: the difference
+           over every position in the row, because then they all can have it.
+           Worked out over what CAN have it there would be nothing, and the
+           cell would tell the customer it was included. */
+        const would=cut(sumOver(e.items||[], v) - (supplied?sumOver(e.items||[], supplied):0));
+        return {why:variantBlock(p, v, ids[0], "in"), enabler:en, would};
+      };
+      const cells=types.map(v=>{
+        const able=ableFor(v);
+        const ableQty=able.reduce((t,it)=>t+it.qty, 0);
+        const to=sumOver(able, v);
+        const from=supplied?sumOver(able, supplied):0;
+        return {
+          vid:v.id,
+          current: !!supplied && supplied.id===v.id,
+          blocked: able.length?null:blockOf(v),
+          /* fitted to some of the positions in this row, not all */
+          partial: (able.length && ableQty<e.qty) ? ableQty : 0,
+          delta: cut(to-from),
+          /* in a mixed row a type some items already carry has to be clickable
+             too, otherwise there is no way to bring the machine onto one type */
+          offered: e.optIds.some(oid=>{
+            const st=assignEntry(p,oid)[v.id]||[];
+            return st.some(s=>s==="opt"||s==="alt") || (mixed && st.includes("in"));
+          })
+        };
+      });
       /* name the machine when the positions come from one item — the tunnel
          that actually carries them, which is what the reader recognises and
          what the greyed rows below are named after. Fall back to the step
@@ -16420,10 +16499,17 @@ function sharePropTablesHtml(frac){
               r.mixed?`<span class="pmixed">not all the same &mdash; pick one to align them</span>`:""}</td>
             ${r.cells.map(x=>`<td>${x.current
               ? `<span class="pcur">&#10003; ${x.delta?fmt(x.delta):"included"}</span>`
-              : (x.offered
-                 ? `<button class="btn sm pbtn no-print" data-cmpswap="prop:${esc(t.p.id)}:${esc(r.suppliedId)}@@${esc(r.stepId)}|${esc(x.vid)}">${
-                     x.delta>0?`+ ${fmt(x.delta)}`:(x.delta<0?`&minus; ${fmt(-x.delta)}`:"no extra cost")}</button>`
-                 : `<span class="pna">&mdash;</span>`)}</td>`).join("")}
+              : (x.blocked
+                 ? (x.blocked.enabler
+                    ? `<span class="pwaits" title="This machine can only have it together with ${esc(x.blocked.enabler.v.name)}, which is offered above.">
+                        ${x.blocked.would>0?`+ ${fmt(x.blocked.would)}`:(x.blocked.would<0?`&minus; ${fmt(-x.blocked.would)}`:"no extra cost")}
+                        <i>only with ${esc(x.blocked.enabler.v.name)}</i></span>`
+                    : `<span class="pna" title="Not possible on this machine: it has ${esc(x.blocked.why.v.name)}">&mdash;</span>`)
+                 : (x.offered
+                    ? `<button class="btn sm pbtn no-print" data-cmpswap="prop:${esc(t.p.id)}:${esc(r.suppliedId)}@@${esc(r.stepId)}|${esc(x.vid)}">${
+                        x.delta>0?`+ ${fmt(x.delta)}`:(x.delta<0?`&minus; ${fmt(-x.delta)}`:"no extra cost")}</button>${
+                        x.partial?`<span class="ppartial" title="The other positions on this machine cannot take it">on ${x.partial} of ${r.qty}</span>`:""}`
+                    : `<span class="pna">&mdash;</span>`))}</td>`).join("")}
           </tr>`).join("")}
           ${t.locked.map(r=>`<tr class="plocked">
             <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>
