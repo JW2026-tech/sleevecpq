@@ -3992,7 +3992,7 @@ function propOfferLines(){
       for(const v of p.variants){
         if(!(e[v.id]||[]).includes("opt")) continue;
         if(supplied && supplied.id===v.id) continue;
-        if(variantBlock(p, v, c.o.id)) continue;   // cannot go on this item
+        if(variantBlock(p, v, c.o.id, "opt")) continue;   // cannot go on this item
         /* v.unitPrice is the type's flat rate, and a type that is priced
            per class does not have one — a closed cable tray costs one thing
            on a corner and another on a straight run. Reading the flat rate
@@ -4155,26 +4155,43 @@ function ruleHits(ref, targetProp, targetVariantId){
   const base=baseVariants(targetProp);
   return base.length>1 && base[0].id!==root;
 }
-/* what stops this type being given to this item, or null */
 const anyRules = () => (CONFIG.props||[]).some(x=>(x.variants||[]).some(v=>(v.rulesOut||[]).length));
-function variantBlock(p, v, optionId){
+/* does this type, over there, rule that type out over here */
+function typeRulesOut(src, typeId, p, v){
+  const root=(src.variants||[]).find(x=>x.id===rootVariantId(src, typeId));
+  return ((root&&root.rulesOut)||[]).some(ref=>ruleHits(ref, p, v.id));
+}
+/* What stops this type being given to this item, or null. Which depends on
+   what is being asked: to SUPPLY a digital counter, the photosensor on that
+   item has to have a spindle. To OFFER one it is enough that a photosensor
+   with a spindle is on the table — supplied there or offered beside it —
+   because then the two travel together and the customer decides on both at
+   once. Blocked, then, only when everything in play there rules it out.
+   What the customer must not do is take the counter and leave the spindle.
+   Nothing here stops that; it is the open end every optional item that
+   leans on another one has. */
+function variantBlock(p, v, optionId, scope){
   if(!p || !v || !anyRules()) return null;
   for(const src of (CONFIG.props||[])){
     if(src===p) continue;
     if(!(src.variants||[]).length) continue;
     /* the rule is about this item, so the item has to have one */
     if(!propContributors(src).some(c=>c.o.id===optionId)) continue;
-    /* Nothing chosen there yet is not "no rule": an item that has not been
-       given a type has the standard one — that is what the basepill in
+    const e=assignEntry(src, optionId);
+    const asked=assignedVariantId(src, optionId);
+    const ids=[];
+    if(asked) ids.push(asked);
+    /* an offer: what is offered there counts too */
+    if(scope!=="in") for(const k of Object.keys(e)) if(!ids.includes(k)) ids.push(k);
+    /* Nothing chosen there at all is not "no rule": an item that has not
+       been given a type has the standard one — that is what the basepill in
        Admin says, and what the machine is built as. A spindle is not there
        until you pick it, so until then everything that needs one is out. */
-    const asked=assignedVariantId(src, optionId);
-    const curId=asked || (propDefaultVariant(src)||{}).id;
-    if(!curId) continue;
-    const cur=(src.variants||[]).find(x=>x.id===curId);
-    const root=(src.variants||[]).find(x=>x.id===rootVariantId(src, curId));
-    for(const ref of ((root&&root.rulesOut)||[]))
-      if(ruleHits(ref, p, v.id)) return {p:src, v:cur||root, assumed:!asked};
+    if(!ids.length){ const d=propDefaultVariant(src); if(d) ids.push(d.id); }
+    if(!ids.length) continue;
+    if(!ids.every(id=>typeRulesOut(src, id, p, v))) continue;   // something there allows it
+    const cur=(src.variants||[]).find(x=>x.id===ids[0]);
+    return {p:src, v:cur, assumed:!asked && !Object.keys(e).length};
   }
   return null;
 }
@@ -4189,7 +4206,10 @@ function clearBlockedAssignments(){
       const e=assignEntry(p, c.o.id);
       for(const vid of Object.keys(e)){
         const v=(p.variants||[]).find(x=>x.id===vid);
-        const blk=v && variantBlock(p, v, c.o.id);
+        /* judged by what this answer IS: supplying it asks more than
+           offering it, so a counter that is only offered survives as long
+           as the spindle is offered too */
+        const blk=v && variantBlock(p, v, c.o.id, (e[vid]||[])[0]==="in"?"in":"opt");
         /* only when the other side was actually answered. A property that
            has just been added to the catalogue makes every item fall back
            on its standard type, and clearing on that basis would empty
@@ -9878,9 +9898,9 @@ function assignScreenHtml(m){
   const todo=assignUnanswered(p);
   /* an item where the type is ruled out can never have it, so it does not
      count against "all" — otherwise the button could never light up */
-  const canHave=(vid,c)=>!variantBlock(p, (p.variants||[]).find(x=>x.id===vid), c.o.id);
+  const canHave=(vid,c,sc)=>!variantBlock(p, (p.variants||[]).find(x=>x.id===vid), c.o.id, sc);
   const allHave=(vid,sc)=>{
-    const able=items.filter(c=>canHave(vid,c));
+    const able=items.filter(c=>canHave(vid,c,sc));
     return able.length>0 && able.every(c=>hasVariantScope(p, c.o.id, vid, sc));
   };
 
@@ -9946,15 +9966,18 @@ function assignScreenHtml(m){
           const line=c.qty*variantPriceFor(x, c.o.id);
           const money=line?fmt(line):"included";
           const supplied=vid && vid!==x.id ? vars.find(y=>y.id===vid) : null;
-          const blk=variantBlock(p, x, c.o.id);
-          if(blk){
-            const why=blk.assumed
-              ? `Not possible here: nothing has been chosen for this item under ${blk.p.label}, so it has the ${blk.v.name}. Choose something else there first.`
-              : `Not possible here: this item has ${blk.v.name}`;
-            return dot(x,"in",why,true)+dot(x,"opt",why,true);
-          }
-          return dot(x,"in",`Supplied — ${money}. Click again to clear.`)
-               + dot(x,"opt",supplied?`Offered on top of the ${supplied.name} — ${money}`:`Offered as an extra — ${money}`);
+          /* asked twice, because supplying and offering are not the same
+             question: the spindle offered on this item opens the right-hand
+             dot while the left-hand one stays shut */
+          const blkIn=variantBlock(p, x, c.o.id, "in");
+          const blkOpt=variantBlock(p, x, c.o.id, "opt");
+          const why=b=>b.assumed
+            ? `Not possible here: nothing has been chosen for this item under ${b.p.label}, so it has the ${b.v.name}. Choose something else there first.`
+            : `Not possible here: this item has ${b.v.name}`;
+          return (blkIn ? dot(x,"in",why(blkIn),true)
+                        : dot(x,"in",`Supplied — ${money}. Click again to clear.`))
+               + (blkOpt ? dot(x,"opt",why(blkOpt),true)
+                         : dot(x,"opt",supplied?`Offered on top of the ${supplied.name} — ${money}`:`Offered as an extra — ${money}`));
         }).join("")}
         <td class="asgcost">${vid?(cost?fmt(cost):"included"):(answered?'<i class="asg-none">nothing supplied</i>':'<i class="asg-todo">choose one</i>')}${
           extra?`<div class="asg-extra">+ ${fmt(extra)} offered</div>`:""}</td>
