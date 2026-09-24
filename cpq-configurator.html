@@ -657,6 +657,12 @@
   .pricetable .margin{color:var(--txt-dim);font-variant-numeric:tabular-nums}
   .pricetable .margin.bad{color:var(--bad)}
   .pricetable .in{padding:4px 7px;font-size:12.5px}
+  /* money under its own heading: one width for both boxes, right up against
+     the column edge the heading sits on, and figures that line up digit for
+     digit so you can read a column of them without counting zeroes */
+  .pricetable td.num{text-align:right}
+  .pricetable td.num .in{width:100%;max-width:none;text-align:right;
+    font-variant-numeric:tabular-nums}
   .partstable .reqcell{white-space:normal}
   .partstable .reqpill{display:inline-flex;align-items:center;gap:5px;margin:1px 3px 1px 0;
     padding:1px 6px;border:1px solid var(--accent);border-radius:20px;background:var(--accent-soft);
@@ -8643,14 +8649,14 @@ function renderPriceListAdmin(){
            And the step is a way in: click it and the tree opens at that
            step with the option in view, for everything this table has no
            room for — sub-steps, dependencies, specifications. */""}
-      <colgroup><col style="width:23%"><col style="width:19%"><col style="width:14%"><col style="width:10%"><col style="width:10%"><col style="width:6%"><col style="width:18%"></colgroup>
+      <colgroup><col style="width:21%"><col style="width:18%"><col style="width:13%"><col style="width:12%"><col style="width:12%"><col style="width:6%"><col style="width:18%"></colgroup>
       <tr><th>Step</th><th>Option</th><th>Key</th><th class="num">Cost</th><th class="num">Price</th><th class="num">Margin</th><th>Description</th></tr>
       ${rows.map((r,i)=>`<tr data-pri="${i}">
         <td class="pathcell"><button class="pathgo" data-prigo="${i}" title="Open this step in the configuration tree">${esc(r.path)}</button></td>
         <td><input class="in" value="${esc(r.o.name||"")}" data-pf2="name"></td>
         <td><input class="in mono keyin" value="${esc(r.o.id||"")}" data-pf2="id" placeholder="key"></td>
-        <td><input class="in num" type="number" step="100" value="${+r.o.cost||0}" data-pf2="cost"></td>
-        <td><input class="in num" type="number" step="100" value="${+r.o.price||0}" data-pf2="price"></td>
+        <td class="num"><input class="in num" type="number" step="100" value="${+r.o.cost||0}" data-pf2="cost"></td>
+        <td class="num"><input class="in num" type="number" step="100" value="${+r.o.price||0}" data-pf2="price"></td>
         <td class="num margin ${marg(r.o)!==null&&marg(r.o)<0?"bad":""}">${marg(r.o)===null?"—":marg(r.o)+"%"}</td>
         <td><input class="in" value="${esc(r.o.text||"")}" data-pf2="text" placeholder="Description"></td>
       </tr>`).join("")}
