@@ -2068,6 +2068,16 @@
   .pmatrix tr.frow .flist i{font-style:normal;color:var(--txt-faint)}
   .pmatrix tr.frow .flost{margin-top:5px;font-size:11.5px;color:var(--bad)}
   .pmatrix tr.frow .ffrom{display:block;text-align:right;font-size:10.5px;color:var(--txt-faint)}
+  /* what this type makes impossible elsewhere */
+  .pmatrix .vrules{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:5px}
+  .pmatrix .vrulepick{font-size:11px;padding:3px 6px;color:var(--txt-faint);max-width:230px}
+  .pmatrix .vrules .reqpill{display:inline-flex;align-items:center;gap:6px;padding:1px 4px 1px 9px;
+    border:1px solid var(--bad);border-radius:20px;color:var(--txt);font-size:10.5px}
+  .pmatrix .vrules .reqpill b{cursor:pointer;color:var(--txt-faint);font-weight:400;padding:0 4px}
+  .pmatrix .vrules .reqpill b:hover{color:var(--bad)}
+  /* a type another property has ruled out on this item */
+  .asgdot.blocked{cursor:not-allowed;opacity:.35;background:repeating-linear-gradient(
+    -45deg,transparent,transparent 3px,var(--line-strong) 3px,var(--line-strong) 4px)}
   .pmatrix td.mtools{white-space:nowrap;text-align:right;padding-right:0}
   .basepill{display:inline-block;font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;
     color:var(--accent);border:1px solid var(--accent);border-radius:20px;padding:0 6px;margin-left:6px}
@@ -3982,6 +3992,7 @@ function propOfferLines(){
       for(const v of p.variants){
         if(!(e[v.id]||[]).includes("opt")) continue;
         if(supplied && supplied.id===v.id) continue;
+        if(variantBlock(p, v, c.o.id)) continue;   // cannot go on this item
         /* v.unitPrice is the type's flat rate, and a type that is priced
            per class does not have one — a closed cable tray costs one thing
            on a corner and another on a straight run. Reading the flat rate
@@ -4107,6 +4118,78 @@ function assignedVariant(p, optionId){
   return (p.variants||[]).find(v=>v.id===id)||null;
 }
 function setAssignment(p, optionId, variantId){ setVariantScope(p, optionId, variantId, "in", true); }
+/* ============================================================
+   A TYPE THAT RULES ANOTHER ONE OUT
+   A follow-up says "this extra only exists on top of that type", and moves
+   the question to where the condition is. Sometimes the question belongs
+   where it already lives: whether an adjustment gets a digital counter is
+   an Adjustment question, asked once for the whole machine. It is only
+   that on ONE item it cannot be answered that way, because the photosensor
+   adjustment there has no spindle to turn.
+
+   So a type may rule types of another property out, on the same item:
+   v.rulesOut = ["prop2:type2", ...], or "prop2:*" for everything that
+   property offers beyond its standard type — "no upgraded adjustment on
+   this one" in a single line, which keeps up when a type is added there.
+
+   It only bites where the item carries both properties. An item with
+   adjustments and no photosensor at all is not affected by anything said
+   about photosensors, which is what keeps the twelve adjustments on the
+   steam tunnel free to be anything.
+   ============================================================ */
+/* the type as written that a type stands for: one built from a follow-up
+   is, for the purpose of a rule, the type it hangs from */
+function rootVariantId(p, variantId){
+  const v=((p&&p.variants)||[]).find(x=>x.id===variantId);
+  return (v && v.from) ? v.from : variantId;
+}
+function ruleHits(ref, targetProp, targetVariantId){
+  const cut=String(ref||"").lastIndexOf(":");
+  if(cut<0) return false;
+  if(ref.slice(0,cut)!==targetProp.id) return false;
+  const want=ref.slice(cut+1);
+  const root=rootVariantId(targetProp, targetVariantId);
+  if(want!=="*") return want===root || want===targetVariantId;
+  /* everything beyond the standard: the standard is what an item gets when
+     nothing is decided, so ruling it out would leave nothing to fall on */
+  const base=baseVariants(targetProp);
+  return base.length>1 && base[0].id!==root;
+}
+/* what stops this type being given to this item, or null */
+const anyRules = () => (CONFIG.props||[]).some(x=>(x.variants||[]).some(v=>(v.rulesOut||[]).length));
+function variantBlock(p, v, optionId){
+  if(!p || !v || !anyRules()) return null;
+  for(const src of (CONFIG.props||[])){
+    if(src===p) continue;
+    if(!(src.variants||[]).length) continue;
+    /* the rule is about this item, so the item has to have one */
+    if(!propContributors(src).some(c=>c.o.id===optionId)) continue;
+    const curId=assignedVariantId(src, optionId);
+    if(!curId) continue;                       // nothing settled there yet
+    const cur=(src.variants||[]).find(x=>x.id===curId);
+    const root=(src.variants||[]).find(x=>x.id===rootVariantId(src, curId));
+    for(const ref of ((root&&root.rulesOut)||[]))
+      if(ruleHits(ref, p, v.id)) return {p:src, v:cur||root};
+  }
+  return null;
+}
+/* An answer that has become impossible — the photosensor on that item was
+   set back to standard after a counter was chosen for it. Cleared here, not
+   refused there: the later decision is the one being made now. */
+function clearBlockedAssignments(){
+  if(!anyRules()) return;
+  for(const p of (CONFIG.props||[])){
+    if(!(p.variants||[]).length) continue;
+    for(const c of propContributors(p)){
+      const e=assignEntry(p, c.o.id);
+      for(const vid of Object.keys(e)){
+        const v=(p.variants||[]).find(x=>x.id===vid);
+        if(!v || !variantBlock(p, v, c.o.id)) continue;
+        setVariantScope(p, c.o.id, vid, null);
+      }
+    }
+  }
+}
 /* how many of each type the machine ends up with, given the assignments */
 function propTally(p){
   const t={};
@@ -5104,6 +5187,9 @@ function reconcile(){
      handed to it here, instead of the property step reopening as an
      unanswered question */
   applyAllPropSkips();
+  /* and with the types settled: the answers that the settling made
+     impossible */
+  clearBlockedAssignments();
   /* last, with the tree settled: the items it writes onto are the ones
      that are really there */
   settleLineModes();
@@ -8957,6 +9043,15 @@ function renderPropsAdmin(){
        Not this one's own, which would be a type hanging from itself. */
     const refGroups=(CONFIG.props||[]).filter(x=>x!==p && baseVariants(x).length)
       .map(x=>({id:x.id, label:x.label||"Untitled", items:baseVariants(x)}));
+    const ruleLabel=ref=>{
+      const cut=String(ref).lastIndexOf(":");
+      const g=refGroups.find(x=>x.id===String(ref).slice(0,cut));
+      if(!g) return "no longer there";
+      const want=String(ref).slice(cut+1);
+      if(want==="*") return "no "+g.label.toLowerCase()+" beyond the standard";
+      const x=g.items.find(y=>y.id===want);
+      return "no "+(x?x.name:"(removed type)");
+    };
     const n=propCount(p.id);
     const priced=vars.some(v=>v.byClass && Object.keys(v.byClass).length);
     const loose=untaggedParts(p);
@@ -9003,6 +9098,18 @@ function renderPropsAdmin(){
                 <input class="in vname" value="${esc(v.name)}" data-vf="name" placeholder="Type name">
                 ${isBase?`<span class="basepill" title="Anything not set gets this one">standard</span>`:""}
                 <input class="in vnote" value="${esc(v.note||"")}" data-vf="note" placeholder="Short description, shown to the customer">
+                ${refGroups.length?`<div class="vrules">
+                  ${(v.rulesOut||[]).map(r=>`<span class="reqpill hard" title="An item with this type cannot have that one">
+                    ${esc(ruleLabel(r))}<b data-vruledel="${esc(r)}" title="Remove">&times;</b></span>`).join("")}
+                  <select class="in vrulepick" data-vruleadd="1"
+                    title="On an item that has this type, the type you pick here is not possible — the dot for it is shown but cannot be set.">
+                    <option value="">${(v.rulesOut||[]).length?"+ another&hellip;":"&mdash; rules nothing out &mdash;"}</option>
+                    ${refGroups.map(g=>`<optgroup label="${esc(g.label)}">
+                      ${g.items.length>1?`<option value="${esc(g.id)}:*">no ${esc(g.label.toLowerCase())} beyond the standard</option>`:""}
+                      ${g.items.map((x,xi)=>`<option value="${esc(g.id+":"+x.id)}">${esc(x.name)}${xi===0?" (standard)":""}</option>`).join("")}
+                    </optgroup>`).join("")}
+                  </select>
+                </div>`:""}
               </td>
               ${cols.map(c=>{
                 const cell=c.id ? ((v.byClass&&v.byClass[c.id])||{}) : null;
@@ -9211,6 +9318,25 @@ function renderPropsAdmin(){
       }
       p.variants=L;
       rebuildFollowVariants(p);
+      invalidateQtyCache(); renderConfigureQuiet(); renderAdmin();
+    };
+  });
+  /* ---- what a type rules out elsewhere ---- */
+  ed.querySelectorAll("[data-vruleadd]").forEach(el=>{
+    const p=propOfEl(el), v=varOfRow(p, el);
+    if(!v) return;
+    el.onchange=()=>{
+      if(!el.value) return;
+      v.rulesOut=(v.rulesOut||[]).filter(x=>x!==el.value).concat([el.value]);
+      invalidateQtyCache(); reconcile(); renderConfigureQuiet(); renderAdmin();
+    };
+  });
+  ed.querySelectorAll("[data-vruledel]").forEach(el=>{
+    const p=propOfEl(el), v=varOfRow(p, el);
+    if(!v) return;
+    el.onclick=()=>{
+      v.rulesOut=(v.rulesOut||[]).filter(x=>x!==el.dataset.vruledel);
+      if(!v.rulesOut.length) delete v.rulesOut;
       invalidateQtyCache(); renderConfigureQuiet(); renderAdmin();
     };
   });
@@ -9739,7 +9865,13 @@ function assignScreenHtml(m){
   })();
   const vars=p.variants||[];
   const todo=assignUnanswered(p);
-  const allHave=(vid,sc)=>items.length && items.every(c=>hasVariantScope(p, c.o.id, vid, sc));
+  /* an item where the type is ruled out can never have it, so it does not
+     count against "all" — otherwise the button could never light up */
+  const canHave=(vid,c)=>!variantBlock(p, (p.variants||[]).find(x=>x.id===vid), c.o.id);
+  const allHave=(vid,sc)=>{
+    const able=items.filter(c=>canHave(vid,c));
+    return able.length>0 && able.every(c=>hasVariantScope(p, c.o.id, vid, sc));
+  };
 
   /* group by step, merging entries from the same step even when the walk
      doesn't return them together */
@@ -9792,14 +9924,22 @@ function assignScreenHtml(m){
                   ? ` <span class="snote">— instead of ${esc(optionLabel(c.o.altFor))}</span>` : "";
       const extra=vars.reduce((t,x)=>
         t + ((ent[x.id]||[]).includes("opt") ? c.qty*variantPriceFor(x, c.o.id) : 0), 0);
-      const dot=(x,sc,title)=>`<td class="asgcell sc-${sc}"><button class="asgdot sc-${sc} ${(ent[x.id]||[]).includes(sc)?"on":""}"
-          data-vsc="${esc(c.o.id)}|${esc(x.id)}|${sc}" title="${esc(title)}"></button></td>`;
+      /* a type another property has ruled out on this item: shown, so it is
+         clear the question was asked and answered, but not clickable */
+      const dot=(x,sc,title,blocked)=>`<td class="asgcell sc-${sc}"><button class="asgdot sc-${sc} ${
+          blocked?"blocked":((ent[x.id]||[]).includes(sc)?"on":"")}"
+          ${blocked?"disabled":`data-vsc="${esc(c.o.id)}|${esc(x.id)}|${sc}"`} title="${esc(title)}"></button></td>`;
       return `<tr class="asg-row ${(kind==="opt")?"is-optional":""} ${(kind==="alt")?"is-alt":""} ${answered?"":"needs"}">
         <td class="asgitem">${badge}<span class="qty">${c.qty}&times;</span> ${esc(c.o.name)}${tail}</td>
         ${vars.map(x=>{
           const line=c.qty*variantPriceFor(x, c.o.id);
           const money=line?fmt(line):"included";
           const supplied=vid && vid!==x.id ? vars.find(y=>y.id===vid) : null;
+          const blk=variantBlock(p, x, c.o.id);
+          if(blk){
+            const why=`Not possible here: this item has ${blk.v.name}`;
+            return dot(x,"in",why,true)+dot(x,"opt",why,true);
+          }
           return dot(x,"in",`Supplied — ${money}. Click again to clear.`)
                + dot(x,"opt",supplied?`Offered on top of the ${supplied.name} — ${money}`:`Offered as an extra — ${money}`);
         }).join("")}
