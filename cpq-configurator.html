@@ -2172,11 +2172,13 @@
   .ps-amt{flex:0 0 auto;color:var(--txt-dim);font-variant-numeric:tabular-nums}
   .asg-todo{color:var(--warn);font-style:italic;font-size:11.5px}
   .offeredsum{font-size:11.5px;color:var(--warn);margin-right:10px}
-  /* what an offered type on this row is leaning on */
-  .asgtable tr.asgdep td{padding:0 10px 7px 26px;border-top:0;position:relative;
-    font-size:11px;color:var(--txt-dim);line-height:1.45}
-  .asgtable tr.asgdep b{color:var(--txt);font-weight:500}
-  .asgtable .asgdeparrow{position:absolute;left:10px;top:-1px;color:var(--txt-faint);font-size:13px}
+  /* the same item, but with an offer on it that opens other types up */
+  .asgtable tr.asgsub td{border-top:0;background:var(--panel-2)}
+  .asgtable tr.asgsub .asgitem{padding-left:26px;position:relative;font-size:12px;color:var(--txt-dim)}
+  .asgtable tr.asgsub .asgitem b{color:var(--txt);font-weight:500}
+  .asgtable .asgsubarrow{position:absolute;left:10px;color:var(--txt-faint);font-size:13px}
+  .asgtable .asgsubwhy{display:block;font-size:10.5px;color:var(--txt-faint);margin-top:1px}
+  .asgtable .asgna{display:block;text-align:center;color:var(--txt-faint);font-size:12px}
   .assigntotals{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:16px;padding-top:12px;
     border-top:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums}
   .tallypill{font-size:11px;color:var(--txt-dim);background:var(--panel-2);border-radius:20px;padding:3px 10px}
@@ -10000,38 +10002,55 @@ function assignScreenHtml(m){
              question: the spindle offered on this item opens the right-hand
              dot while the left-hand one stays shut */
           const blkIn=variantBlock(p, x, c.o.id, "in");
-          const blkOpt=variantBlock(p, x, c.o.id, "opt");
+          /* This row is the item as it is being supplied. A type that only
+             works on top of something offered elsewhere does not belong
+             here at all — an open dot beside a shut one read as though a
+             counter could be offered on the plain photocell. It belongs on
+             the row of the offer it needs, which follows underneath. */
+          const en=offerEnabler(p, x, c.o.id);
           const why=b=>b.assumed
             ? `Not possible here: nothing has been chosen for this item under ${b.p.label}, so it has the ${b.v.name}. Choose something else there first.`
             : `Not possible here: this item has ${b.v.name}`;
-          return (blkIn ? dot(x,"in",why(blkIn),true)
+          const shut=blkIn ? (en ? `Only with the ${en.v.name} offered below — set it on that row.` : why(blkIn)) : "";
+          return (blkIn ? dot(x,"in",shut,true)
                         : dot(x,"in",`Supplied — ${money}. Click again to clear.`))
-               + (blkOpt ? dot(x,"opt",why(blkOpt),true)
-                         : dot(x,"opt",supplied?`Offered on top of the ${supplied.name} — ${money}`:`Offered as an extra — ${money}`));
+               + (blkIn ? dot(x,"opt",shut,true)
+                        : dot(x,"opt",supplied?`Offered on top of the ${supplied.name} — ${money}`:`Offered as an extra — ${money}`));
         }).join("")}
         <td class="asgcost">${vid?(cost?fmt(cost):"included"):(answered?'<i class="asg-none">nothing supplied</i>':'<i class="asg-todo">choose one</i>')}${
           extra?`<div class="asg-extra">+ ${fmt(extra)} offered</div>`:""}</td>
       </tr>
-      ${/* What the right-hand dots on this row are standing on. A type that
-           cannot be supplied here but can be offered is leaning on something
-           offered at another property, and without saying so the open dot
-           beside a shut one reads as an inconsistency rather than as a
-           condition. */""}
+      ${/* A row of its own for every offer that opens something up here.
+           The photocell as supplied has the standard photosensor and can
+           take no counter; the photocell WITH the offered spindle can, and
+           that is a different thing to be offering. Same state underneath —
+           the counter is still "offered on this item" — but asked where it
+           makes sense to answer it. */""}
       ${(()=>{
         const leaning=vars.map(x=>({x, en:offerEnabler(p, x, c.o.id)})).filter(z=>z.en);
         if(!leaning.length) return "";
         const by=new Map();
         for(const z of leaning){
           const k=z.en.p.id+":"+z.en.v.id;
-          if(!by.has(k)) by.set(k, {en:z.en, names:[]});
-          by.get(k).names.push(z.x.name);
+          if(!by.has(k)) by.set(k, {en:z.en, ids:new Set()});
+          by.get(k).ids.add(z.x.id);
         }
-        return [...by.values()].map(g=>`<tr class="asgdep"><td class="asgdep" colspan="${span}">
-          <span class="asgdeparrow">&#8627;</span>
-          ${esc(g.names.join(", "))} ${g.names.length>1?"are":"is"} only possible here together with
-          <b>${esc(g.en.v.name)}</b>, which is offered on this item under ${esc(g.en.p.label)}.
-          ${g.names.length>1?"They":"It"} can be offered beside it, not supplied on ${g.names.length>1?"their":"its"} own.
-        </td></tr>`).join("");
+        return [...by.values()].map(g=>{
+          const sum=vars.reduce((t,x)=>t + (g.ids.has(x.id) && (ent[x.id]||[]).includes("opt")
+            ? c.qty*variantPriceFor(x, c.o.id) : 0), 0);
+          return `<tr class="asgsub">
+            <td class="asgitem"><span class="asgsubarrow">&#8627;</span> with the offered
+              <b>${esc(g.en.v.name)}</b><span class="asgsubwhy">only then can these go on it</span></td>
+            ${vars.map(x=>{
+              if(!g.ids.has(x.id)) return `<td class="asgcell"><span class="asgna">&mdash;</span></td>`+
+                                          `<td class="asgcell"><span class="asgna">&mdash;</span></td>`;
+              const money=c.qty*variantPriceFor(x, c.o.id);
+              return `<td class="asgcell"><span class="asgna" title="Not supplied: the item itself keeps the ${esc(g.en.p.label.toLowerCase())} it has">&mdash;</span></td>`
+                   + dot(x,"opt",`Offered together with the ${g.en.v.name} — ${money?fmt(money):"included"}`);
+            }).join("")}
+            <td class="asgcost">${sum?`<div class="asg-extra">+ ${fmt(sum)} offered</div>`:""}</td>
+          </tr>`;
+        }).join("");
       })()}`;
     }).join("")}`).join("")}</tbody>`;
 
