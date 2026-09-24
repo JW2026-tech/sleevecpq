@@ -4164,12 +4164,17 @@ function variantBlock(p, v, optionId){
     if(!(src.variants||[]).length) continue;
     /* the rule is about this item, so the item has to have one */
     if(!propContributors(src).some(c=>c.o.id===optionId)) continue;
-    const curId=assignedVariantId(src, optionId);
-    if(!curId) continue;                       // nothing settled there yet
+    /* Nothing chosen there yet is not "no rule": an item that has not been
+       given a type has the standard one — that is what the basepill in
+       Admin says, and what the machine is built as. A spindle is not there
+       until you pick it, so until then everything that needs one is out. */
+    const asked=assignedVariantId(src, optionId);
+    const curId=asked || (propDefaultVariant(src)||{}).id;
+    if(!curId) continue;
     const cur=(src.variants||[]).find(x=>x.id===curId);
     const root=(src.variants||[]).find(x=>x.id===rootVariantId(src, curId));
     for(const ref of ((root&&root.rulesOut)||[]))
-      if(ruleHits(ref, p, v.id)) return {p:src, v:cur||root};
+      if(ruleHits(ref, p, v.id)) return {p:src, v:cur||root, assumed:!asked};
   }
   return null;
 }
@@ -4184,7 +4189,13 @@ function clearBlockedAssignments(){
       const e=assignEntry(p, c.o.id);
       for(const vid of Object.keys(e)){
         const v=(p.variants||[]).find(x=>x.id===vid);
-        if(!v || !variantBlock(p, v, c.o.id)) continue;
+        const blk=v && variantBlock(p, v, c.o.id);
+        /* only when the other side was actually answered. A property that
+           has just been added to the catalogue makes every item fall back
+           on its standard type, and clearing on that basis would empty
+           choices out of quotes that nobody had touched. On screen it is
+           still shown as not possible, so the next click settles it. */
+        if(!blk || blk.assumed) continue;
         setVariantScope(p, c.o.id, vid, null);
       }
     }
@@ -9937,7 +9948,9 @@ function assignScreenHtml(m){
           const supplied=vid && vid!==x.id ? vars.find(y=>y.id===vid) : null;
           const blk=variantBlock(p, x, c.o.id);
           if(blk){
-            const why=`Not possible here: this item has ${blk.v.name}`;
+            const why=blk.assumed
+              ? `Not possible here: nothing has been chosen for this item under ${blk.p.label}, so it has the ${blk.v.name}. Choose something else there first.`
+              : `Not possible here: this item has ${blk.v.name}`;
             return dot(x,"in",why,true)+dot(x,"opt",why,true);
           }
           return dot(x,"in",`Supplied — ${money}. Click again to clear.`)
