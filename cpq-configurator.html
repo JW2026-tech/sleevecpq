@@ -643,11 +643,17 @@
   .partstable td{padding:3px 6px;border-bottom:1px solid var(--line-soft)}
   .pricebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
   .pricebar .in{max-width:320px}
-  .pricetable .keycell{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-    font-size:11.5px;color:var(--txt-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pricebar .meta b{color:var(--txt)}
   .pricetable td{padding:2px 6px}
   .pricetable .pathcell{color:var(--txt-faint);font-size:11.5px}
+  /* the step, as a way in rather than a label */
+  .pricetable .pathgo{border:0;background:none;padding:0;margin:0;text-align:left;
+    font:inherit;color:inherit;cursor:pointer;line-height:1.35}
+  .pricetable .pathgo:hover{color:var(--accent);text-decoration:underline}
+  .pricetable .keyin{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:11.5px}
+  /* the card you came for, for as long as it takes to find it */
+  .ocard.justhere{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   .pricetable .margin{color:var(--txt-dim);font-variant-numeric:tabular-nums}
   .pricetable .margin.bad{color:var(--bad)}
   .pricetable .in{padding:4px 7px;font-size:12.5px}
@@ -8187,16 +8193,20 @@ function specFieldGroupHtml(group, title, hint){
 let priceFilter="";
 function priceListRows(){
   const out=[];
-  (function walk(list, trail){
-    for(const m of list){
-      if(m.generated) continue;
+  /* `at` is the same thing the Admin tree selects on (see listAt): the
+     step's own path, so a row can take you to where it is edited. `i` is
+     where the option sits in that step, which is what the card is keyed on. */
+  (function walk(list, trail, at){
+    list.forEach((m, mi)=>{
+      if(m.generated) return;
       const path=trail.concat(m.title||"");
-      for(const o of (m.options||[])){
-        out.push({o, m, path:path.join(" › ")});
-        if(o.children&&o.children.length) walk(o.children, path.concat(o.name||""));
-      }
-    }
-  })(CONFIG.modules||[], []);
+      const here=at.concat(mi);
+      (m.options||[]).forEach((o, i)=>{
+        out.push({o, m, i, at:here, path:path.join(" › ")});
+        if(o.children&&o.children.length) walk(o.children, path.concat(o.name||""), here.concat(o.id));
+      });
+    });
+  })(CONFIG.modules||[], [], []);
   const f=priceFilter.trim().toLowerCase();
   return f ? out.filter(r=>(r.path+" "+(r.o.name||"")+" "+(r.o.id||"")+" "+(r.o.text||"")).toLowerCase().includes(f)) : out;
 }
@@ -8308,15 +8318,18 @@ function renderPriceListAdmin(){
            is not this screen — in the export, in an order, in a mail from
            the works — and this list, the one place you go to compare prices
            across the whole catalogue, was the one place you could not see
-           it. Shown, not editable: changing a key is a different act with
-           consequences elsewhere, and it has its place in the option
-           itself. */""}
-      <colgroup><col style="width:24%"><col style="width:20%"><col style="width:12%"><col style="width:10%"><col style="width:10%"><col style="width:6%"><col style="width:18%"></colgroup>
+           it. It is edited here too: the same field as on the option card,
+           asking the same question when the key you type already belongs to
+           something (adoptByKey), because the same key is the same thing.
+           And the step is a way in: click it and the tree opens at that
+           step with the option in view, for everything this table has no
+           room for — sub-steps, dependencies, specifications. */""}
+      <colgroup><col style="width:23%"><col style="width:19%"><col style="width:14%"><col style="width:10%"><col style="width:10%"><col style="width:6%"><col style="width:18%"></colgroup>
       <tr><th>Step</th><th>Option</th><th>Key</th><th class="num">Cost</th><th class="num">Price</th><th class="num">Margin</th><th>Description</th></tr>
       ${rows.map((r,i)=>`<tr data-pri="${i}">
-        <td class="pathcell">${esc(r.path)}</td>
+        <td class="pathcell"><button class="pathgo" data-prigo="${i}" title="Open this step in the configuration tree">${esc(r.path)}</button></td>
         <td><input class="in" value="${esc(r.o.name||"")}" data-pf2="name"></td>
-        <td class="keycell" title="The option's key — edit it on the option itself">${esc(r.o.id||"")}</td>
+        <td><input class="in mono keyin" value="${esc(r.o.id||"")}" data-pf2="id" placeholder="key"></td>
         <td><input class="in num" type="number" step="100" value="${+r.o.cost||0}" data-pf2="cost"></td>
         <td><input class="in num" type="number" step="100" value="${+r.o.price||0}" data-pf2="price"></td>
         <td class="num margin ${marg(r.o)!==null&&marg(r.o)<0?"bad":""}">${marg(r.o)===null?"—":marg(r.o)+"%"}</td>
@@ -8332,9 +8345,32 @@ function renderPriceListAdmin(){
     if(f==="cost"||f==="price"){
       inp.oninput=()=>{ r.o[f]=+inp.value||0; };
       inp.onchange=()=>{ renderConfigureQuiet(); renderPriceListAdmin(); };
+    } else if(f==="id"){
+      inp.oninput=()=>{ r.o.id=inp.value; };
+      /* only when you leave the field: halfway through typing a key it
+         matches all sorts of things it is not meant to be */
+      inp.onchange=()=>{ adoptByKey(r.m, r.i, inp); renderAdmin(); };
     } else inp.oninput=()=>{ r.o[f]=inp.value; };
   });
+  ed.querySelectorAll("[data-prigo]").forEach(b=>{
+    const r=rows[+b.dataset.prigo];
+    b.onclick=()=>openInTree(r.at, r.i);
+  });
   document.getElementById("priceCsv").onclick=()=>exportStepsCsv();
+}
+/* From a row in the price list to the option itself. The tree selection is
+   a path (listAt), so it is simply handed over; the card is then brought
+   into view and marked for a moment, because a step with fifteen options
+   otherwise leaves you hunting for the line you clicked. */
+function openInTree(at, i){
+  adminSection="modules";
+  sel=at.slice();
+  renderAdmin();
+  const card=document.querySelector(`#editor .ocard[data-oi="${i}"]`);
+  if(!card) return;
+  card.scrollIntoView({block:"center", behavior:"smooth"});
+  card.classList.add("justhere");
+  setTimeout(()=>card.classList.remove("justhere"), 1800);
 }
 function renderElectricalAdmin(){
   const e=ensureElectrical();
