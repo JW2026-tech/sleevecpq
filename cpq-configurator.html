@@ -2061,6 +2061,13 @@
   .pmatrix tr.frow .vname{font-weight:400}
   .pmatrix tr.frow .fsum{display:block;text-align:right;font-size:10.5px;color:var(--txt-faint);margin-top:3px}
   .pmatrix tr.frow .fplus{display:block;text-align:right;font-size:10.5px;color:var(--txt-faint)}
+  /* pointed at something that is already in the catalogue */
+  .pmatrix tr.frow .fref{font-size:12px;padding:4px 7px}
+  .pmatrix tr.frow .flist{margin-top:5px;font-size:11.5px;color:var(--txt-dim);line-height:1.5}
+  .pmatrix tr.frow .flist b{font-weight:500;color:var(--txt)}
+  .pmatrix tr.frow .flist i{font-style:normal;color:var(--txt-faint)}
+  .pmatrix tr.frow .flost{margin-top:5px;font-size:11.5px;color:var(--bad)}
+  .pmatrix tr.frow .ffrom{display:block;text-align:right;font-size:10.5px;color:var(--txt-faint)}
   .pmatrix td.mtools{white-space:nowrap;text-align:right;padding-right:0}
   .basepill{display:inline-block;font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;
     color:var(--accent);border:1px solid var(--accent);border-radius:20px;padding:0 6px;margin-left:6px}
@@ -4129,6 +4136,31 @@ function propTally(p){
    Written once, maintained once: raise the price of the counter and every
    combination it appears in follows.
    ============================================================ */
+/* What a follow-up points at. Written out by hand it is nothing: the name
+   and the price are its own. But a digital counter is already in the
+   catalogue, as a type of Adjustment, and typing it again is a second
+   place to forget when the price moves. So a follow-up may instead carry
+   a reference, "<property>:<type>" — or "<property>:*" for every type of
+   that property beyond its standard one, which is how you say "everything
+   an adjustment can be, this one can be too" in a single line and keeps
+   up when a type is added there.
+   Only types as written are followed, never ones a follow-up built, so
+   this cannot walk in a circle. */
+function followSources(f){
+  const ref=String((f && f.ref)||"");
+  if(!ref) return [null];
+  const cut=ref.lastIndexOf(":");
+  if(cut<0) return [null];
+  const src=(CONFIG.props||[]).find(x=>x.id===ref.slice(0,cut));
+  if(!src) return [null];                       // property gone: falls back
+  const list=baseVariants(src);
+  const want=ref.slice(cut+1);
+  /* everything it can be: the standard type is the case without, which is
+     the parent on its own, so it is not one of them */
+  if(want==="*") return list.slice(1).map(v=>({p:src, v}));
+  const v=list.find(x=>x.id===want);
+  return v ? [{p:src, v}] : [null];
+}
 function rebuildFollowVariants(p){
   const had=new Map(((p && p.variants)||[]).map(v=>[v.id, v]));
   const base=((p && p.variants)||[]).filter(v=>!v.from);
@@ -4136,34 +4168,50 @@ function rebuildFollowVariants(p){
   for(const v of base){
     out.push(v);
     for(const f of (v.follow||[])){
-      const id=v.id+"+"+f.id;
-      /* the same object back where one exists: an id that keeps its
-         identity across a rebuild keeps whatever holds a reference to it
-         pointing at the live one (the same trap refreshPropStep names) */
-      const g=had.get(id) || {};
-      g.id=id; g.from=v.id; g.followId=f.id;
-      /* never the parent's name on its own: a follow-up still waiting for
-         a name would otherwise be a second type reading exactly like the
-         one it hangs from, at the same price */
-      g.name=[v.name||"", f.name||"extra"].filter(Boolean).join(" + ");
-      g.note=f.note||v.note||"";
-      g.unitPrice=(+v.unitPrice||0)+(+f.unitPrice||0);
-      delete g.follow;
-      /* priced by class: the extra costs the same on top of whatever the
-         class pays, and a class with no price of its own falls through to
-         unitPrice — which already carries the extra */
-      if(v.byClass && Object.keys(v.byClass).length){
-        const m={};
-        for(const cid of Object.keys(v.byClass)){
-          const cell=v.byClass[cid]||{}, c={};
-          if(cell.price!==undefined && cell.price!==null && cell.price!=="")
-            c.price=(+cell.price||0)+(+f.unitPrice||0);
-          if(cell.name) c.name=[cell.name, f.name||""].filter(Boolean).join(" + ");
-          if(Object.keys(c).length) m[cid]=c;
-        }
-        if(Object.keys(m).length) g.byClass=m; else delete g.byClass;
-      } else delete g.byClass;
-      out.push(g);
+      const srcs=followSources(f);
+      /* one line pointing at a whole property stands for several types, so
+         each one is told apart by what it points at; a single follow-up
+         keeps the plain id it has always had */
+      const many=srcs.length>1;
+      for(const src of srcs){
+        /* a reference is the living truth, and what is written on the
+           follow-up is a copy of it — kept in step here, so a type that is
+           later deleted still reads as what it last was instead of going
+           blank in every quote that has it */
+        if(src && !many){ f.name=src.v.name; f.note=src.v.note||""; f.unitPrice=+src.v.unitPrice||0; }
+        const fname=src ? src.v.name : (f.name||"extra");
+        const fnote=src ? (src.v.note||"") : (f.note||"");
+        const fprice=src ? (+src.v.unitPrice||0) : (+f.unitPrice||0);
+        const id=v.id+"+"+f.id+(many?":"+src.v.id:"");
+        /* the same object back where one exists: an id that keeps its
+           identity across a rebuild keeps whatever holds a reference to it
+           pointing at the live one (the same trap refreshPropStep names) */
+        const g=had.get(id) || {};
+        g.id=id; g.from=v.id; g.followId=f.id;
+        if(src) g.followRef=src.p.id+":"+src.v.id; else delete g.followRef;
+        /* never the parent's name on its own: a follow-up still waiting for
+           a name would otherwise be a second type reading exactly like the
+           one it hangs from, at the same price */
+        g.name=[v.name||"", fname].filter(Boolean).join(" + ");
+        g.note=fnote||v.note||"";
+        g.unitPrice=(+v.unitPrice||0)+fprice;
+        delete g.follow;
+        /* priced by class: the extra costs the same on top of whatever the
+           class pays, and a class with no price of its own falls through to
+           unitPrice — which already carries the extra */
+        if(v.byClass && Object.keys(v.byClass).length){
+          const m={};
+          for(const cid of Object.keys(v.byClass)){
+            const cell=v.byClass[cid]||{}, c={};
+            if(cell.price!==undefined && cell.price!==null && cell.price!=="")
+              c.price=(+cell.price||0)+fprice;
+            if(cell.name) c.name=[cell.name, fname].filter(Boolean).join(" + ");
+            if(Object.keys(c).length) m[cid]=c;
+          }
+          if(Object.keys(m).length) g.byClass=m; else delete g.byClass;
+        } else delete g.byClass;
+        out.push(g);
+      }
     }
   }
   /* in place: the array itself is read all over, and handing back a new
@@ -8905,6 +8953,10 @@ function renderPropsAdmin(){
        a follow-up are shown underneath the type they belong to and are
        not rows of their own */
     const authored=baseVariants(p);
+    /* what a follow-up can point at: the types of every OTHER property.
+       Not this one's own, which would be a type hanging from itself. */
+    const refGroups=(CONFIG.props||[]).filter(x=>x!==p && baseVariants(x).length)
+      .map(x=>({id:x.id, label:x.label||"Untitled", items:baseVariants(x)}));
     const n=propCount(p.id);
     const priced=vars.some(v=>v.byClass && Object.keys(v.byClass).length);
     const loose=untaggedParts(p);
@@ -8970,21 +9022,38 @@ function renderPropsAdmin(){
                 <button class="x" data-vact="del" title="Remove type">&times;</button>
               </td>
             </tr>
-            ${(v.follow||[]).map(f=>`<tr class="frow" data-vid="${esc(v.id)}" data-fid="${esc(f.id)}">
+            ${(v.follow||[]).map(f=>{
+              const srcs=followSources(f).filter(Boolean);
+              const linked=!!f.ref && srcs.length>0;
+              const lost=!!f.ref && !srcs.length;
+              const picker=`<select class="in fref" data-ff="ref" title="Point this at a type that is already in the catalogue, so its name and its price are kept in one place">
+                  <option value="">&mdash; written here &mdash;</option>
+                  ${refGroups.map(g=>`<optgroup label="${esc(g.label)}">
+                    ${g.items.length>1?`<option value="${esc(g.id)}:*" ${f.ref===g.id+":*"?"selected":""}>every type of ${esc(g.label.toLowerCase())}</option>`:""}
+                    ${g.items.map((x,xi)=>`<option value="${esc(g.id+":"+x.id)}" ${f.ref===g.id+":"+x.id?"selected":""}>${esc(x.name)}${xi===0?" (standard)":""} &mdash; ${esc(fmt(+x.unitPrice||0))}</option>`).join("")}
+                  </optgroup>`).join("")}
+                </select>`;
+              return `<tr class="frow ${linked||lost?"is-linked":""}" data-vid="${esc(v.id)}" data-fid="${esc(f.id)}">
               <td class="mtype">
                 <span class="farrow" title="Only on ${esc(v.name)}">&#8627;</span>
-                <input class="in vname" value="${esc(f.name)}" data-ff="name" placeholder="e.g. digital counter">
-                <input class="in vnote" value="${esc(f.note||"")}" data-ff="note" placeholder="Short description, shown to the customer">
+                ${picker}
+                ${linked?`<div class="flist">${srcs.map(x=>
+                  `<div><b>${esc(x.v.name)}</b> ${esc(fmt(+x.v.unitPrice||0))} <i>&rarr; ${esc(fmt((+v.unitPrice||0)+(+x.v.unitPrice||0)))} together</i></div>`).join("")}</div>`
+                 : lost?`<div class="flost">The type this pointed at is gone. It still counts as
+                   <b>${esc(f.name||"extra")}</b> at ${esc(fmt(+f.unitPrice||0))} &mdash; pick another, or write it here.</div>`
+                 : `<input class="in vname" value="${esc(f.name)}" data-ff="name" placeholder="e.g. digital counter">
+                    <input class="in vnote" value="${esc(f.note||"")}" data-ff="note" placeholder="Short description, shown to the customer">`}
               </td>
               <td class="mprice is-any">
-                <input class="in oprice" type="number" step="10" value="${+f.unitPrice||0}" data-ff="unitPrice"
-                  title="On top of ${esc(v.name)} — together ${esc(fmt((+v.unitPrice||0)+(+f.unitPrice||0)))} each">
-                <span class="fsum">= ${esc(fmt((+v.unitPrice||0)+(+f.unitPrice||0)))}</span>
+                ${linked?`<span class="ffrom">from ${esc((refGroups.find(g=>g.id===String(f.ref).split(":")[0])||{}).label||"")}</span>`
+                 : `<input class="in oprice" type="number" step="10" value="${+f.unitPrice||0}" data-ff="unitPrice"
+                      title="On top of ${esc(v.name)} — together ${esc(fmt((+v.unitPrice||0)+(+f.unitPrice||0)))} each">
+                    <span class="fsum">= ${esc(fmt((+v.unitPrice||0)+(+f.unitPrice||0)))}</span>`}
               </td>
               ${cols.slice(1).map(()=>`<td class="mprice"><span class="fplus"
                 title="A follow-up costs the same on top of every class">+ the same</span></td>`).join("")}
               <td class="mtools"><button class="x" data-fact="del" title="Remove this follow-up">&times;</button></td>
-            </tr>`).join("")}`;
+            </tr>`;}).join("")}`;
           }).join("")}
         </tbody>
       </table></div>`
@@ -9152,6 +9221,15 @@ function renderPropsAdmin(){
     const f=v && (v.follow||[]).find(x=>x.id===row.dataset.fid);
     if(!f) return;
     const k=el.dataset.ff;
+    if(k==="ref"){
+      /* nothing written here any more, or the other way round: pointing at
+         something keeps what was typed as the copy it falls back on */
+      el.onchange=()=>{
+        if(el.value) f.ref=el.value; else delete f.ref;
+        rebuildFollowVariants(p); invalidateQtyCache(); renderConfigureQuiet(); renderAdmin();
+      };
+      return;
+    }
     if(k==="unitPrice") el.oninput=()=>{ f.unitPrice=+el.value||0; };
     else el.oninput=()=>{ f[k]=el.value; };
     el.onchange=()=>{ rebuildFollowVariants(p); invalidateQtyCache(); renderConfigureQuiet(); renderAdmin(); };
