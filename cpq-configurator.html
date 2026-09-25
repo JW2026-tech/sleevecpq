@@ -654,6 +654,8 @@
     font-size:11.5px}
   /* the card you came for, for as long as it takes to find it */
   .ocard.justhere{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  /* what a type is, under what it is called */
+  .propsum .ps-note{display:block;font-size:11px;color:var(--txt-faint);margin-top:1px;line-height:1.4}
   .opt.justhere{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   /* searching the list on the left */
   .navsearch{margin:0 0 8px;font-size:12px;padding:6px 9px}
@@ -1229,6 +1231,10 @@
   .shareupeach{display:block;font-size:11.5px;font-weight:500;color:#888;margin-top:2px}
   .shareupcard .btn{width:100%;text-align:center;border-radius:8px;margin-top:auto}
   .shareupcard.is-taken{border-color:#1c2563}
+  .shareupcard .sharetaken{display:flex;align-items:center;gap:7px;margin-top:auto;
+    padding:8px 10px;border-radius:8px;background:#eef1fb;color:#1c2563;
+    font-size:12px;font-weight:600}
+  .shareupcard .sharetaken svg{width:14px;height:14px;flex:0 0 14px}
 
   .sharealtcard{position:relative;border:1px solid #e3e6f0;border-radius:12px;padding:14px;
     display:flex;flex-direction:column}
@@ -1920,6 +1926,11 @@
     background:var(--warn-softer);white-space:nowrap;vertical-align:1px}
   .takeopt:hover{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
   /* taken into the machine, still listed here so it can be put back */
+  /* an optional line that has been moved into the machine — said in words,
+     because the button that says it does not print */
+  .takenpill{display:inline-block;font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;
+    color:var(--ok);border:1px solid var(--ok);border-radius:20px;padding:0 6px;margin-left:6px;
+    vertical-align:1px;white-space:nowrap}
   .takeopt.taken{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
   .takeopt.taken:hover{background:var(--ok-soft);color:var(--ok);border-color:var(--ok)}
   .pline.is-taken .ptitle{color:var(--ok)}
@@ -5047,19 +5058,6 @@ function propsSurcharge(o){
   }
   return n;
 }
-/* the breakdown behind that surcharge, for the line's explanation */
-function propsSurchargeParts(o){
-  const out=[];
-  if(!o || !o.props) return out;
-  for(const p of (CONFIG.props||[])){
-    const qty=propQtyOf(o, p.id);
-    if(!qty || !(p.variants&&p.variants.length)) continue;
-    const v=assignedVariant(p, o.id);
-    const each=variantPriceFor(v, o.id);
-    if(v && each) out.push({propId:p.id, qty, name:variantNameFor(v, o.id), each, total:qty*each});
-  }
-  return out;
-}
 /* The single definition of what an option costs. Everything that totals
    money goes through here, so it reaches the summary, the proposal,
    rollups and both currencies unchanged.
@@ -5101,9 +5099,14 @@ function propSummaryRows(kind){
        both render from here */
     if(propSkipped(p)) continue;
     const per={};
-    const add=(key,name,qty,each,price)=>{
-      per[key]=per[key]||{name, qty:0, each, price:0};
+    /* the type's own description, written in Admin under "shown to the
+       customer" and until now shown to nobody: the scope of supply and the
+       investment proposal both render from here and both printed the name
+       alone */
+    const add=(key,name,qty,each,price,note)=>{
+      per[key]=per[key]||{name, qty:0, each, price:0, note:(note||"").trim()};
       per[key].qty+=qty; per[key].price+=price;
+      if(!per[key].note && note) per[key].note=String(note).trim();
     };
     if(kind==="in"){
       for(const c of propContributors(p)){
@@ -5111,14 +5114,14 @@ function propSummaryRows(kind){
         const v=(p.variants&&p.variants.length)?assignedVariant(p,c.o.id):null;
         if(!v && (p.variants||[]).length) continue;          // nothing chosen yet
         const each=v?variantPriceFor(v, c.o.id):0;
-        add(v?v.id:"__plain", v?v.name:propName(p,c.qty), c.qty, each, c.qty*each);
+        add(v?v.id:"__plain", v?v.name:propName(p,c.qty), c.qty, each, c.qty*each, v&&v.note);
       }
     } else {
       for(const r of propScopeLines(kind)){
         if(r.p!==p) continue;
         /* a grouped offer covers items in different classes, so there is no
            single "each" to quote unless they all came to the same */
-        add(r.v.id, r.v.name, r.qty, (r.sameEach?(+r.each||0):0), r.price);
+        add(r.v.id, r.v.name, r.qty, (r.sameEach?(+r.each||0):0), r.price, r.v.note);
       }
     }
     const rows=Object.keys(per).map(k=>per[k]).filter(r=>r.qty>0);
@@ -5138,7 +5141,8 @@ function propSummaryHtml(kind, withPrice){
   return `<div class="propsum ${kind}">
     ${rows.map(({g,r})=>`<div class="ps-row">
       <span class="ps-qty">${r.qty}${g.p.unit?` ${esc(g.p.unit)}`:"&times;"}</span>
-      <span class="ps-lbl">${esc(r.name)}${kind==="opt"?' <span class="optpill">optional</span>':""}</span>
+      <span class="ps-lbl">${esc(r.name)}${kind==="opt"?' <span class="optpill">optional</span>':""}
+        ${r.note?`<span class="ps-note">${esc(r.note)}</span>`:""}</span>
       ${withPrice?`<span class="ps-amt">${r.price?fmt(r.price):"included"}</span>`:""}
     </div>`).join("")}
   </div>`;
@@ -5806,12 +5810,18 @@ function buildItemRows(forceTop, wantOptional){
       }
       let mine=parentOid;
       if(!skip && scopeKind(nd.o)===want){
-        raw.push(at({node:nd, own:optionPrice(nd.o), rolled:false, parentOid,
+        /* The types this item carries — its adjustments, its feet, its
+           access doors — used to be a line each underneath it. They are
+           already written out per type and per quantity in the scope of
+           supply, so here they only turned a machine of four items into
+           twenty lines saying what the reader had seen two pages earlier.
+           The money does not move: the item is priced at what it comes to
+           with them, which is what the totals always were. */
+        raw.push(at({node:nd, own:optionPrice(nd.o)+propsSurcharge(nd.o), rolled:false, parentOid,
                   propsAgg:branchProps({o:nd.o, kids:[]}, wantOptional)}));
         mine=nd.o.id;
-        /* the adjustments/feet this item needs, each on its own line just
-           under it — kept out of the fold pass since they aren't options
-           anyone can hide or roll up on their own */
+        /* format parts stay: those are this quotation's own parts, named
+           per product, and they are written down nowhere else */
         /* the format parts this option carries, one line per product */
         for(const fr of ownedFormatRows(nd.o.id, want)){
           raw.push(at({
@@ -5823,21 +5833,11 @@ function buildItemRows(forceTop, wantOptional){
           }));
         }
         let sub=0;
-        for(const part of propsSurchargeParts(nd.o)){
-          sub+=part.total;
-          raw.push(at({
-            isPropLine:true, price:part.total, rolled:false, hide:false, canHide:false,
-            node:{ m:nd.m, root:nd.root, depth:nd.depth+1, trail:nd.trail,
-                   o:{ id:"__pc_"+nd.o.id+"_"+part.propId, name:part.name,
-                       qty:part.qty, unitPrice:part.each, isPropLine:true,
-                       optional:!!nd.o.optional, alt:!!nd.o.alt } }
-          }));
-        }
         for(const fr of ownedFormatRows(nd.o.id, want)) sub+=(+fr.x.price||0)*fr.qty;
-        /* what the item comes to with everything it carries — a reading
+        /* what the item comes to with the format parts under it — a reading
            line, never counted again in any total */
         if(sub) raw.push(at({
-          isPropLine:true, subtotal:true, price:optionPrice(nd.o)+sub,
+          isPropLine:true, subtotal:true, price:optionPrice(nd.o)+propsSurcharge(nd.o)+sub,
           rolled:false, hide:false, canHide:false,
           node:{ m:nd.m, root:nd.root, depth:nd.depth+1, trail:nd.trail,
                  o:{ id:"__tot_"+nd.o.id, name:"Together", isPropLine:true, isTotal:true,
@@ -6142,6 +6142,31 @@ function buildOptionalRows(forceTop){
       walk(nd.kids);
     }
   })(optionTree());
+  /* And the same for a format part, which that walk cannot reach: it is not
+     an option in the tree but a line made up from the parts list. This is
+     the one that actually bit — the Format parts step is usually rolled up,
+     so taking a rotary cutter emptied its optional quantity, the rolled-up
+     step had no line of its own to make a ghost from, and the card simply
+     vanished. The cutter was in the machine and in the total; there was no
+     way left to put it back. */
+  for(const t of takenList()){
+    const id=String(t.id||"");
+    if(!/^(__genp_|__ofp_|__prdp_)/.test(id)) continue;
+    if(already.has(id) || found.has(id)) continue;
+    const part=(CONFIG.parts||[]).find(x=>x && x.id &&
+      (id==="__genp_"+x.id || id===x.id || id.endsWith("_"+x.id)));
+    const fstep=formatStep();
+    if(!part || !fstep) continue;
+    const q=Math.max(1, +t.n||1);
+    found.add(id);
+    ghosts.push({
+      isPropLine:true, price:(+part.price||0)*q, rolled:false, hide:false, canHide:false,
+      taken:true, ord:100001, propsAgg:{},
+      node:{ m:fstep, root:fstep, depth:0, trail:[],
+             o:{ id, name:part.desc||"Format part", qty:q>1?q:0,
+                 unitPrice:+part.price||0, isPropLine:true, optional:true } }
+    });
+  }
   if(!ghosts.length) return sortByCatalogue(rows);
   /* back into the list where it was, not at the end of it */
   return sortByCatalogue(rows.concat(ghosts).sort((a,b)=>(a.ord||0)-(b.ord||0)));
@@ -6520,7 +6545,8 @@ function priceRowHtml(r, actPrefix){
   const pvalBlock=`<div class="pval">${priceTxt}</div>${altTxt}`;
   return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""}" style="padding-left:${nd.depth*18}px">
     <div class="pmain">
-      <div class="ptitle"><span class="bullet"></span>${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${(o.unitPrice && o.qty>1)?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
+      <div class="ptitle"><span class="bullet"></span>${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${
+        r.taken?' <span class="takenpill">in the quotation</span>':""}${(o.unitPrice && o.qty>1)?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
         :((!o.isPropLine && optQty(o)>1 && +o.price) ? ` <span class="snote">(${fmt(+o.price)} each)</span>`:"")}${o.fmtFor?` <span class="snote">— ${esc(o.fmtFor)}</span>`:""}${
         shareMode?"":takeBtn}${propsMapLabel(r.propsAgg)?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${r.rolled?'<span class="tag rollup">incl. sub-items</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
       ${movePriceDown?"":pvalBlock}
@@ -11823,7 +11849,12 @@ function quoteDate(){
    says which chapter you are in, which is what a reader leafing through it
    wants anyway, and the real page numbers are printed by whatever turns this
    into a PDF (see api/render-pdf.js, footerTemplate). */
-function docPage(inner, chapter, cls){
+/* The running header. It carried the section name as well, which said
+   nothing the page did not already say for itself — every chapter opens
+   with its own numbered heading, and on a chapter that runs over three
+   pages the line only repeated it. The quotation number and the date are
+   what a loose page has to be able to tell you. */
+function docPage(inner, cls){
   const t=activeTemplate();
   return `<section class="docpage ${cls||""}">
     <div class="pghead">
@@ -11831,7 +11862,6 @@ function docPage(inner, chapter, cls){
       <div class="pgmeta">
         <div><span>Quotation number</span> ${esc(CONFIG.quoteNumber||"")}</div>
         <div><span>Date:</span> ${quoteDate()}</div>
-        ${chapter?`<div><span>Section</span> ${esc(chapter)}</div>`:""}
       </div>
     </div>
     <div class="pgbody">${inner}</div>
@@ -12149,7 +12179,7 @@ function buildAllDocsHtml(){
       html:`<h2>${i+1}. ${esc(c.title)}</h2>${c.body(i+1)}`
     })))
    .filter(Boolean).map(b=>typeof b==="string"?{cls:"",html:b}:b);
-  return coverPageHtml() + bodies.map(b=>docPage(b.html, b.chapter, b.cls)).join("");
+  return coverPageHtml() + bodies.map(b=>docPage(b.html, b.cls)).join("");
 }
 document.getElementById("btnPrintAll").onclick=()=>{
   document.getElementById("allDocsBody").innerHTML=buildAllDocsHtml();
@@ -16936,6 +16966,12 @@ function shareUpgradeCardHtml(r){
     ${note?`<div class="shareupdesc">${esc(note.length>90?note.slice(0,88)+"…":note)}</div>`:""}
     <div class="shareupprice">${r.hide?"price on request":(r.price?fmt(r.price):"included")}
       ${(q>1 && !r.hide && r.price)?`<span class="shareupeach">${q} &times; ${fmt(r.price/q)}</span>`:""}</div>
+    ${/* On paper the buttons are gone, and then a card the customer had
+         already added read exactly like one he had not — while the page
+         above it says none of these is counted in the investment, which
+         for this one is no longer true. So it says so in words, which
+         print. */""}
+    ${r.taken?`<div class="sharetaken">${shareCheckIconSvg()}<span>Added to your quotation</span></div>`:""}
     ${r.taken
       ? `<button class="btn sm pbtn takeopt taken no-print" data-untake="${esc(id)}">In your quote — remove</button>`
       : `<button class="btn sm pbtn takeopt no-print" data-take="${esc(id)}">Add upgrade &nbsp;+</button>`}
@@ -17756,6 +17792,13 @@ async function boot(){
       quoteDocOverride=payload.versionAt||null;
       applyCatalogue({catalogue: payload.catalogue});
       applyQuote(payload.quote);
+      /* what the pdf is called once it is open. A pdf carries the title of
+         the page it was printed from, so every quotation opened in a tab
+         reading "Machine Configurator" — the name of the tool, not of the
+         document you are holding. */
+      document.title=[ "Quotation", CONFIG.quoteNumber||"",
+        (CONFIG.customer||"").trim() ? "\u2014 "+(CONFIG.customer||"").trim() : ""
+      ].filter(Boolean).join(" ").trim() || "Quotation";
       document.getElementById("allDocsBody").innerHTML=buildAllDocsHtml();
       document.body.classList.add("print-all");
       const imgs=Array.from(document.querySelectorAll("#allDocsBody img"));
