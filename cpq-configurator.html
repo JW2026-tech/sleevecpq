@@ -672,14 +672,15 @@
      the line it explains */
   .propsum .ps-pic{width:46px;height:34px;flex:0 0 46px;object-fit:contain;background:#fff;
     border:1px solid var(--line);border-radius:6px;padding:2px;align-self:center}
-  .sharepropt .tpic{display:block;width:100%;max-width:78px;height:46px;object-fit:contain;
-    background:#fff;border:1px solid #e3e6f0;border-radius:6px;padding:2px;margin:0 0 4px auto}
-  .sharepropt .tnote{display:block;font-size:10px;color:#888;line-height:1.35;margin-top:2px;
+  .sharepropt .tpic{display:block;width:100%;max-width:118px;height:76px;object-fit:contain;
+    background:#fff;border:1px solid #e3e6f0;border-radius:8px;padding:4px;margin:0 auto 6px 0}
+  .sharepropt .tnote{display:block;font-size:11.5px;color:#777;line-height:1.45;margin-top:4px;
     font-weight:400;white-space:normal}
+  .sharepropt .ponsome{display:block;font-size:11px;color:#999;margin-top:3px}
   /* the machines are folded behind the "All machines" row */
   .sharepropt.shut .pmachrow{display:none}
-  .sharepropt .pmachfold{display:block;margin-top:3px;border:0;background:none;padding:0;
-    font:inherit;font-size:11px;font-weight:600;color:#28338A;cursor:pointer;text-align:left}
+  .sharepropt .pmachfold{display:block;margin-top:5px;border:0;background:none;padding:0;
+    font:inherit;font-size:12px;font-weight:600;color:#28338A;cursor:pointer;text-align:left}
   .sharepropt .pmachfold:hover{text-decoration:underline}
   .sharesectionhead .sharepropall{flex:0 0 auto;margin-left:auto}
   /* on paper there is nothing to click, so every machine is out */
@@ -1315,18 +1316,18 @@
   .shareprotable{border-collapse:collapse;width:100%;min-width:460px;table-layout:fixed}
   .shareprotable col.pmachcol{width:36%}
   .shareprotable th{text-align:left;padding:0 12px 8px 0;vertical-align:bottom}
-  .shareprotable th .tname{display:block;font-size:12px;font-weight:600;color:#222;
+  .shareprotable th .tname{display:block;font-size:13.5px;font-weight:600;color:#222;
     white-space:normal;line-height:1.3}
-  .shareprotable th .trate{display:block;font-size:10.5px;color:#999;font-weight:400;margin-top:1px}
-  .shareprotable td{padding:7px 12px 7px 0;border-top:1px solid #f0f1f6;font-size:12px;vertical-align:middle}
-  .shareprotable td.pmach,.shareprotable th.pmach{font-size:12.5px;color:#222;padding-right:20px;
+  .shareprotable th .trate{display:block;font-size:12px;color:#888;font-weight:400;margin-top:2px}
+  .shareprotable td{padding:9px 12px 9px 0;border-top:1px solid #f0f1f6;font-size:13px;vertical-align:middle}
+  .shareprotable td.pmach,.shareprotable th.pmach{font-size:13.5px;color:#222;padding-right:20px;
     white-space:normal;line-height:1.35}
-  .shareprotable .pqty{color:#999;font-size:11px;margin-left:7px;font-variant-numeric:tabular-nums}
+  .shareprotable .pqty{color:#888;font-size:12px;margin-left:7px;font-variant-numeric:tabular-nums}
   .shareprotable tr.pall td{border-top:0;padding-bottom:9px}
   .shareprotable tr.pall td.pmach{color:#28338A;font-weight:600}
   .shareprotable .pcur{color:#EF7B0B;font-weight:700;white-space:nowrap}
   .shareprotable .pna{color:#ccc}
-  .shareprotable .btn.sm{white-space:nowrap;padding:4px 10px;font-size:11.5px}
+  .shareprotable .btn.sm{white-space:nowrap;padding:6px 12px;font-size:12.5px}
   .shareprotable tr.plocked td{color:#aaa;background:#fafafc}
   .shareprotable tr.plocked td.pmach{color:#888}
   /* It sat under the machine name at 10px in near-white italics — the one
@@ -17001,7 +17002,7 @@ const sharePropOpen=new Set();
 function sharePropTablesHtml(frac){
   const list=sharePropTables(frac);
   if(!list.length) return "";
-  const alleOpen=list.filter(t=>t.rows.length>1).every(t=>sharePropOpen.has(t.p.id));
+  const alleOpen=list.every(t=>sharePropOpen.has(t.p.id));
   return `<div class="sharesectionhead">
       <h3>Types for this line</h3>
       <div class="sharesectionsub">Feet, counters and access doors are fitted throughout the line. Choose once for every machine, or set a machine on its own.</div>
@@ -17009,9 +17010,7 @@ function sharePropTablesHtml(frac){
         alleOpen?"Hide the machines":"Show every machine"}</button>
     </div>
     ${list.map(t=>{
-      /* one machine and there is no "All machines" row to fold behind: that
-         single row is everything the table has */
-      const open=sharePropOpen.has(t.p.id) || t.rows.length<2;
+      const open=sharePropOpen.has(t.p.id);
       return `<div class="sharepropt ${open?"open":"shut"}">
       <div class="shareproptname">${esc(t.p.plural||t.p.label||"")}</div>
       ${/* Fixed columns, sized the same in every one of these tables: left to
@@ -17032,15 +17031,35 @@ function sharePropTablesHtml(frac){
             v.note?`<span class="tnote">${esc(v.note)}</span>`:""}</th>`).join("")}
         </tr></thead>
         <tbody>
-          ${t.rows.length>1?`<tr class="pall">
-            <td class="pmach">All machines
-              <button class="pmachfold no-print" data-proptfold="${esc(t.p.id)}"
+          ${/* The line as a whole, and the row the machines fold behind. It
+               carries what a shut table has to be able to say on its own:
+               how many there are, what they have now, and what each of the
+               other types would come to for the whole line. A bare "Set
+               all" said none of that — the price only appeared once you
+               opened the machines, which is the wrong way round. */""}
+          ${(()=>{
+            const totaal=t.rows.reduce((n,r)=>n+r.qty,0);
+            const cel=v=>{
+              const cellen=t.rows.map(r=>r.cells.find(x=>x.vid===v.id)).filter(Boolean);
+              if(cellen.every(c=>c.current))
+                return `<span class="pcur">&#10003; ${(()=>{const d=cellen.reduce((n,c)=>n+(+c.delta||0),0);
+                  return d?fmt(d):"included";})()}</span>`;
+              const kan=cellen.filter(c=>!c.blocked && c.offered);
+              if(!kan.length) return `<span class="pna">&mdash;</span>`;
+              const som=kan.reduce((n,c)=>n+(+c.delta||0),0);
+              /* set every machine at once, and say what that costs */
+              return `<button class="btn sm pbtn no-print" data-propall="${esc(t.p.id)}|${esc(v.id)}">${
+                som>0?`+ ${fmt(som)}`:(som<0?`&minus; ${fmt(-som)}`:"no extra cost")}</button>${
+                kan.length<t.rows.length?`<span class="ponsome">on ${kan.length} of ${t.rows.length}</span>`:""}`;
+            };
+            return `<tr class="pall">
+            <td class="pmach">${t.rows.length>1?"All machines":esc(t.rows[0]?t.rows[0].machine:"")}
+              <span class="pqty">${totaal}&times;</span>
+              ${t.rows.length>1?`<button class="pmachfold no-print" data-proptfold="${esc(t.p.id)}"
                 title="${open?"Back to one line for the whole line":"Show what each machine has, so one of them can be set on its own"}">${
-                open?"&#9662; hide the machines":`&#9656; ${t.rows.length} machines`}</button></td>
-            ${t.types.map(v=>`<td>${t.rows.every(r=>r.suppliedId===v.id)
-              ? `<span class="pcur">&#10003; all</span>`
-              : `<button class="btn sm pbtn no-print" data-propall="${esc(t.p.id)}|${esc(v.id)}">Set all</button>`}</td>`).join("")}
-          </tr>`:""}
+                open?"&#9662; hide the machines":`&#9656; per machine (${t.rows.length})`}</button>`:""}</td>
+            ${t.types.map(v=>`<td>${cel(v)}</td>`).join("")}
+          </tr>`;})()}
           ${t.rows.map(r=>`<tr class="pmachrow">
             <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>${
               r.mixed?`<span class="pmixed">not all the same &mdash; pick one to align them</span>`:""}</td>
