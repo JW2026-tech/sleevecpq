@@ -678,7 +678,7 @@
   #ctree .grouphead{margin:10px 0 3px;padding-top:0;cursor:pointer;border-radius:6px}
   #ctree .grouphead:first-child{margin-top:0}
   #ctree .grouphead:hover{background:var(--panel-2)}
-  #ctree .grouphead.here{background:var(--accent-soft)}
+  #ctree .scopeline.here{background:var(--accent-soft)}
   #ctree .scopeline{padding-top:2px;padding-bottom:2px;cursor:pointer;border-radius:6px}
   #ctree .scopeline:hover{background:var(--panel-2)}
   #ctree .scopeline .stitle{font-size:12px}
@@ -5558,39 +5558,44 @@ function chosenOptionsOf(m){
 }
 function configTreeHtml(visD, cursorIdx){
   if(!visD || !visD.length) return '<div class="ctempty">Nothing configured yet.</div>';
-  /* Drawn with the scope of supply's own classes — step heading, bullet,
-     name, quantity — because it is the same thing said earlier: this is what
-     the machine is. Two lists of the same facts in two different shapes is
-     one shape too many. */
+  /* Drawn the way the scope of supply draws it, down to where the headings
+     fall: one per machine, not one per question. "Choose the registration
+     sensor" is how you were asked; "Registration colour and contrast
+     sensor" is what the machine has, and only the second belongs in a list
+     of what the machine is. The step names live on in the list on the left,
+     which is where you go to answer them.
+     A step with no answer is the exception — there the name is the whole
+     point, because it says which question is still open. */
+  let laatsteWortel=null;
   return `<div class="ctree scopelist">${visD.map((nd,i)=>{
     const m=nd.m;
-    /* A step where everything has been ruled out is not part of the machine:
-       it is a question that was asked and does not apply. It stays in the
-       list on the left, where it can be un-ruled-out; here it would be a
-       heading over nothing. */
-    if(stepIsNA(m)) return "";
+    if(stepIsNA(m)) return "";        // ruled out: not part of the machine
     const klaar=stepDone(m);
-    const picks=chosenOptionsOf(m);
-    /* and an option ruled out on its own is not in the machine either — it
-       cannot be a pick, but a quote from before this check could carry one */
-    const gekozen=picks.filter(o=>!isNA(o.id));
-    /* a step with nothing to answer (a heading that only leads on) is not
-       unfinished business, so it is not nagged about */
     const open=!klaar && (m.generated || (m.options||[]).length);
-    const in1=nd.depth*11, in2=in1+14;
-    const head=`<div class="grouphead ${i===cursorIdx?"here":""}" data-ctgo="${esc(m.id)}"
-      style="padding-left:${in1}px" title="Go to this step">${esc(m.title||"Untitled")}</div>`;
-    const line=(txt, cls, qty)=>`<div class="scopeline ${cls||""}" data-ctgo="${esc(m.id)}"
-      style="padding-left:${in2}px"><span class="bullet"></span>
+    const gekozen=chosenOptionsOf(m).filter(o=>!isNA(o.id));
+    const sum=klaar?stepSummary(m):null;
+    if(!open && !gekozen.length && !sum) return "";
+    /* the machine this sits under, named once. flattenD carries the root as
+       an id, not as the step itself */
+    let head="";
+    const wortelId=nd.rootId||m.id;
+    if(wortelId!==laatsteWortel){
+      laatsteWortel=wortelId;
+      const w=(CONFIG.modules||[]).find(x=>x.id===wortelId) || m;
+      head=`<div class="grouphead" data-ctgo="${esc(w.id)}" title="Go to this step">${
+        esc(w.title||"")}</div>`;
+    }
+    const in1=Math.max(0,(nd.depth-1))*11;
+    const line=(txt, cls, qty)=>`<div class="scopeline ${cls||""} ${i===cursorIdx?"here":""}"
+      data-ctgo="${esc(m.id)}" style="padding-left:${in1}px"><span class="bullet"></span>
       <div class="stitle">${qty?`<span class="qty">${qty}&times;</span> `:""}${esc(txt)}</div></div>`;
-    if(open) return head+line("still to decide","is-todo");
+    if(open) return head+line((m.title||"Untitled")+" \u2014 still to decide","is-todo");
     if(gekozen.length) return head+gekozen.map(o=>line(o.name||"",
       o.optional?"is-optional":(o.alt?"is-alt":""),
       (o.qty||optQty(o)>1)?(o.qty||optQty(o)):0)).join("");
     /* a generated step has no options of its own — the feet, the format
        parts, the days on site each say in one sentence what they came to */
-    const sum=klaar?stepSummary(m):null;
-    return head+(sum?line(sum):"");
+    return head+line(sum);
   }).join("")}</div>`;
 }
 /* Every step currently in the quote that still has no answer, with the
