@@ -13116,6 +13116,20 @@ function renderNotices(){
   }
   const rows=[];
 
+  /* ---- the quotation a catalogue switch put away ----
+     It is not gone and nothing is wrong; it simply is not open, and without
+     saying so the Configure screen looks like an empty new quotation. */
+  if(quotePutAway){
+    rows.push(`<div class="notice is-cat">
+      <span class="catdot"></span>
+      <span class="catmsg"><b>${quotePutAway.number?`Quotation ${esc(quotePutAway.number)} is put away.`:"The quotation is put away."}</b>
+        You are in the live catalogue, so you are editing the catalogue, not configuring.
+        It was saved, and opening it again brings its own catalogue back with it.</span>
+      ${quotePutAway.id?`<button class="btn sm" id="ntReopen">Open it again</button>`:""}
+      <button class="btn sm" id="ntPutAwayOk">Got it</button>
+    </div>`);
+  }
+
   /* ---- 0. something on this screen is saved nowhere ---- */
   if(checkConfigKeys().length){
     rows.push(`<div class="notice is-stray">
@@ -13191,6 +13205,13 @@ function renderNotices(){
   }
   const on=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
   on("ntDiff", showCatalogueDiff);
+  on("ntPutAwayOk", ()=>{ quotePutAway=null; renderNotices(); });
+  on("ntReopen", async ()=>{
+    const id=quotePutAway && quotePutAway.id;
+    quotePutAway=null;
+    if(id) await cloudOpenQuote(id);
+    renderNotices();
+  });
   on("ntTake", takeUpstreamCatalogue);
   /* Later on the catalogue means "not this change": remember which rev was
      waved away, so the notice comes back when the next one arrives. */
@@ -14326,6 +14347,47 @@ function ensurePublishedVersion(){
     .catch(()=>{})
     .then(()=>{ askingPublished=false; });
 }
+/* ============================================================
+   DE CATALOGUS VERLATEN IS DE OFFERTE SLUITEN
+   There is one catalogue in memory. Switching to the live one while a quote
+   stayed open meant its answers were drawn against a catalogue it was never
+   written on: the prices and totals on screen were the live ones, not the
+   quotation's, and reconcile() would quietly drop any answer whose step or
+   option the live catalogue no longer has — and the render after it saved
+   that. It looked like configuring, and it was not.
+   So leaving the quotation's catalogue puts the quotation away. It is saved
+   first, and opening it again brings its own catalogue back with it. In the
+   live catalogue you are editing the catalogue; that is all.
+   ============================================================ */
+let quotePutAway=null;          // {id, number} of the quote a catalogue switch closed
+async function goToLiveCatalogue(){
+  if(draftRev!==null) return true;                 // already there
+  const dirty=catalogueChanged();
+  const heeft=!!cloudQuoteId || quoteHasContent();
+  const nr=(CONFIG.quoteNumber||"").trim();
+  if(!confirm("Go to the live catalogue?"+
+      (dirty?"\n\nYour edits to the frozen version are lost.":"")+
+      (heeft?`\n\n${nr?"Quotation "+nr:"The open quotation"} is put away first — it is saved, and`+
+             ` opening it again brings its own catalogue back. In the live catalogue you are`+
+             ` editing the catalogue, not configuring.`:""))) return false;
+  /* written away first, because what follows throws the copy in memory
+     away — applyCatalogue reconciles against the catalogue it loads, and
+     that is the pruning this whole change is about */
+  if(heeft){ try{ await flushQuoteNow(); }catch(err){} }
+  const was={id:cloudQuoteId, number:nr};
+  loadedCatalogueVersion=null;
+  /* and only then put away: if the catalogue cannot be fetched nothing has
+     happened yet and the quotation is still open, untouched */
+  if(!await cloudLoadCatalogueDraft()){ alert("Could not load the live catalogue."); return false; }
+  if(heeft){ quotePutAway=was; clearQuoteSide(); }
+  catUpstream=null; catUpstreamSnoozed=null;
+  toast(quotePutAway && quotePutAway.number
+    ? `On the live catalogue \u2014 quotation ${quotePutAway.number} put away`
+    : "On the live catalogue");
+  renderCatTabs(); renderCatalogueBar(); renderNotices(); refreshView();
+  if(mode==="admin") renderAdmin();
+  return true;
+}
 function renderCatTabs(){
   const el=document.getElementById("catTabs");
   if(!el) return;
@@ -14356,20 +14418,7 @@ function renderCatTabs(){
          nothing about what the last publish produced. */""}
     ${publishedVersion?`<span class="catlatest" title="The newest published catalogue version. The live catalogue is the working copy it is published from; a quote keeps the version it was written against until you move it.">newest published &nbsp;<b>v${publishedVersion}</b></span>`:""}`;
   const live=document.getElementById("catTabLive");
-  if(live) live.onclick=async ()=>{
-    if(draftRev!==null) return;                       // already there
-    const dirty=catalogueChanged();
-    if(!confirm("Go to the live catalogue?"+(dirty?" Your edits to the frozen version are lost.":"")+
-        (quoteCatVersion?"\n\nThe open quote stays marked as version "+quoteCatVersion+
-         " — reopening it brings that catalogue back.":""))) return;
-    loadedCatalogueVersion=null;
-    if(await cloudLoadCatalogueDraft()){
-      catUpstream=null; catUpstreamSnoozed=null;
-      flagSaved("On the live catalogue");
-      renderCatTabs(); renderCatalogueBar(); renderNotices(); refreshView();
-      if(mode==="admin") renderAdmin();
-    } else alert("Could not load the live catalogue.");
-  };
+  if(live) live.onclick=()=>goToLiveCatalogue();
   const move=document.getElementById("catTabMove");
   if(move) move.onclick=()=>moveQuoteToCatalogue(publishedVersion);
   const ver=document.getElementById("catTabVer");
@@ -14410,21 +14459,9 @@ function renderCatalogueBar(){
         and steps are the ones it was made with.
         ${dirty?`Your edits here go nowhere — this is a frozen version, not the shared catalogue.`
                :`Editing here does not reach the shared catalogue.`}</span>
-      <button class="btn sm" id="catToDraft" title="Leave this quote's catalogue and work in the one the team shares">Back to the shared catalogue</button>`;
+      <button class="btn sm" id="catToDraft" title="Leave this quote's catalogue and work in the one the team shares. The quotation is saved and put away — in the live catalogue you are editing the catalogue, not configuring.">Back to the shared catalogue</button>`;
     const home=document.getElementById("catToDraft");
-    if(home) home.onclick=async ()=>{
-      if(!confirm("Go back to the catalogue the team shares?"+
-         (dirty?" Your edits to this frozen version are lost.":"")+
-         (quoteCatVersion?"\n\nThe open quote stays marked as version "+quoteCatVersion+
-          " — reopening it brings that catalogue back. Use \"Update to the new version\" if you mean to move it forward.":""))) return;
-      loadedCatalogueVersion=null;
-      if(await cloudLoadCatalogueDraft()){
-        catUpstream=null; catUpstreamSnoozed=null;
-        flagSaved("Back on the shared catalogue");
-        renderCatalogueBar(); renderNotices(); refreshView();
-        if(mode==="admin") renderAdmin();
-      } else alert("Could not load the shared catalogue.");
-    };
+    if(home) home.onclick=()=>goToLiveCatalogue();
     return;
   }
   /* on the shared draft the edits are never only local, so the wording
@@ -15052,6 +15089,7 @@ async function quoteCatalogueVersion(id, payload){
   return own||null;
 }
 async function cloudOpenQuote(id){
+  quotePutAway=null;                 // there is a quotation open again
   if(!supa) return false;
   const {data, error} = await supa.from("quotes").select("data,rev,created_at").eq("id", id).single();
   if(error || !data) return false;
