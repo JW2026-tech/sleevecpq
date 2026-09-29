@@ -672,8 +672,8 @@
      the line it explains */
   .propsum .ps-pic{width:69px;height:51px;flex:0 0 69px;object-fit:contain;background:#fff;
     border:1px solid var(--line);border-radius:6px;padding:3px;align-self:center}
-  .sharepropt .tpic{display:block;width:100%;max-width:177px;height:114px;object-fit:contain;
-    background:#fff;border:1px solid #e3e6f0;border-radius:8px;padding:5px;margin:0 auto 8px 0}
+  .sharepropt .tpic{display:block;width:100%;max-width:266px;height:171px;object-fit:contain;
+    background:#fff;border:1px solid #e3e6f0;border-radius:8px;padding:6px;margin:0 auto 10px 0}
   .sharepropt .tnote{display:block;font-size:11.5px;color:#777;line-height:1.45;margin-top:4px;
     font-weight:400;white-space:normal}
   .sharepropt .ponsome{display:block;font-size:11px;color:#999;margin-top:3px}
@@ -1313,9 +1313,9 @@
   .shareproptname{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
     color:#28338A;margin-bottom:10px}
   .shareproptscroll{overflow-x:auto}
-  .shareprotable{border-collapse:collapse;width:100%;min-width:620px;table-layout:fixed}
-  .shareprotable col.pmachcol{width:36%}
-  .shareprotable th{text-align:left;padding:0 12px 8px 0;vertical-align:bottom}
+  .shareprotable{border-collapse:collapse;width:100%;min-width:760px;table-layout:fixed}
+  .shareprotable col.pmachcol{width:26%}
+  .shareprotable th{text-align:left;padding:0 12px 8px 0;vertical-align:top}
   .shareprotable th .tname{display:block;font-size:13.5px;font-weight:600;color:#222;
     white-space:normal;line-height:1.3}
   .shareprotable th .trate{display:block;font-size:12px;color:#888;font-weight:400;margin-top:2px}
@@ -17022,7 +17022,7 @@ function sharePropTablesHtml(frac){
       <div class="shareproptscroll"><table class="shareprotable">
         <colgroup>
           <col class="pmachcol">
-          ${t.types.map(()=>`<col style="width:${(64/t.types.length).toFixed(3)}%">`).join("")}
+          ${t.types.map(()=>`<col style="width:${(74/t.types.length).toFixed(3)}%">`).join("")}
         </colgroup>
         <thead><tr><th class="pmach"></th>
           ${t.types.map(v=>`<th>${v.image?`<img class="tpic" src="${v.image}" alt="">`:""}
