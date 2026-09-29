@@ -668,6 +668,14 @@
   .ocard.justhere{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   /* what a type is, under what it is called */
   .propsum .ps-note{display:block;font-size:11px;color:var(--txt-faint);margin-top:1px;line-height:1.4}
+  /* the picture that belongs to a type, at the size of a thumbnail beside
+     the line it explains */
+  .propsum .ps-pic{width:46px;height:34px;flex:0 0 46px;object-fit:contain;background:#fff;
+    border:1px solid var(--line);border-radius:6px;padding:2px;align-self:center}
+  .sharepropt .tpic{display:block;width:100%;max-width:78px;height:46px;object-fit:contain;
+    background:#fff;border:1px solid #e3e6f0;border-radius:6px;padding:2px;margin:0 0 4px auto}
+  .sharepropt .tnote{display:block;font-size:10px;color:#888;line-height:1.35;margin-top:2px;
+    font-weight:400;white-space:normal}
   .opt.justhere{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   /* searching the list on the left */
   .navsearch{margin:0 0 8px;font-size:12px;padding:6px 9px}
@@ -2150,6 +2158,12 @@
   .pmatrix tr.frow .flost{margin-top:5px;font-size:11.5px;color:var(--bad)}
   .pmatrix tr.frow .ffrom{display:block;text-align:right;font-size:10.5px;color:var(--txt-faint)}
   /* what this type makes impossible elsewhere */
+  .pmatrix .vpic{display:flex;align-items:center;gap:7px;margin-top:5px}
+  .pmatrix .vpic input[type=file]{font-size:10.5px;max-width:150px}
+  .pmatrix .vpicprev{width:38px;height:28px;flex:0 0 38px;object-fit:contain;background:#fff;
+    border:1px solid var(--line);border-radius:5px;padding:2px}
+  .pmatrix .vpicprev.empty{display:flex;align-items:center;justify-content:center;
+    background:var(--sunken);color:var(--txt-faint);font-size:8px;text-align:center;line-height:1.1}
   .pmatrix .vrules{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:5px}
   .pmatrix .vrulepick{font-size:11px;padding:3px 6px;color:var(--txt-faint);max-width:230px}
   .pmatrix .vrules .reqpill{display:inline-flex;align-items:center;gap:6px;padding:1px 4px 1px 9px;
@@ -2244,6 +2258,7 @@
   .asg-none{color:var(--txt-faint);font-style:italic;font-size:11.5px}
   .asg-extra{font-size:11px;color:var(--warn);font-variant-numeric:tabular-nums}
   .ps-row{display:flex;align-items:baseline;gap:10px;padding:2px 0;font-size:12.5px}
+  .ps-row.haspic{align-items:center;padding:4px 0}
   .ps-qty{flex:0 0 46px;text-align:right;color:var(--txt-dim);font-variant-numeric:tabular-nums}
   .ps-lbl{flex:1 1 auto;min-width:0}
   .ps-amt{flex:0 0 auto;color:var(--txt-dim);font-variant-numeric:tabular-nums}
@@ -4470,6 +4485,9 @@ function rebuildFollowVariants(p){
            one it hangs from, at the same price */
         g.name=[v.name||"", fname].filter(Boolean).join(" + ");
         g.note=fnote||v.note||"";
+        /* the picture of the type it hangs from: the extra is a detail of
+           the same thing, and nobody is going to photograph the pair */
+        if(v.image) g.image=v.image; else delete g.image;
         g.unitPrice=(+v.unitPrice||0)+fprice;
         delete g.follow;
         /* priced by class: the extra costs the same on top of whatever the
@@ -5165,10 +5183,11 @@ function propSummaryRows(kind){
        customer" and until now shown to nobody: the scope of supply and the
        investment proposal both render from here and both printed the name
        alone */
-    const add=(key,name,qty,each,price,note)=>{
-      per[key]=per[key]||{name, qty:0, each, price:0, note:(note||"").trim()};
+    const add=(key,name,qty,each,price,note,image)=>{
+      per[key]=per[key]||{name, qty:0, each, price:0, note:(note||"").trim(), image:image||""};
       per[key].qty+=qty; per[key].price+=price;
       if(!per[key].note && note) per[key].note=String(note).trim();
+      if(!per[key].image && image) per[key].image=image;
     };
     if(kind==="in"){
       for(const c of propContributors(p)){
@@ -5176,14 +5195,14 @@ function propSummaryRows(kind){
         const v=(p.variants&&p.variants.length)?assignedVariant(p,c.o.id):null;
         if(!v && (p.variants||[]).length) continue;          // nothing chosen yet
         const each=v?variantPriceFor(v, c.o.id):0;
-        add(v?v.id:"__plain", v?v.name:propName(p,c.qty), c.qty, each, c.qty*each, v&&v.note);
+        add(v?v.id:"__plain", v?v.name:propName(p,c.qty), c.qty, each, c.qty*each, v&&v.note, v&&v.image);
       }
     } else {
       for(const r of propScopeLines(kind)){
         if(r.p!==p) continue;
         /* a grouped offer covers items in different classes, so there is no
            single "each" to quote unless they all came to the same */
-        add(r.v.id, r.v.name, r.qty, (r.sameEach?(+r.each||0):0), r.price, r.v.note);
+        add(r.v.id, r.v.name, r.qty, (r.sameEach?(+r.each||0):0), r.price, r.v.note, r.v.image);
       }
     }
     const rows=Object.keys(per).map(k=>per[k]).filter(r=>r.qty>0);
@@ -5201,8 +5220,9 @@ function propSummaryHtml(kind, withPrice){
   const rows=[];
   for(const g of groups) for(const r of g.rows) rows.push({g, r});
   return `<div class="propsum ${kind}">
-    ${rows.map(({g,r})=>`<div class="ps-row">
+    ${rows.map(({g,r})=>`<div class="ps-row ${r.image?"haspic":""}">
       <span class="ps-qty">${r.qty}${g.p.unit?` ${esc(g.p.unit)}`:"&times;"}</span>
+      ${r.image?`<img class="ps-pic" src="${r.image}" alt="">`:""}
       <span class="ps-lbl">${esc(r.name)}${kind==="opt"?' <span class="optpill">optional</span>':""}
         ${r.note?`<span class="ps-note">${esc(r.note)}</span>`:""}</span>
       ${withPrice?`<span class="ps-amt">${r.price?fmt(r.price):"included"}</span>`:""}
@@ -9514,6 +9534,18 @@ function renderPropsAdmin(){
                 <input class="in vname" value="${esc(v.name)}" data-vf="name" placeholder="Type name">
                 ${isBase?`<span class="basepill" title="Anything not set gets this one">standard</span>`:""}
                 <input class="in vnote" value="${esc(v.note||"")}" data-vf="note" placeholder="Short description, shown to the customer">
+                ${/* A small picture, the same idea as an option's: it travels
+                     with the catalogue, so it is scaled down hard. It goes
+                     out with the description, to the link and to the pdf,
+                     because "hygienic feet" means little to a reader who has
+                     never seen one. */""}
+                <div class="vpic">
+                  ${v.image?`<img class="vpicprev" src="${v.image}" alt="">`
+                    :'<span class="vpicprev empty">no picture</span>'}
+                  <input type="file" accept="image/*" data-vpic="1" title="A small picture of this type, shown to the customer">
+                  ${v.image?`<button class="x" data-vpicdel="1" title="Remove the picture">&times;</button>
+                    <span class="meta">${Math.round((v.image.length*0.75)/1024)} kB</span>`:""}
+                </div>
                 ${refGroups.length?`<div class="vrules">
                   ${(v.rulesOut||[]).map(r=>`<span class="reqpill hard" title="An item with this type cannot have that one">
                     ${esc(ruleLabel(r))}<b data-vruledel="${esc(r)}" title="Remove">&times;</b></span>`).join("")}
@@ -9736,6 +9768,23 @@ function renderPropsAdmin(){
       rebuildFollowVariants(p);
       invalidateQtyCache(); renderConfigureQuiet(); renderAdmin();
     };
+  });
+  /* ---- a type's picture ---- */
+  ed.querySelectorAll("[data-vpic]").forEach(inp=>{
+    const p=propOfEl(inp), v=varOfRow(p, inp);
+    if(!v) return;
+    inp.onchange=()=>{
+      const f=inp.files&&inp.files[0]; if(!f) return;
+      /* 420 rather than the 900 an option gets: this one is printed at the
+         size of a thumbnail beside a line of text, and it is carried by
+         every quote and every link */
+      shrinkImage(f, 420, url=>{ v.image=url; rebuildFollowVariants(p); renderConfigureQuiet(); renderAdmin(); });
+    };
+  });
+  ed.querySelectorAll("[data-vpicdel]").forEach(b=>{
+    const p=propOfEl(b), v=varOfRow(p, b);
+    if(!v) return;
+    b.onclick=()=>{ delete v.image; rebuildFollowVariants(p); renderConfigureQuiet(); renderAdmin(); };
   });
   /* ---- what a type rules out elsewhere ---- */
   ed.querySelectorAll("[data-vruleadd]").forEach(el=>{
@@ -16932,8 +16981,10 @@ function sharePropTablesHtml(frac){
           ${t.types.map(()=>`<col style="width:${(64/t.types.length).toFixed(3)}%">`).join("")}
         </colgroup>
         <thead><tr><th class="pmach"></th>
-          ${t.types.map(v=>`<th><span class="tname">${esc(v.name)}</span>${
-            +v.unitPrice?`<span class="trate">${fmt(+v.unitPrice)} each</span>`:`<span class="trate">included</span>`}</th>`).join("")}
+          ${t.types.map(v=>`<th>${v.image?`<img class="tpic" src="${v.image}" alt="">`:""}
+            <span class="tname">${esc(v.name)}</span>${
+            +v.unitPrice?`<span class="trate">${fmt(+v.unitPrice)} each</span>`:`<span class="trate">included</span>`}${
+            v.note?`<span class="tnote">${esc(v.note)}</span>`:""}</th>`).join("")}
         </tr></thead>
         <tbody>
           ${t.rows.length>1?`<tr class="pall">
