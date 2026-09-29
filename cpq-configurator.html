@@ -676,6 +676,21 @@
     background:#fff;border:1px solid #e3e6f0;border-radius:6px;padding:2px;margin:0 0 4px auto}
   .sharepropt .tnote{display:block;font-size:10px;color:#888;line-height:1.35;margin-top:2px;
     font-weight:400;white-space:normal}
+  /* shut until asked for */
+  .sharepropt.shut .shareproptscroll,
+  .sharepropt.shut .sharelockednote{display:none}
+  .sharepropt .shareproptname{display:flex;align-items:baseline;gap:8px;cursor:pointer;
+    flex-wrap:wrap}
+  .sharepropt .proptchev{color:#8f9bbd;font-size:11px;flex:0 0 auto}
+  .sharepropt .proptnow{font-weight:400;font-size:12px;color:#666;flex:1;min-width:0}
+  .sharepropt .proptact{font-size:11px;color:#28338A;font-weight:600;flex:0 0 auto}
+  .sharepropt .shareproptname:hover .proptact{text-decoration:underline}
+  .sharesectionhead .sharepropall{flex:0 0 auto;margin-left:auto}
+  /* on paper there is nothing to click, so everything is open */
+  body.print-all .sharepropt.shut .shareproptscroll,
+  body.print-all .sharepropt.shut .sharelockednote{display:block}
+  body.print-all .sharepropt .proptchev,
+  body.print-all .sharepropt .proptnow{display:none}
   .opt.justhere{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   /* searching the list on the left */
   .navsearch{margin:0 0 8px;font-size:12px;padding:6px 9px}
@@ -1255,7 +1270,9 @@
   .shareheroalts .sharealtgroup + .sharealtgroup{margin-top:16px}
   .shareheroalts .sharealts{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
   .shareheroalts .secnote{font-size:11px;color:#999;margin-top:6px}
-  .sharesectionhead{margin:34px 0 14px}
+  .sharesectionhead{margin:34px 0 14px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  .sharesectionhead h3{flex:0 0 auto}
+  .sharesectionhead .sharesectionsub{flex:1 1 260px;min-width:0}
   .sharesectionhead h3{margin:0;font-size:14.5px;font-weight:700;color:#222;text-transform:uppercase;letter-spacing:.3px}
   .sharesectionsub{font-size:12.5px;color:#777;margin-top:2px}
   .shareupgrades, .sharealts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
@@ -2417,6 +2434,9 @@
     /* the button that says this is hidden below, so on paper the card says
        it in words instead */
     .shareupcard .sharetaken{display:flex}
+    .sharepropt.shut .shareproptscroll,
+    .sharepropt.shut .sharelockednote{display:block!important}
+    .sharepropt .proptchev,.sharepropt .proptnow{display:none}
 
     /* Print every colour and background exactly as rendered. Without this
        browsers drop background fills by default, which would flatten the
@@ -7227,6 +7247,20 @@ function wirePriceToggles(container){
      that carries this property, so the choice is made once. Mirrors the
      prop branch of takeAlternative, but for every in-scope contributor at
      once instead of one step's worth. */
+  container.querySelectorAll("[data-proptfold]").forEach(b=>{
+    b.onclick=()=>{
+      const id=b.dataset.proptfold;
+      if(sharePropOpen.has(id)) sharePropOpen.delete(id); else sharePropOpen.add(id);
+      refreshView();
+    };
+  });
+  container.querySelectorAll("[data-proptall]").forEach(b=>{
+    b.onclick=()=>{
+      if(b.dataset.proptall==="shut") sharePropOpen.clear();
+      else for(const t of sharePropTables(0)) sharePropOpen.add(t.p.id);
+      refreshView();
+    };
+  });
   container.querySelectorAll("[data-propall]").forEach(b=>{
     b.onclick=()=>{
       const [pid,vid]=String(b.dataset.propall||"").split("|");
@@ -16960,15 +16994,37 @@ function sharePropTables(frac){
   }
   return out;
 }
+/* Which of the type tables are open. Feet, counter adjustments, access
+   doors, safety, trapped keys: six or seven tables, each a grid of machines
+   against types, and they filled a page before the customer had asked for
+   any of it. Shut to begin with, so the page reads as a list of what he can
+   still choose and he opens the one he wants to change. Held per property
+   and only in this browser — it is a way of looking, not a decision, so it
+   never reaches the quote. On paper every one of them is open. */
+const sharePropOpen=new Set();
 function sharePropTablesHtml(frac){
   const list=sharePropTables(frac);
   if(!list.length) return "";
+  const alleOpen=list.every(t=>sharePropOpen.has(t.p.id));
   return `<div class="sharesectionhead">
       <h3>Types for this line</h3>
       <div class="sharesectionsub">Feet, counters and access doors are fitted throughout the line. Choose once for every machine, or set a machine on its own.</div>
+      <button class="btn sm pbtn no-print sharepropall" data-proptall="${alleOpen?"shut":"open"}">${
+        alleOpen?"Close all":"Open all"}</button>
     </div>
-    ${list.map(t=>`<div class="sharepropt">
-      <div class="shareproptname">${esc(t.p.plural||t.p.label||"")}</div>
+    ${list.map(t=>{
+      const open=sharePropOpen.has(t.p.id);
+      /* what it comes to as it stands, so a shut table still answers the
+         question a customer actually has: what have I got */
+      const nu=(propSummaryRows("in").find(g=>g.p===t.p)||{rows:[]}).rows
+        .map(r=>`${r.qty}&times; ${esc(r.name)}`).join(", ");
+      return `<div class="sharepropt ${open?"open":"shut"}">
+      <div class="shareproptname" data-proptfold="${esc(t.p.id)}">
+        <span class="proptchev">${open?"&#9662;":"&#9656;"}</span>
+        ${esc(t.p.plural||t.p.label||"")}
+        ${nu?`<span class="proptnow">${nu}</span>`:""}
+        <span class="proptact no-print">${open?"close":"change"}</span>
+      </div>
       ${/* Fixed columns, sized the same in every one of these tables: left to
             itself each table sized its machine column to its own longest
             name, so the type columns started at a different place in each
@@ -17022,7 +17078,7 @@ function sharePropTablesHtml(frac){
             page now, so it has to say where to go — otherwise the reader is
             looking at prices for machines with no way to reach them. */""}
       ${t.locked.length?`<div class="sharelockednote">${shareLockIconSvg()}<span>The greyed rows are <b>alternatives</b> &mdash; machines offered instead of the ones you have. Their prices are shown so you can see what they would cost, but you cannot choose them here: take the machine itself on the <b>Alternatives</b> page first, and its rows come alive.</span></div>`:""}
-    </div>`).join("")}`;
+    </div>`;}).join("")}`;
 }
 /* what a step actually holds in scope — the picked options that are neither
    optional extras nor alternatives */
