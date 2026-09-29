@@ -671,6 +671,21 @@
   .srow .swhy{display:block;font-size:10.5px;color:var(--txt-faint);margin-top:2px;
     line-height:1.4;font-style:italic}
   .srow .swhy b{color:var(--txt-dim);font-style:normal;font-weight:600}
+  /* what the answers add up to, beside the answers */
+  .ctlabel{margin-top:18px}
+  #ctree{max-height:42vh;overflow:auto;margin:2px -4px 4px}
+  .ct-row{padding:5px 8px 5px 9px;border-radius:7px;cursor:pointer;line-height:1.3}
+  .ct-row:hover{background:var(--panel-2)}
+  .ct-row.here{background:var(--accent-soft)}
+  .ct-step{display:block;font-size:12px;color:var(--txt)}
+  .ct-row.todo .ct-step{color:var(--txt-dim)}
+  /* wraps rather than cuts: three chosen options on one step is normal and
+     the second and third are not less worth reading than the first. Past
+     three lines it does give way, with the whole of it on the tooltip. */
+  .ct-sum{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+    overflow:hidden;font-size:10.5px;color:var(--txt-faint);margin-top:1px;line-height:1.35}
+  .ct-todo{display:block;font-size:10.5px;color:var(--warn);margin-top:1px}
+  .ctempty{font-size:11.5px;color:var(--txt-faint);padding:4px 0}
   .nohits{padding:8px;font-size:11.5px;color:var(--txt-faint)}
   .pricetable .margin{color:var(--txt-dim);font-variant-numeric:tabular-nums}
   .pricetable .margin.bad{color:var(--bad)}
@@ -2748,6 +2763,8 @@
       <label>Quotation no.<input class="in" id="qNum" placeholder="202837"></label>
       <label>Customer<input class="in" id="qCust" placeholder="Company name"></label>
     </div>
+    <div class="nav-label ctlabel">What this adds up to</div>
+    <div id="ctree"></div>
     <div id="summary"></div>
     <div class="total"><span class="lbl">Total list price</span><span class="amt" id="total">—</span></div>
     <div class="meta" id="meta"></div>
@@ -5523,6 +5540,33 @@ function stepSummary(m){
   return labelOf(m);
 }
 const stepDone = m => (m.generated ? stepSummary(m)!=null : (state[m.id]!==undefined || stepIsNA(m)));
+/* ============================================================
+   WAT ERUIT VOLGT
+   The list on the left is the walk: the steps you can go to, one after
+   another. It says nothing about the machine they add up to — for that you
+   had to click through every step again and remember what you saw.
+   This is that machine: every step the answers have opened, indented under
+   the choice that opened it, with what each one came to. Read down it and
+   you read the configuration. A line takes you to the step it came from,
+   and the one still waiting for an answer says so.
+   ============================================================ */
+function configTreeHtml(visD, cursorIdx){
+  if(!visD || !visD.length) return '<div class="ctempty">Nothing configured yet.</div>';
+  return `<div class="ctree">${visD.map((nd,i)=>{
+    const m=nd.m;
+    const klaar=stepDone(m);
+    const sum=klaar?stepSummary(m):null;
+    /* a step with nothing to answer (a heading that only leads on) is not
+       unfinished business, so it is not nagged about */
+    const open=!klaar && (m.generated || (m.options||[]).length);
+    return `<div class="ct-row ${i===cursorIdx?"here":""} ${open?"todo":""}" data-ctgo="${esc(m.id)}"
+        style="padding-left:${9+nd.depth*13}px" title="${esc(sum?m.title+" — "+sum:m.title||"")}">
+        <span class="ct-step">${esc(m.title||"Untitled")}</span>
+        ${sum ? `<span class="ct-sum">${esc(sum)}</span>`
+             : open ? `<span class="ct-todo">still to decide</span>` : ""}
+      </div>`;
+  }).join("")}</div>`;
+}
 /* Every step currently in the quote that still has no answer, with the
    trail that leads to it. A step five levels down only exists because of
    the choices above it, so it is easy to leave behind — this is what the
@@ -7806,6 +7850,11 @@ function renderConfigure(){
   const rows=buildPriceRows(false);
   const grand=priceRowsTotal(rows);
   const optTotal=priceRowsTotal(buildOptionalRows(false));
+  const ct=document.getElementById("ctree");
+  if(ct){
+    ct.innerHTML=configTreeHtml(visD, cursor);
+    ct.querySelectorAll("[data-ctgo]").forEach(el=>el.onclick=()=>goToStep(el.dataset.ctgo));
+  }
   document.getElementById("summary").innerHTML = optTotal
     ? `<div class="asideopt"><span>Quoted as optional</span><b>${fmt(optTotal)}</b></div>` : "";
   document.getElementById("total").textContent = grand?fmt(grand):"—";
