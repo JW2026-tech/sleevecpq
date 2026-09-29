@@ -1231,7 +1231,10 @@
   .shareupeach{display:block;font-size:11.5px;font-weight:500;color:#888;margin-top:2px}
   .shareupcard .btn{width:100%;text-align:center;border-radius:8px;margin-top:auto}
   .shareupcard.is-taken{border-color:#1c2563}
-  .shareupcard .sharetaken{display:flex;align-items:center;gap:7px;margin-top:auto;
+  /* Only on paper. On the page itself the button underneath already says
+     it, and in a better way — it can be pressed to undo. Two lines saying
+     the same thing, one of them dead, is worse than one. */
+  .shareupcard .sharetaken{display:none;align-items:center;gap:7px;margin-top:auto;
     padding:8px 10px;border-radius:8px;background:#eef1fb;color:#1c2563;
     font-size:12px;font-weight:600}
   .shareupcard .sharetaken svg{width:14px;height:14px;flex:0 0 14px}
@@ -2351,6 +2354,10 @@
     border-top:1px solid var(--line);font-size:15px;font-variant-numeric:tabular-nums}
 
   @media print{
+    /* the button that says this is hidden below, so on paper the card says
+       it in words instead */
+    .shareupcard .sharetaken{display:flex}
+
     /* Print every colour and background exactly as rendered. Without this
        browsers drop background fills by default, which would flatten the
        level badges, the grey table section headers and — more importantly —
