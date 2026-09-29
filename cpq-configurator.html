@@ -5564,8 +5564,16 @@ function configTreeHtml(visD, cursorIdx){
      one shape too many. */
   return `<div class="ctree scopelist">${visD.map((nd,i)=>{
     const m=nd.m;
+    /* A step where everything has been ruled out is not part of the machine:
+       it is a question that was asked and does not apply. It stays in the
+       list on the left, where it can be un-ruled-out; here it would be a
+       heading over nothing. */
+    if(stepIsNA(m)) return "";
     const klaar=stepDone(m);
     const picks=chosenOptionsOf(m);
+    /* and an option ruled out on its own is not in the machine either — it
+       cannot be a pick, but a quote from before this check could carry one */
+    const gekozen=picks.filter(o=>!isNA(o.id));
     /* a step with nothing to answer (a heading that only leads on) is not
        unfinished business, so it is not nagged about */
     const open=!klaar && (m.generated || (m.options||[]).length);
@@ -5576,7 +5584,7 @@ function configTreeHtml(visD, cursorIdx){
       style="padding-left:${in2}px"><span class="bullet"></span>
       <div class="stitle">${qty?`<span class="qty">${qty}&times;</span> `:""}${esc(txt)}</div></div>`;
     if(open) return head+line("still to decide","is-todo");
-    if(picks.length) return head+picks.map(o=>line(o.name||"",
+    if(gekozen.length) return head+gekozen.map(o=>line(o.name||"",
       o.optional?"is-optional":(o.alt?"is-alt":""),
       (o.qty||optQty(o)>1)?(o.qty||optQty(o)):0)).join("");
     /* a generated step has no options of its own — the feet, the format
