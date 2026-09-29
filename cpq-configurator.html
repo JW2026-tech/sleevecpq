@@ -225,6 +225,17 @@
   .actions{display:flex;gap:10px;margin-top:26px;align-items:center}
   .hint{color:var(--warn);font-size:12.5px}
   aside{border-left:1px solid var(--line);background:var(--rail);padding:20px 18px;position:sticky;top:var(--topbar);height:calc(100vh - var(--topbar));overflow:auto}
+  /* the panel as a column: the figures stay where they are and only the
+     list under them scrolls, so the total is always in view */
+  #viewConfigure aside{display:flex;flex-direction:column;overflow:hidden}
+  .asidetotals{flex:0 0 auto;margin-bottom:12px;padding-bottom:10px;
+    border-bottom:1px solid var(--line)}
+  .asidetotals .asideopt{margin:0 0 6px;padding-top:0;border-top:0;font-size:11.5px}
+  .asidetotals .asideopt b{font-size:12px}
+  .asidetotals .total{margin-top:0;padding-top:0;border-top:0}
+  .asidetotals .total .lbl{font-size:11px}
+  .asidetotals .total .amt{font-size:17px}
+  .asidetotals .meta{margin-top:3px;font-size:10.5px}
   aside h3{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--txt-faint);margin:0}
   .aside-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
   .detail-toggle{display:flex;background:var(--track);border:1px solid var(--line);border-radius:7px;padding:2px}
@@ -2763,10 +2774,17 @@
     <div class="aside-head">
       <h3>What this adds up to</h3>
     </div>
+    <!-- The money first, then what it is made of. It used to sit under the
+         tree, which on a configuration of forty lines meant scrolling to the
+         bottom to see what the machine costs — the one number you look up
+         most. Small, because it is a heading over the list, not the subject
+         of the panel. -->
+    <div class="asidetotals">
+      <div id="summary"></div>
+      <div class="total"><span class="lbl">Total list price</span><span class="amt" id="total">—</span></div>
+      <div class="meta" id="meta"></div>
+    </div>
     <div id="ctree"></div>
-    <div id="summary"></div>
-    <div class="total"><span class="lbl">Total list price</span><span class="amt" id="total">—</span></div>
-    <div class="meta" id="meta"></div>
   </aside>
 </div>
 
