@@ -667,6 +667,10 @@
   .srow .skind.step{color:var(--txt-dim);border-color:var(--line-strong)}
   .srow .sname{font-size:12.5px;color:var(--txt)}
   .srow .spath{display:block;font-size:10.5px;color:var(--txt-faint);margin-top:1px}
+  /* the words it was found on, when they are not the name */
+  .srow .swhy{display:block;font-size:10.5px;color:var(--txt-faint);margin-top:2px;
+    line-height:1.4;font-style:italic}
+  .srow .swhy b{color:var(--txt-dim);font-style:normal;font-weight:600}
   .nohits{padding:8px;font-size:11.5px;color:var(--txt-faint)}
   .pricetable .margin{color:var(--txt-dim);font-variant-numeric:tabular-nums}
   .pricetable .margin.bad{color:var(--bad)}
@@ -8053,6 +8057,18 @@ function adminFoldToggle(key){
    because one letter matches nearly everything and the list flickering
    from the first keystroke reads as noise.
    ============================================================ */
+/* the stretch of text a match sits in, so a row can say why it is there.
+   Searching the description is worth having — it is where "the end of the
+   steam tunnel" is written down — but a hit on it looked like the list
+   coughing up something at random, because the word was nowhere on screen. */
+function searchExcerpt(text, needle){
+  const t=String(text||"").replace(/\s+/g," ").trim();
+  const i=t.toLowerCase().indexOf(needle);
+  if(i<0) return null;
+  const van=Math.max(0, i-34), tot=Math.min(t.length, i+needle.length+46);
+  return {voor:(van?"\u2026":"")+t.slice(van, i), raak:t.slice(i, i+needle.length),
+          na:t.slice(i+needle.length, tot)+(tot<t.length?"\u2026":"")};
+}
 function searchHits(q, list){
   const needle=String(q||"").trim().toLowerCase();
   if(needle.length<2) return [];
@@ -8063,16 +8079,27 @@ function searchHits(q, list){
       if(m.generated) return;              // property steps are built, not written
       const here=at.concat(mi);
       const path=trail.concat(m.title||"Untitled");
+      /* what was hit: the name, the key, or only the description. The last
+         of those is the one that has to explain itself. */
+      const waarom=(naam, key, tekst)=>raak(naam) ? null
+        : raak(key) ? {key:true}
+        : (searchExcerpt(tekst, needle)||null);
       if(raak(m.title)||raak(m.id)||raak(m.desc))
-        out.push({kind:"step", m, at:here, path:path.slice(0,-1).join(" \u203a ")});
+        out.push({kind:"step", m, at:here, path:path.slice(0,-1).join(" \u203a "),
+                  why:waarom(m.title, m.id, m.desc), naam:!!raak(m.title)});
       (m.options||[]).forEach((o, i)=>{
         if(raak(o.name)||raak(o.id)||raak(o.text))
-          out.push({kind:"option", m, o, i, at:here, path:path.join(" \u203a ")});
+          out.push({kind:"option", m, o, i, at:here, path:path.join(" \u203a "),
+                    why:waarom(o.name, o.id, o.text), naam:!!raak(o.name)});
         if(o.children && o.children.length) walk(o.children, path.concat(o.name||""), here.concat(o.id));
       });
     });
   })(list, [], []);
-  return out;
+  /* what you typed the name of comes first; what only mentions it follows.
+     Within each the order of the catalogue is kept. */
+  return out.map((x,i)=>({x,i}))
+    .sort((a,b)=>(b.x.naam?1:0)-(a.x.naam?1:0) || a.i-b.i)
+    .map(z=>z.x);
 }
 /* the rows both screens draw them with: what it is, what it is called, and
    where it sits, because the same option name turns up under three steps */
@@ -8083,6 +8110,8 @@ function searchRowsHtml(hits, q){
       <span class="skind ${x.kind}">${x.kind==="step"?"step":"option"}</span>
       <span class="sname">${esc(x.kind==="step" ? (x.m.title||"Untitled") : (x.o.name||"Untitled"))}</span>
       ${x.path?`<span class="spath">${esc(x.path)}</span>`:""}
+      ${(x.why&&x.why.key)?`<span class="swhy">key</span>`:""}
+      ${(x.why&&x.why.raak)?`<span class="swhy">${esc(x.why.voor)}<b>${esc(x.why.raak)}</b>${esc(x.why.na)}</span>`:""}
     </div>`).join("")
     + (hits.length>veel.length?`<div class="nohits">and ${hits.length-veel.length} more &mdash; type a little further.</div>`:"");
 }
