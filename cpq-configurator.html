@@ -1931,6 +1931,22 @@
   /* taken into the machine, still listed here so it can be put back */
   /* an optional line that has been moved into the machine — said in words,
      because the button that says it does not print */
+  /* the confirmation, where you are looking. Its own colours rather than
+     the theme's: it sits over whatever is underneath and has to read the
+     same in light and dark. */
+  #toasts{position:fixed;left:0;right:0;bottom:26px;z-index:9999;padding:0 16px;
+    display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
+  .toast{display:flex;align-items:center;gap:9px;max-width:min(92vw,560px);
+    padding:11px 17px;border-radius:10px;background:#1c2563;color:#fff;
+    font-size:13.5px;line-height:1.35;box-shadow:0 10px 28px rgba(12,18,45,.28);
+    opacity:0;transform:translateY(10px);transition:opacity .18s ease,transform .18s ease;
+    pointer-events:auto;cursor:pointer}
+  .toast.in{opacity:1;transform:none}
+  .toast.warn{background:#a32020}
+  .toast svg{width:15px;height:15px;flex:0 0 15px}
+  .toast span{min-width:0}
+  .toast svg *{stroke:#fff}
+  @media print{ #toasts{display:none} }
   .takenpill{display:inline-block;font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;
     color:var(--ok);border:1px solid var(--ok);border-radius:20px;padding:0 6px;margin-left:6px;
     vertical-align:1px;white-space:nowrap}
@@ -12662,7 +12678,7 @@ async function markShareSent(shareId){
     if(!shareId) await flushQuoteNow();
     await supa.rpc("mark_share_sent",{p_share_id:id});
     if(cloudQuoteId) await loadQuoteMeta();
-    flagSaved("Marked as sent");
+    toast("Revision "+shareRevision()+" marked as sent");
     renderQuoteBar();
     if(mode==="quotes") renderQuotes();
   }catch(err){ alert("Could not mark it as sent: "+(err&&err.message||err)+"\n\nHas supabase-verzonden-links.sql been run?"); }
@@ -12676,7 +12692,7 @@ async function setShareOffline(offline, shareId){
   try{
     await supa.rpc("set_share_offline",{p_share_id:id, p_offline:!!offline});
     if(cloudQuoteId) await loadQuoteMeta();
-    flagSaved(offline?"Link taken offline":"Link back online");
+    toast(offline?"Link taken offline \u2014 it no longer opens":"Link back online");
     renderQuoteBar();
     if(mode==="quotes") renderQuotes();
   }catch(err){ alert("Could not change it: "+(err&&err.message||err)); }
@@ -12767,7 +12783,7 @@ async function pushShareNow(){
     await giveShareItsOwnCatalogue(quoteShare.id);
     await loadQuoteMeta();
     const p=document.getElementById("shareDiffPanel"); if(p) p.remove();
-    flagSaved("Customer link updated");
+    toast("Link updated \u2014 "+((CONFIG.customer||"the customer").trim()||"the customer")+" now sees this version");
     renderQuoteBar();
   }catch(err){ alert("Could not update the link: "+(err&&err.message||err)+"\n\nHas supabase-migratie-alles.sql been run?"); }
 }
@@ -13844,7 +13860,9 @@ function wireQuoteBar(){
   on("qbShare", ()=>{ setMode("docs"); const b=document.getElementById("btnShareLink"); if(b) b.click(); });
   on("qbCopyLink", ()=>{
     const url=`${location.origin}${location.pathname}?share=${quoteShare.token}`;
-    navigator.clipboard.writeText(url).then(()=>flagSaved("Link copied"));
+    navigator.clipboard.writeText(url)
+      .then(()=>toast("Link copied — paste it in your mail"))
+      .catch(()=>toast("Could not copy the link — select it and copy by hand","warn"));
   });
   on("qbPush", pushShareNow);
   on("qbPull", pullShareChanges);
@@ -15968,7 +15986,9 @@ function paintQuoteCards(quotes, shares){
   wrap.querySelectorAll("[data-copyshare]").forEach(b=>{
     b.onclick=()=>{
       const url=`${location.origin}${location.pathname}?share=${b.dataset.copyshare}`;
-      navigator.clipboard.writeText(url).then(()=>flagSaved("Link copied"));
+      navigator.clipboard.writeText(url)
+        .then(()=>toast("Link copied — paste it in your mail"))
+        .catch(()=>toast("Could not copy the link — select it and copy by hand","warn"));
     };
   });
   wrap.querySelectorAll("[data-shdel]").forEach(b=>{
@@ -15983,6 +16003,7 @@ function paintQuoteCards(quotes, shares){
       if(error) return alert("Could not delete it: "+error.message);
       if(!gone || !gone.length) return alert("That link was not deleted — the database did not allow it, so it is still online. " + "Take it offline instead, or run supabase-link-verwijderen.sql to give the app the right to delete draft links.");
       if(cloudQuoteId) await loadQuoteMeta();
+      toast("Draft link deleted");
       renderQuotes(); renderQuoteBar();
     };
   });
@@ -15994,7 +16015,7 @@ function paintQuoteCards(quotes, shares){
         if(error) throw error;
         await giveShareItsOwnCatalogue(b.dataset.shpush);
         if(cloudQuoteId) await loadQuoteMeta();
-        flagSaved("Link updated");
+        toast("Link updated \u2014 the customer now sees this version");
         renderQuotes(); renderQuoteBar();
       }catch(err){ alert("Could not update that link: "+(err&&err.message||err)); }
     };
@@ -16250,6 +16271,33 @@ async function syncFromSharedOnStart(){
    short for a sentence that has something to explain. Both wear the
    warning colour, because both are saying something went differently than
    you asked. */
+/* ============================================================
+   ZEGGEN DAT HET GELUKT IS
+   Every one of these buttons already reported itself — into #saveState, a
+   line of small grey text up in the header. On the quotes screen that is
+   the other side of the window from the button you just pressed, and it is
+   gone again in a second and a half. So "Update link", "Copy link" and
+   "Mark as sent" all felt like pressing nothing at all.
+   This says it in the middle of the screen, long enough to read, and it
+   outlives the redraw that most of those buttons trigger — which is why a
+   confirmation on the button itself would not do: the button is gone.
+   flagSaved stays what it is: the quiet running commentary of saving.
+   ============================================================ */
+function toast(msg, kind){
+  let host=document.getElementById("toasts");
+  if(!host){ host=document.createElement("div"); host.id="toasts"; document.body.appendChild(host); }
+  const el=document.createElement("div");
+  el.className="toast "+(kind==="warn"?"warn":"ok");
+  el.innerHTML=(kind==="warn"?"":shareCheckIconSvg())+`<span>${esc(msg)}</span>`;
+  el.onclick=()=>el.remove();
+  host.appendChild(el);
+  /* both, because a tab that is not in front throttles the frame callback
+     and the message would sit there at nought opacity */
+  requestAnimationFrame(()=>el.classList.add("in"));
+  setTimeout(()=>el.classList.add("in"), 30);
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>{ el.classList.remove("in"); setTimeout(()=>el.remove(), 250); }, 3400);
+}
 function flagSaved(msg, sticky){
   const el=document.getElementById("saveState");
   if(!el) return;
@@ -17682,7 +17730,9 @@ document.getElementById("btnShareLink").onclick=async ()=>{
       <div class="snote" style="margin-top:6px">${data.catalogue_version
         ? `Frozen on catalogue version <b>${data.catalogue_version}</b> — publishing new prices or pictures will not change what this customer sees. Revoke and share again to move them to a newer catalogue.`
         : `Note: this link is not pinned to a catalogue version yet — run supabase-schema-pin-catalogue.sql, or publishing new prices will change what the customer sees.`}</div>`;
-    document.getElementById("btnCopyShare").onclick=()=>navigator.clipboard.writeText(url).then(()=>flagSaved("Link copied"));
+    document.getElementById("btnCopyShare").onclick=()=>navigator.clipboard.writeText(url)
+      .then(()=>toast("Link copied — paste it in your mail"))
+      .catch(()=>toast("Could not copy the link — select it and copy by hand","warn"));
     document.getElementById("btnRevokeShare").onclick=async ()=>{
       await supa.from("quote_shares").update({revoked_at:new Date().toISOString()}).eq("id", data.id);
       panel.classList.add("hidden"); panel.innerHTML="";
