@@ -124,7 +124,8 @@
   .subtab.on{color:var(--txt);border-bottom-color:var(--accent);font-weight:500}
 
   /* ================= CONFIGURE VIEW ================= */
-  .layout{display:grid;grid-template-columns:var(--nav-w,250px) 7px 1fr 320px;min-height:calc(100vh - var(--topbar))}
+  .layout{display:grid;grid-template-columns:var(--nav-w,250px) 7px 1fr 7px var(--aside-w,320px);
+    min-height:calc(100vh - var(--topbar))}
   @media(max-width:1100px) and (min-width:901px){
     .layout{grid-template-columns:1fr}
     nav.steps,aside,.resizer{display:none}
@@ -671,20 +672,18 @@
   .srow .swhy{display:block;font-size:10.5px;color:var(--txt-faint);margin-top:2px;
     line-height:1.4;font-style:italic}
   .srow .swhy b{color:var(--txt-dim);font-style:normal;font-weight:600}
-  /* what the answers add up to, beside the answers */
-  .ctlabel{margin-top:18px}
-  #ctree{max-height:42vh;overflow:auto;margin:2px -4px 4px}
-  .ct-row{padding:5px 8px 5px 9px;border-radius:7px;cursor:pointer;line-height:1.3}
-  .ct-row:hover{background:var(--panel-2)}
-  .ct-row.here{background:var(--accent-soft)}
-  .ct-step{display:block;font-size:12px;color:var(--txt)}
-  .ct-row.todo .ct-step{color:var(--txt-dim)}
-  /* wraps rather than cuts: three chosen options on one step is normal and
-     the second and third are not less worth reading than the first. Past
-     three lines it does give way, with the whole of it on the tooltip. */
-  .ct-sum{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
-    overflow:hidden;font-size:10.5px;color:var(--txt-faint);margin-top:1px;line-height:1.35}
-  .ct-todo{display:block;font-size:10.5px;color:var(--warn);margin-top:1px}
+  /* What the answers add up to, in the scope of supply's own shape but at
+     the size of a side panel: same step heading, same bullet, same indent. */
+  #ctree{flex:1;min-height:0;overflow:auto;margin:0 -6px}
+  #ctree .grouphead{margin:10px 0 3px;padding-top:0;cursor:pointer;border-radius:6px}
+  #ctree .grouphead:first-child{margin-top:0}
+  #ctree .grouphead:hover{background:var(--panel-2)}
+  #ctree .grouphead.here{background:var(--accent-soft)}
+  #ctree .scopeline{padding-top:2px;padding-bottom:2px;cursor:pointer;border-radius:6px}
+  #ctree .scopeline:hover{background:var(--panel-2)}
+  #ctree .scopeline .stitle{font-size:12px}
+  #ctree .scopeline.is-todo .stitle{color:var(--warn)}
+  #ctree .scopeline.is-todo .bullet{background:var(--warn)}
   .ctempty{font-size:11.5px;color:var(--txt-faint);padding:4px 0}
   .nohits{padding:8px;font-size:11.5px;color:var(--txt-faint)}
   .pricetable .margin{color:var(--txt-dim);font-variant-numeric:tabular-nums}
@@ -2754,16 +2753,16 @@
   </nav>
   <div class="resizer" id="navResizer" title="Drag to resize"></div>
   <main id="main"></main>
+  <div class="resizer" id="asideResizer" title="Drag to resize"></div>
   <aside>
+    <!-- The quotation number and the customer used to be typed here. The
+         number is handed out when the quote is made and stands in the header;
+         the company name is a field on the Customer tab, with the address and
+         the contacts it belongs to. Two boxes at the top of a panel about the
+         configuration were two answers to a question it was not asking. -->
     <div class="aside-head">
-      <h3>Configuration</h3>
+      <h3>What this adds up to</h3>
     </div>
-
-    <div class="qdetails">
-      <label>Quotation no.<input class="in" id="qNum" placeholder="202837"></label>
-      <label>Customer<input class="in" id="qCust" placeholder="Company name"></label>
-    </div>
-    <div class="nav-label ctlabel">What this adds up to</div>
     <div id="ctree"></div>
     <div id="summary"></div>
     <div class="total"><span class="lbl">Total list price</span><span class="amt" id="total">—</span></div>
@@ -3181,6 +3180,7 @@ let docLang = null;
    answers it had, so removing a step cleanly removes its cost. */
 let includedSteps = [];
 let navWidth = null;            // dragged width of the Configure step list, in px
+let asideWidth = null;          // and of the panel on the right
 let showAllFormatQs = false;    // reveal format questions that aren't narrowing anything
 let partsColW = {};             // dragged column widths of the parts catalogue, by column index
 let applyNavWidth = ()=>{};     // set up by the resizer below
@@ -5550,21 +5550,39 @@ const stepDone = m => (m.generated ? stepSummary(m)!=null : (state[m.id]!==undef
    you read the configuration. A line takes you to the step it came from,
    and the one still waiting for an answer says so.
    ============================================================ */
+/* the options a step has been given, as objects */
+function chosenOptionsOf(m){
+  const v=state[m.id];
+  const ids=Array.isArray(v)?v:(v===undefined?[]:[v]);
+  return ids.map(id=>(m.options||[]).find(o=>o.id===id)).filter(Boolean);
+}
 function configTreeHtml(visD, cursorIdx){
   if(!visD || !visD.length) return '<div class="ctempty">Nothing configured yet.</div>';
-  return `<div class="ctree">${visD.map((nd,i)=>{
+  /* Drawn with the scope of supply's own classes — step heading, bullet,
+     name, quantity — because it is the same thing said earlier: this is what
+     the machine is. Two lists of the same facts in two different shapes is
+     one shape too many. */
+  return `<div class="ctree scopelist">${visD.map((nd,i)=>{
     const m=nd.m;
     const klaar=stepDone(m);
-    const sum=klaar?stepSummary(m):null;
+    const picks=chosenOptionsOf(m);
     /* a step with nothing to answer (a heading that only leads on) is not
        unfinished business, so it is not nagged about */
     const open=!klaar && (m.generated || (m.options||[]).length);
-    return `<div class="ct-row ${i===cursorIdx?"here":""} ${open?"todo":""}" data-ctgo="${esc(m.id)}"
-        style="padding-left:${9+nd.depth*13}px" title="${esc(sum?m.title+" — "+sum:m.title||"")}">
-        <span class="ct-step">${esc(m.title||"Untitled")}</span>
-        ${sum ? `<span class="ct-sum">${esc(sum)}</span>`
-             : open ? `<span class="ct-todo">still to decide</span>` : ""}
-      </div>`;
+    const in1=nd.depth*11, in2=in1+14;
+    const head=`<div class="grouphead ${i===cursorIdx?"here":""}" data-ctgo="${esc(m.id)}"
+      style="padding-left:${in1}px" title="Go to this step">${esc(m.title||"Untitled")}</div>`;
+    const line=(txt, cls, qty)=>`<div class="scopeline ${cls||""}" data-ctgo="${esc(m.id)}"
+      style="padding-left:${in2}px"><span class="bullet"></span>
+      <div class="stitle">${qty?`<span class="qty">${qty}&times;</span> `:""}${esc(txt)}</div></div>`;
+    if(open) return head+line("still to decide","is-todo");
+    if(picks.length) return head+picks.map(o=>line(o.name||"",
+      o.optional?"is-optional":(o.alt?"is-alt":""),
+      (o.qty||optQty(o)>1)?(o.qty||optQty(o)):0)).join("");
+    /* a generated step has no options of its own — the feet, the format
+       parts, the days on site each say in one sentence what they came to */
+    const sum=klaar?stepSummary(m):null;
+    return head+(sum?line(sum):"");
   }).join("")}</div>`;
 }
 /* Every step currently in the quote that still has no answer, with the
@@ -10896,6 +10914,11 @@ function customerFormHtml(){
       <datalist id="elecountries">${ensureElectrical().rows.map(r=>`<option value="${esc(r.country)}"></option>`).join("")}</datalist>
       <label>VAT / tax number<input class="in" data-cf="vat" value="${esc(c.vat)}" placeholder="NL0000.00.000.B01"></label>
       <label>Their reference<input class="in" data-cf="reference" value="${esc(c.reference)}" placeholder="RFQ 2026-114"></label>
+      ${/* Ours, beside theirs. It is handed out when the quote is made and
+           rarely touched, but it has to be somewhere you can reach it, and
+           this is where the other facts about the document live. */""}
+      <label>Our quotation number<input class="in" id="qNumDoc" value="${esc(CONFIG.quoteNumber||"")}" placeholder="202837">
+        <span class="cfnote">Shown on the cover page and in the header</span></label>
       <label>OEM discount<input class="in" data-cf="oemDiscount" value="${esc(c.oemDiscount||"")}" placeholder="% — leave empty for none">
         <span class="cfnote">${(()=>{const p=+String(c.oemDiscount||"").replace(",",".")||0;
           return p>0 ? `${p}% off the equipment, with the OEM sentence above the discount line` : "No OEM discount on this quote";})()}</span>
@@ -10916,6 +10939,8 @@ function customerFormHtml(){
 function renderCustomer(el){
   el.innerHTML=customerFormHtml();
   const c=ensureCustomer();
+  const qn=el.querySelector("#qNumDoc");
+  if(qn) qn.oninput=()=>{ CONFIG.quoteNumber=qn.value; renderQuoteBar(); saveSoon(); };
   el.querySelectorAll("[data-cf]").forEach(inp=>{
     inp.oninput=()=>{ c[inp.dataset.cf]=inp.value; if(inp.dataset.cf==="company") CONFIG.customer=inp.value; };
     if(inp.dataset.cf==="oemDiscount") inp.onchange=()=>{ applyOemDiscount(); renderDocs(); };
@@ -12317,37 +12342,50 @@ document.getElementById("btnTheme").onclick=()=>{
 };
 applyTheme();
 
-/* drag-to-resize the Steps sidebar in Configure — a static bit of chrome
-   outside renderConfigure()'s innerHTML, so it only needs wiring once. */
+/* Drag-to-resize, both of them: the Steps list on the left and the panel on
+   the right. Static chrome outside renderConfigure()'s innerHTML, so it is
+   wired once. The right one runs the other way round — dragging left makes
+   it wider — which is the only thing that differs between the two. */
 (function(){
   const layout=document.getElementById("viewConfigure");
-  const resizer=document.getElementById("navResizer");
-  const NAV_MIN=170, NAV_MAX=460;
-  let dragging=false, startX=0, startW=0;
-  /* re-apply a width carried over from the last session */
   applyNavWidth=()=>{
     if(navWidth) layout.style.setProperty("--nav-w", navWidth+"px");
     else layout.style.removeProperty("--nav-w");
+    if(asideWidth) layout.style.setProperty("--aside-w", asideWidth+"px");
+    else layout.style.removeProperty("--aside-w");
   };
   applyNavWidth();
-  resizer.addEventListener("mousedown",e=>{
-    dragging=true;
-    startX=e.clientX;
-    startW=layout.querySelector("nav.steps").getBoundingClientRect().width;
-    resizer.classList.add("dragging");
-    document.body.style.cursor="col-resize";
-    document.body.style.userSelect="none";
-    e.preventDefault();
-  });
+  const grepen=[
+    {el:"navResizer",   kant:"nav.steps", prop:"--nav-w",   min:170, max:460, teken:1,
+     zet:w=>{ navWidth=w; }},
+    {el:"asideResizer", kant:"aside",     prop:"--aside-w", min:240, max:620, teken:-1,
+     zet:w=>{ asideWidth=w; }},
+  ];
+  let bezig=null, startX=0, startW=0;
+  for(const g of grepen){
+    const r=document.getElementById(g.el);
+    if(!r) continue;
+    r.addEventListener("mousedown",e=>{
+      bezig=g;
+      startX=e.clientX;
+      startW=layout.querySelector(g.kant).getBoundingClientRect().width;
+      r.classList.add("dragging");
+      document.body.style.cursor="col-resize";
+      document.body.style.userSelect="none";
+      e.preventDefault();
+    });
+  }
   document.addEventListener("mousemove",e=>{
-    if(!dragging) return;
-    navWidth=Math.max(NAV_MIN,Math.min(NAV_MAX, startW+(e.clientX-startX)));
-    layout.style.setProperty("--nav-w", navWidth+"px");
+    if(!bezig) return;
+    const w=Math.max(bezig.min, Math.min(bezig.max, startW+bezig.teken*(e.clientX-startX)));
+    bezig.zet(w);
+    layout.style.setProperty(bezig.prop, w+"px");
   });
   document.addEventListener("mouseup",()=>{
-    if(!dragging) return;
-    dragging=false;
-    resizer.classList.remove("dragging");
+    if(!bezig) return;
+    const r=document.getElementById(bezig.el);
+    if(r) r.classList.remove("dragging");
+    bezig=null;
     document.body.style.cursor="";
     document.body.style.userSelect="";
     saveSoon();                 // keep the new width for next time
@@ -14340,7 +14378,7 @@ function quotePayload(name){
           createdAt: quoteCreatedAt || null,
           /* only a customer link ever fills this; see shareAdds */
           customerAdds: Object.keys(shareAdds).length ? clone(shareAdds) : null,
-          docLang, cursor, includedSteps:clone(includedSteps), navWidth, partsColW:clone(partsColW)};
+          docLang, cursor, includedSteps:clone(includedSteps), navWidth, asideWidth, partsColW:clone(partsColW)};
 }
 /* the catalogue lands on top of whatever quote is open */
 /* THE SAME KEY IS THE SAME THING
@@ -14451,6 +14489,7 @@ function applyQuote(d){
   cursor=+d.cursor||0;
   includedSteps=Array.isArray(d.includedSteps)?d.includedSteps:[];
   navWidth=+d.navWidth||null;
+  asideWidth=+d.asideWidth||null;
   partsColW=(d.partsColW&&typeof d.partsColW==="object")?d.partsColW:{};
   applyNavWidth();
   ensureLanguages(); ensureSpecs(); ensureCustomer();
@@ -15297,6 +15336,7 @@ function applySnapshot(raw){
     cursor=+d.cursor||0;
     includedSteps=Array.isArray(d.includedSteps)?d.includedSteps:[];
     navWidth=+d.navWidth||null;
+  asideWidth=+d.asideWidth||null;
     partsColW=(d.partsColW&&typeof d.partsColW==="object")?d.partsColW:{};
     publishedSig=(typeof d.publishedSig==="string")?d.publishedSig:null;
     /* which row this quote is, remembered but not trusted yet — boot()
