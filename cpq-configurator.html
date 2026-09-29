@@ -5574,46 +5574,58 @@ function chosenOptionsOf(m){
   const ids=Array.isArray(v)?v:(v===undefined?[]:[v]);
   return ids.map(id=>(m.options||[]).find(o=>o.id===id)).filter(Boolean);
 }
-function configTreeHtml(visD, cursorIdx){
-  if(!visD || !visD.length) return '<div class="ctempty">Nothing configured yet.</div>';
-  /* Drawn the way the scope of supply draws it, down to where the headings
-     fall: one per machine, not one per question. "Choose the registration
-     sensor" is how you were asked; "Registration colour and contrast
-     sensor" is what the machine has, and only the second belongs in a list
-     of what the machine is. The step names live on in the list on the left,
-     which is where you go to answer them.
-     A step with no answer is the exception — there the name is the whole
-     point, because it says which question is still open. */
-  let laatsteWortel=null;
-  return `<div class="ctree scopelist">${visD.map((nd,i)=>{
-    const m=nd.m;
-    if(stepIsNA(m)) return "";        // ruled out: not part of the machine
-    const klaar=stepDone(m);
-    const open=!klaar && (m.generated || (m.options||[]).length);
-    const gekozen=chosenOptionsOf(m).filter(o=>!isNA(o.id));
-    const sum=klaar?stepSummary(m):null;
-    if(!open && !gekozen.length && !sum) return "";
-    /* the machine this sits under, named once. flattenD carries the root as
-       an id, not as the step itself */
-    let head="";
-    const wortelId=nd.rootId||m.id;
-    if(wortelId!==laatsteWortel){
-      laatsteWortel=wortelId;
-      const w=(CONFIG.modules||[]).find(x=>x.id===wortelId) || m;
-      head=`<div class="grouphead" data-ctgo="${esc(w.id)}" title="Go to this step">${
-        esc(w.title||"")}</div>`;
+/* The rows of the tree, walked the way scopeNodes walks the scope of supply:
+   option by option, and a sub-step follows the option that opened it.
+   Walking step by step instead put every choice of a step together and only
+   then what hung off them, so "Wires numbered at both ends" — a sub-step of
+   the cabinet — landed under "PLd pneumatic air supply", the last choice of
+   the step above it, and read as belonging to the air supply. */
+function configTreeRows(list, lvl, root, out){
+  list=list||activeModules(); lvl=lvl||0; out=out||[];
+  for(const m of list){
+    if(m.generated) continue;         // the built steps come at the end
+    if(stepIsNA(m)) continue;         // ruled out: not part of the machine
+    const rt=root||m;
+    const v=state[m.id];
+    if(v===undefined){
+      if((m.options||[]).length) out.push({soort:"open", m, depth:lvl, root:rt});
+      continue;
     }
-    const in1=Math.max(0,(nd.depth-1))*11;
-    const line=(txt, cls, qty)=>`<div class="scopeline ${cls||""} ${i===cursorIdx?"here":""}"
-      data-ctgo="${esc(m.id)}" style="padding-left:${in1}px"><span class="bullet"></span>
+    const ids=Array.isArray(v)?v:[v];
+    for(const o of (m.options||[])){
+      if(!ids.includes(o.id) || isNA(o.id)) continue;
+      out.push({soort:"keuze", m, o, depth:lvl, root:rt});
+      if(o.children && o.children.length) configTreeRows(o.children, lvl+1, rt, out);
+    }
+  }
+  return out;
+}
+function configTreeHtml(visD, cursorIdx){
+  const hier=(visD&&visD[cursorIdx]) ? visD[cursorIdx].m : null;
+  const rijen=configTreeRows();
+  /* the feet, the adjustments, the format parts, the days on site: steps the
+     app builds rather than ones you walk, and they close the scope of supply
+     in the same way */
+  for(const nd of (visD||[])) if(nd.m.generated && stepDone(nd.m))
+    rijen.push({soort:"som", m:nd.m, depth:0, root:nd.m});
+  if(!rijen.length) return '<div class="ctempty">Nothing configured yet.</div>';
+  let laatsteWortel=null;
+  return `<div class="ctree scopelist">${rijen.map(r=>{
+    const m=r.m;
+    let head="";
+    if(r.root!==laatsteWortel){
+      laatsteWortel=r.root;
+      head=`<div class="grouphead" data-ctgo="${esc(r.root.id)}" title="Go to this step">${
+        esc(r.root.title||"")}</div>`;
+    }
+    const line=(txt, cls, qty)=>`<div class="scopeline ${cls||""} ${m===hier?"here":""}"
+      data-ctgo="${esc(m.id)}" style="padding-left:${r.depth*11}px"><span class="bullet"></span>
       <div class="stitle">${qty?`<span class="qty">${qty}&times;</span> `:""}${esc(txt)}</div></div>`;
-    if(open) return head+line((m.title||"Untitled")+" \u2014 still to decide","is-todo");
-    if(gekozen.length) return head+gekozen.map(o=>line(o.name||"",
-      o.optional?"is-optional":(o.alt?"is-alt":""),
-      (o.qty||optQty(o)>1)?(o.qty||optQty(o)):0)).join("");
-    /* a generated step has no options of its own — the feet, the format
-       parts, the days on site each say in one sentence what they came to */
-    return head+line(sum);
+    if(r.soort==="open") return head+line((m.title||"Untitled")+" \u2014 still to decide","is-todo");
+    if(r.soort==="som"){ const sum=stepSummary(m); return sum?head+line(sum):""; }
+    const o=r.o;
+    return head+line(o.name||"", o.optional?"is-optional":(o.alt?"is-alt":""),
+      (o.qty||optQty(o)>1)?(o.qty||optQty(o)):0);
   }).join("")}</div>`;
 }
 /* Every step currently in the quote that still has no answer, with the
