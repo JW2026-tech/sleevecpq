@@ -17716,7 +17716,7 @@ function shareUpgradeCardHtml(r){
          of. The line is fitted to every machine of that kind in the
          quotation, which is why there are two. */""}
     <div class="shareupname">${esc(o.name||"")}</div>
-    ${note?`<div class="shareupdesc">${esc(note.length>90?note.slice(0,88)+"…":note)}</div>`:""}
+    ${note?`<div class="shareupdesc">${esc(note)}</div>`:""}
     <div class="shareupprice">${r.hide?"price on request":(r.price?fmt(r.price):"included")}
       ${(q>1 && !r.hide && r.price)?`<span class="shareupeach">${q} &times; ${fmt(r.price/q)}</span>`:""}</div>
     ${/* On paper the buttons are gone, and then a card the customer had
