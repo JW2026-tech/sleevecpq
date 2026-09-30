@@ -8964,6 +8964,13 @@ function specFieldGroupHtml(group, title, hint){
 /* Every option in one table, so a price round can be done in one place
    instead of clicking through the tree. Edits land straight on the option. */
 let priceFilter="";
+/* widths of the All prices columns in px; dragged wider, kept in this browser */
+const PRICE_COLS_DEFAULT=[240,230,130,90,100,60,560];
+let priceColW=(function(){
+  try{ const a=JSON.parse(localStorage.getItem("cpq.priceColW")||"null");
+       if(Array.isArray(a)&&a.length===PRICE_COLS_DEFAULT.length&&a.every(n=>n>=40)) return a; }catch(err){}
+  return PRICE_COLS_DEFAULT.slice();
+})();
 function priceListRows(){
   const out=[];
   /* `at` is the same thing the Admin tree selects on (see listAt): the
@@ -9086,7 +9093,7 @@ function renderPriceListAdmin(){
       <span class="meta">cost <b>${fmt(sum("cost"))}</b> · price <b>${fmt(sum("price"))}</b></span>
       <button class="btn sm" id="priceCsv">Export CSV</button>
     </div>
-    ${rows.length?`<div class="tablewrap"><table class="partstable pricetable">
+    ${rows.length?`<div class="tablewrap" style="overflow-x:auto"><table class="partstable pricetable" style="width:${priceColW.reduce((a,b)=>a+b,0)}px">
       ${/* The key as well. It is what the option is called everywhere that
            is not this screen — in the export, in an order, in a mail from
            the works — and this list, the one place you go to compare prices
@@ -9097,8 +9104,8 @@ function renderPriceListAdmin(){
            And the step is a way in: click it and the tree opens at that
            step with the option in view, for everything this table has no
            room for — sub-steps, dependencies, specifications. */""}
-      <colgroup><col style="width:21%"><col style="width:18%"><col style="width:13%"><col style="width:12%"><col style="width:12%"><col style="width:6%"><col style="width:18%"></colgroup>
-      <tr><th>Step</th><th>Option</th><th>Key</th><th class="num">Cost</th><th class="num">Price</th><th class="num">Margin</th><th>Description</th></tr>
+      <colgroup>${priceColW.map(w=>`<col style="width:${w}px">`).join("")}</colgroup>
+      <tr>${["Step","Option","Key","Cost","Price","Margin","Description"].map((t,i)=>`<th data-col="${i}" ${(i>=3&&i<=5)?'class="num"':""}>${t}<span class="colgrip" title="Drag to change the width"></span></th>`).join("")}</tr>
       ${rows.map((r,i)=>`<tr data-pri="${i}">
         <td class="pathcell"><button class="pathgo" data-prigo="${i}" title="Open this step in the configuration tree">${esc(r.path)}</button></td>
         <td><input class="in" value="${esc(r.o.name||"")}" data-pf2="name"></td>
@@ -9129,6 +9136,25 @@ function renderPriceListAdmin(){
     const r=rows[+b.dataset.prigo];
     b.onclick=()=>openInTree(r.at, r.i);
   });
+  (function(){
+    const table=ed.querySelector(".pricetable"); if(!table) return;
+    const cols=table.querySelectorAll("colgroup col");
+    let idx=-1, x0=0, w0=0;
+    table.querySelectorAll(".colgrip").forEach(g=>g.addEventListener("mousedown",e=>{
+      idx=+g.closest("th").dataset.col; x0=e.clientX; w0=priceColW[idx];
+      document.body.style.cursor="col-resize"; document.body.style.userSelect="none";
+      document.addEventListener("mousemove",move); document.addEventListener("mouseup",up);
+      e.preventDefault(); e.stopPropagation();
+    }));
+    const move=e=>{ if(idx<0) return;
+      priceColW[idx]=Math.max(50,w0+(e.clientX-x0));
+      cols[idx].style.width=priceColW[idx]+"px";
+      table.style.width=priceColW.reduce((a,b)=>a+b,0)+"px"; };
+    const up=()=>{ if(idx<0) return; idx=-1;
+      document.body.style.cursor=""; document.body.style.userSelect="";
+      document.removeEventListener("mousemove",move); document.removeEventListener("mouseup",up);
+      try{ localStorage.setItem("cpq.priceColW",JSON.stringify(priceColW)); }catch(err){} };
+  })();
   document.getElementById("priceCsv").onclick=()=>exportStepsCsv();
 }
 /* From a row in the price list to the option itself. The tree selection is
