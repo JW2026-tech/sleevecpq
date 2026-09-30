@@ -90,6 +90,7 @@
   .kindic.question{color:#EF7B0B}
   .mrow .ic .kindic{margin:0;vertical-align:middle}
   .qnote{padding:12px 14px;font-size:12px;color:var(--txt-faint);border:1px dashed var(--line);border-radius:8px;margin-top:8px}
+  .qdash{display:inline-block;padding:0 10px;color:var(--txt-faint)}
   .okind{width:auto;flex:0 0 auto}
   .kindwarn{display:block;margin-top:4px;font-size:11px;color:var(--warn)}
   .cattrace{margin-top:4px;font-size:10.5px;color:var(--txt-faint)}
@@ -9072,7 +9073,7 @@ function renderCommercialAdmin(){
 function renderPriceListAdmin(){
   const rows=priceListRows();
   const all=(function(){ const t=priceFilter; priceFilter=""; const n=priceListRows().length; priceFilter=t; return n; })();
-  const sum=k=>rows.reduce((t,r)=>t+(+r.o[k]||0),0);
+  const sum=k=>rows.reduce((t,r)=>t+(r.o.kind==="question"?0:(+r.o[k]||0)),0);
   const marg=(o)=>{ const p=+o.price||0, c=+o.cost||0; return p>0 ? Math.round((p-c)/p*100) : null; };
   const ed=document.getElementById("editor");
   ed.innerHTML=`
@@ -9102,9 +9103,9 @@ function renderPriceListAdmin(){
         <td class="pathcell"><button class="pathgo" data-prigo="${i}" title="Open this step in the configuration tree">${esc(r.path)}</button></td>
         <td><input class="in" value="${esc(r.o.name||"")}" data-pf2="name"></td>
         <td><input class="in mono keyin" value="${esc(r.o.id||"")}" data-pf2="id" placeholder="key"></td>
-        <td class="num"><input class="in num" type="number" step="100" value="${+r.o.cost||0}" data-pf2="cost"></td>
-        <td class="num"><input class="in num" type="number" step="100" value="${+r.o.price||0}" data-pf2="price"></td>
-        <td class="num margin ${marg(r.o)!==null&&marg(r.o)<0?"bad":""}">${marg(r.o)===null?"—":marg(r.o)+"%"}</td>
+        <td class="num">${r.o.kind==="question"?`<span class="qdash" title="A question has no price">&mdash;</span>`:`<input class="in num" type="number" step="100" value="${+r.o.cost||0}" data-pf2="cost">`}</td>
+        <td class="num">${r.o.kind==="question"?`<span class="qdash" title="A question has no price">&mdash;</span>`:`<input class="in num" type="number" step="100" value="${+r.o.price||0}" data-pf2="price">`}</td>
+        <td class="num margin ${marg(r.o)!==null&&marg(r.o)<0?"bad":""}">${(r.o.kind==="question"||marg(r.o)===null)?"—":marg(r.o)+"%"}</td>
         <td><input class="in" value="${esc(r.o.text||"")}" data-pf2="text" placeholder="Description"></td>
       </tr>`).join("")}
     </table></div>`:'<div class="meta">Nothing matches that filter.</div>'}`;
