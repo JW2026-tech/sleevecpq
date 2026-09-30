@@ -15144,6 +15144,38 @@ async function quoteCatalogueVersion(id, payload){
   if(link && (!own || link>own)) return link;
   return own||null;
 }
+/* ============================================================
+   EEN OPEN OFFERTE STAAT OP ZIJN EIGEN CATALOGUS
+   Opening a quote loaded its catalogue first. Picking one back up did not:
+   every refresh loads the live draft, the quote on screen is re-attached to
+   its row, and nothing put the two together. The header said v45 (that is
+   the version the quote is pinned to), the tab said "Live catalogue", and
+   every price and step on screen was the live one. Continue only changed
+   screen, so it stayed that way.
+   This is the one place that makes the catalogue in memory the quote's own.
+   The scope marks (optional, alternative) live on the catalogue objects, so
+   they are collected first and put back on the version — otherwise the swap
+   would quietly turn every optional item into an ordinary one.
+   ============================================================ */
+async function ensureQuoteCatalogue(){
+  const want=quoteCatVersion;
+  if(!cloudQuoteId || !want) return true;
+  if(draftRev===null && loadedCatalogueVersion===want) return true;   // already
+  /* leaving the live draft: whatever of it is still only in memory goes up first */
+  if(draftRev!==null && draftSavedSig!==catalogueSig()){
+    try{ await cloudSaveCatalogueDraft(); }catch(err){}
+  }
+  const cat=await catalogueVersionData(want);
+  if(!cat) return false;
+  const scope=collectScopeFlags();
+  if(!applyCatalogue({catalogue:cat})) return false;
+  loadedCatalogueVersion=want; draftRev=null; draftConflict=null;
+  applyScopeFlags(scope);
+  reconcile();
+  markCataloguePublished();
+  renderCatTabs(); renderCatalogueBar(); renderNotices();
+  return true;
+}
 async function cloudOpenQuote(id){
   quotePutAway=null;                 // there is a quotation open again
   if(!supa) return false;
@@ -15154,7 +15186,9 @@ async function cloudOpenQuote(id){
      repricing this is meant to stop. applyAnyFile carries the quote's own
      scope marks across the catalogue swap. */
   const want=await quoteCatalogueVersion(id, data.data);
-  if(want && want!==loadedCatalogueVersion){
+  /* draftRev being set means the live draft is what is in memory, whatever
+     loadedCatalogueVersion still says */
+  if(want && (want!==loadedCatalogueVersion || draftRev!==null)){
     const cat=await catalogueVersionData(want);
     if(cat && applyCatalogue({catalogue:cat})){
       loadedCatalogueVersion=want;
@@ -16297,7 +16331,13 @@ function paintQuoteCards(quotes, shares){
   wrap.querySelectorAll("[data-qact]").forEach(b=>{
     const id=qid(b), act=b.dataset.qact;
     b.onclick=async ()=>{
-      if(act==="continue"){ setMode("configure"); }
+      if(act==="continue"){
+        if(!await ensureQuoteCatalogue()){
+          alert("Could not load the catalogue this quote was written on (version "+quoteCatVersion+").");
+          return;
+        }
+        setMode("configure");
+      }
       else if(act==="peek"){ await showQuoteBreakdown(id, b); }
       else if(act==="open"){
         if(!confirm("Open this quote? Anything unsaved on screen is replaced.")) return;
@@ -18287,6 +18327,8 @@ async function boot(){
   await reattachCloudQuote();
   /* the snapshot had no row to point at; the number on screen may still */
   await reattachByNumber();
+  /* and now that we know which quote it is: its catalogue, not the live one */
+  await ensureQuoteCatalogue();
   await loadQuoteMeta();
   renderCatTabs();
   renderQuoteBar();
