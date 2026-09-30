@@ -84,6 +84,8 @@
   .savestate.warnstate{color:var(--warn);opacity:1}
   .btn.danger:hover{border-color:var(--bad);color:var(--bad)}
   .btn:disabled{opacity:.4;cursor:not-allowed}
+  /* nothing to be about */
+  .toggle button.noquote{opacity:.42;cursor:not-allowed}
   .toggle{display:flex;background:var(--track);border:1px solid var(--line);border-radius:8px;padding:2px}
   .toggle button{background:none;border:0;color:var(--txt-dim);padding:5px 14px;border-radius:6px;cursor:pointer;font-size:13px}
   .toggle button.on{background:var(--track-on);color:var(--txt);box-shadow:0 1px 2px var(--shadow)}
@@ -12554,7 +12556,33 @@ if(window.ResizeObserver){
   const hd0=document.querySelector("header");
   if(hd0) new ResizeObserver(()=>syncTopbar()).observe(hd0);
 }
+/* Configure and Documents both need a quotation to be about. With none open
+   they showed the always-needed steps and an empty letterhead, which reads
+   as a quotation that has lost its contents rather than as no quotation at
+   all — the very confusion putting it away was meant to end. So they go
+   grey, and pressing one says where the quotation went. */
+function noQuoteOpen(){ return !!quotePutAway; }
+function syncQuoteTabs(){
+  const uit=noQuoteOpen();
+  for(const id of ["mConfig","mDocs"]){
+    const b=document.getElementById(id);
+    if(!b) continue;
+    b.classList.toggle("noquote", uit);
+    b.title=uit
+      ? (quotePutAway && quotePutAway.number
+         ? `Quotation ${quotePutAway.number} is put away — you are editing the live catalogue. Open it again to configure.`
+         : "No quotation open — you are editing the live catalogue.")
+      : "";
+  }
+}
 function setMode(next){
+  /* the two that need a quotation stay shut while there is none */
+  if((next==="configure"||next==="docs"||next==="formats"||next==="service") && noQuoteOpen()){
+    toast(quotePutAway && quotePutAway.number
+      ? `Quotation ${quotePutAway.number} is put away — open it again first`
+      : "No quotation open", "warn");
+    return;
+  }
   mode=next;
   saveSoon();
   document.getElementById("mFormats").classList.toggle("on",mode==="formats");
@@ -12568,6 +12596,7 @@ function setMode(next){
   document.getElementById("viewConfigure").classList.toggle("hidden",mode!=="configure");
   document.getElementById("viewAdmin").classList.toggle("hidden",mode!=="admin");
   document.getElementById("viewDocs").classList.toggle("hidden",mode!=="docs");
+  syncQuoteTabs();
   /* Format parts and services are steps in the configuration, not separate
      destinations, so Configure stays lit for all three of them and the
      sub-tab row appears underneath instead of two more tabs up top. */
@@ -13126,7 +13155,7 @@ function renderNotices(){
         You are in the live catalogue, so you are editing the catalogue, not configuring.
         It was saved, and opening it again brings its own catalogue back with it.</span>
       ${quotePutAway.id?`<button class="btn sm" id="ntReopen">Open it again</button>`:""}
-      <button class="btn sm" id="ntPutAwayOk">Got it</button>
+      <button class="btn sm" id="ntPutAwayNew">Start a new quotation</button>
     </div>`);
   }
 
@@ -13205,13 +13234,16 @@ function renderNotices(){
   }
   const on=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
   on("ntDiff", showCatalogueDiff);
-  on("ntPutAwayOk", ()=>{ quotePutAway=null; renderNotices(); });
+  /* no "got it": hiding the notice would leave the two grey tabs with
+     nothing to explain them. There are two ways out and they are both here. */
   on("ntReopen", async ()=>{
     const id=quotePutAway && quotePutAway.id;
-    quotePutAway=null;
+    quotePutAway=null; syncQuoteTabs();
     if(id) await cloudOpenQuote(id);
     renderNotices();
   });
+  on("ntPutAwayNew", async ()=>{ quotePutAway=null; syncQuoteTabs(); await newQuote(); renderNotices(); });
+  syncQuoteTabs();
   on("ntTake", takeUpstreamCatalogue);
   /* Later on the catalogue means "not this change": remember which rev was
      waved away, so the notice comes back when the next one arrives. */
@@ -14384,6 +14416,8 @@ async function goToLiveCatalogue(){
   toast(quotePutAway && quotePutAway.number
     ? `On the live catalogue \u2014 quotation ${quotePutAway.number} put away`
     : "On the live catalogue");
+  /* and off the screen that has just lost its subject */
+  if(quotePutAway && mode!=="admin" && mode!=="quotes") setMode("admin");
   renderCatTabs(); renderCatalogueBar(); renderNotices(); refreshView();
   if(mode==="admin") renderAdmin();
   return true;
@@ -15247,6 +15281,7 @@ function clearQuoteSide(){
    without asking again — that is the whole point of the button. */
 let newQuoteAsked=false;
 async function newQuote(){
+  quotePutAway=null;                 // there is a quotation again
   /* Never lose the quote on screen. If it is already a cloud row it is
      safe; if it is not and there is something in it, it becomes one first,
      so "New quote" can be pressed without thinking about it. */
