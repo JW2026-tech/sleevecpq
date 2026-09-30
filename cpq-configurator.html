@@ -89,6 +89,7 @@
   .kindic.machine{color:var(--accent,#28338A)}
   .kindic.question{color:#EF7B0B}
   .mrow .ic .kindic{margin:0;vertical-align:middle}
+  .qnote{padding:12px 14px;font-size:12px;color:var(--txt-faint);border:1px dashed var(--line);border-radius:8px;margin-top:8px}
   .okind{width:auto;flex:0 0 auto}
   .kindwarn{display:block;margin-top:4px;font-size:11px;color:var(--warn)}
   .cattrace{margin-top:4px;font-size:10.5px;color:var(--txt-faint)}
@@ -8587,10 +8588,10 @@ function renderAdmin(){
           <div class="top">
             <span class="onum">${i+1}</span>
             <input class="in oname" value="${esc(o.name)}" data-f="name" placeholder="Option name">
-            <label class="pricebox" title="Our cost — kept for margin, never shown to a customer"><span>cost</span>
+            ${o.kind==="question"?"":`<label class="pricebox" title="Our cost — kept for margin, never shown to a customer"><span>cost</span>
               <input class="in ocost" type="number" step="100" value="${+o.cost||0}" data-f="cost"></label>
             <label class="pricebox" title="Selling price"><span>price</span>
-              <input class="in oprice" type="number" step="100" value="${+o.price||0}" data-f="price"></label>
+              <input class="in oprice" type="number" step="100" value="${+o.price||0}" data-f="price"></label>`}
             <button class="btn sm" data-act="oup" ${i===0?"disabled":""}>&#9650;</button>
             <button class="btn sm" data-act="odown" ${i===m.options.length-1?"disabled":""}>&#9660;</button>
             <button class="x" data-act="odel" title="Delete option">&times;</button>
@@ -8608,13 +8609,13 @@ function renderAdmin(){
             <select class="in okind" data-f="kind" title="What this option is: a module, a question or a machine. It shows as an icon; it changes nothing about how the option works.">
               ${STEP_KINDS.map(k=>`<option value="${k.id}" ${(o.kind||"module")===k.id?"selected":""} ${(k.id==="machine" && sel.length!==1)?"disabled":""}>${k.label}${(k.id==="machine" && sel.length!==1)?" (top level only)":""}</option>`).join("")}
             </select>
-            ${(o.kind==="question" && ((+o.price||0)||(+o.cost||0)))?`<span class="kindwarn">A question has no price of its own.</span>`:""}
           </div>
           ${/* Two columns of always-open cards. These four used to be
                 collapsed <details>, which meant opening and shutting the
                 same sections on every option just to reach ordinary fields.
                 Only the two genuinely long lists (functionalities and
                 specification lines) stay behind a disclosure row. */""}
+          ${o.kind==="question"?`<div class="qnote">A question has no price and nothing else to set: it only asks, and the answer steers what comes next.</div>`:`
           <div class="ogrid">
           <div class="ocol">
           <section class="oblk">
@@ -8772,6 +8773,7 @@ function renderAdmin(){
           </section>
           </div>
           </div>
+          `}
 
           <div class="sub">
             ${o.children&&o.children.length
@@ -10131,6 +10133,7 @@ function wireEditor(m,list,idx){
       if(f==="kind") el.onchange=()=>{
         /* the default is the absence of the field */
         if(el.value==="module") delete target.kind; else target.kind=el.value;
+        if(el.value==="question"){ target.price=0; target.cost=0; }   // a question has no price
         renderConfigureQuiet(); renderAdmin();
       };
       if(f==="defScope") el.onchange=()=>{ target.defScope=el.value; renderConfigureQuiet(); renderAdmin(); };
