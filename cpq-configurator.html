@@ -89,6 +89,7 @@
   .kindic.machine{color:var(--accent,#28338A)}
   .kindic.question{color:#EF7B0B}
   .mrow .ic .kindic{margin:0;vertical-align:middle}
+  .okind{width:auto;flex:0 0 auto}
   .kindwarn{display:block;margin-top:4px;font-size:11px;color:var(--warn)}
   .cattrace{margin-top:4px;font-size:10.5px;color:var(--txt-faint)}
   .cattrace summary{cursor:pointer}
@@ -7815,7 +7816,7 @@ function renderConfigure(){
       <div class="guides">${guides(nd.depth)}</div>
       ${toggle}
       <div class="dot">${done?"&#10003;":""}</div>
-      <div class="body"><div class="t">${kindIcon(stepKind(mm, nd.depth))}${esc(mm.title)}${hiddenOpen?`<span class="openbadge" title="${hiddenOpen} step${hiddenOpen>1?"s":""} under here still unanswered">${hiddenOpen}</span>`:""}${hasOptSel?' <span class="optpill">optional</span>':""}</div></div>
+      <div class="body"><div class="t">${esc(mm.title)}${hiddenOpen?`<span class="openbadge" title="${hiddenOpen} step${hiddenOpen>1?"s":""} under here still unanswered">${hiddenOpen}</span>`:""}${hasOptSel?' <span class="optpill">optional</span>':""}</div></div>
       ${/* at the END of the row on purpose: sitting before the dot, it stole
             16px from every row that has children and left the dots of rows
             without children out of line with them */""}
@@ -7894,7 +7895,7 @@ function renderConfigure(){
             <label class="${isNA(o.id)?"on na-on":""}" title="Ruled out for this quote — no price, but the decision is recorded"><input type="radio" name="scope-${esc(m.id)}-${esc(o.id)}" data-mode="na" ${isNA(o.id)?"checked":""}> Not applicable</label>
           </div>
           <div class="body">
-            <div class="name">${esc(o.name)}${o.tag?`<span class="tag">${esc(o.tag)}</span>`:""}</div>
+            <div class="name">${kindIcon(optKind(o, (CONFIG.modules||[]).includes(m)))}${esc(o.name)}${o.tag?`<span class="tag">${esc(o.tag)}</span>`:""}</div>
             ${o.children&&o.children.length?`<div class="more">${sel?"Opened":"Unlocks"}: ${o.children.map(ch=>`<span class="unl ${sel?"go":""}" ${sel?`data-goto="${esc(ch.id)}"`:""} title="${sel?"Go to this step":"Select this option to open it"}">${esc(ch.title||"Untitled step")}</span>`).join("")}</div>`:""}
             ${(!(sel && !o.optional) && recommendReason(o))?`<div class="recnote" title="Advice from the product and sleeve specifications">Recommended in scope — ${esc(recommendReason(o))}</div>`:""}
             ${selAlt?`<div class="altpick">
@@ -8154,11 +8155,10 @@ function catalogueRows(){
       if(m.generated) continue;
       const path=trail.concat(m.title||"");
       out.push({level:depth+1, path:path.join(" > "), stepKey:m.id, step:m.title||"",
-                stepType:stepKind(m, depth),
                 stepDesc:m.desc||"", optionKey:"", option:"", desc:"", cost:"", price:"", qty:"", startsAs:""});
       for(const o of (m.options||[])){
         out.push({level:depth+1, path:path.join(" > "), stepKey:m.id, step:m.title||"", stepDesc:"",
-                  optionKey:o.id, option:o.name||"", desc:(o.text||"").replace(/\s+/g," ").trim(),
+                  optionKey:o.id, option:o.name||"", optType:optKind(o, depth===0), desc:(o.text||"").replace(/\s+/g," ").trim(),
                   cost:+o.cost||0, price:+o.price||0,
                   qty:+o.defQty||1,
                   startsAs:({in:"In scope",opt:"Optional",na:"Not applicable"})[o.defScope]||""});
@@ -8176,9 +8176,8 @@ function toCsv(rows, cols){
 function exportStepsCsv(){
   const cols=[{key:"level",label:"Level"},{key:"path",label:"Path"},
               {key:"stepKey",label:"Step key"},{key:"step",label:"Step"},
-              {key:"stepType",label:"Step type"},
               {key:"stepDesc",label:"Step description"},
-              {key:"optionKey",label:"Option key"},{key:"option",label:"Option"},
+              {key:"optionKey",label:"Option key"},{key:"option",label:"Option"},{key:"optType",label:"Option type"},
               {key:"desc",label:"Description"},
               {key:"cost",label:"Cost"},{key:"price",label:"Price"},
               {key:"qty",label:"Quantity"},{key:"startsAs",label:"Starts as"}];
@@ -8212,14 +8211,14 @@ function exportStepsCsv(){
    what someone set.
    ============================================================ */
 const STEP_KINDS=[
-  {id:"module",   label:"Module",   hint:"A group of options. The default."},
-  {id:"question", label:"Question", hint:"Has no price of its own; asked to steer what comes next."},
-  {id:"machine",  label:"Machine",  hint:"Stands for a machine. Only at the top of the tree."}
+  {id:"module",   label:"Module",   hint:"An ordinary option. The default."},
+  {id:"question", label:"Question", hint:"Has no price of its own; picked to steer what comes next."},
+  {id:"machine",  label:"Machine",  hint:"Stands for a machine. Only in a top-level step."}
 ];
-function stepKind(m, depth){
-  const k=m && m.kind;
+function optKind(o, top){
+  const k=o && o.kind;
   if(k==="question") return "question";
-  if(k==="machine") return depth===0 ? "machine" : "module";
+  if(k==="machine") return top ? "machine" : "module";
   return "module";
 }
 /* the small picture in front of a step name, only for the two that are not
@@ -8373,7 +8372,7 @@ function treeHtml(list,path,depth){
       ${branches.length
         ? `<span class="fold-toggle" data-mfold='${mkey}' title="${mCollapsed?"Expand":"Collapse"} this step">${mCollapsed?"&#9656;":"&#9662;"}</span>`
         : `<span class="fold-toggle spacer"></span>`}
-      <span class="ic">${kindIcon(stepKind(m, depth)) || (depth?"&#8618;":"&#9679;")}</span>
+      <span class="ic">${depth?"&#8618;":"&#9679;"}</span>
       <div class="n">${esc(m.title||"Untitled")}</div>
       ${mCollapsed&&hidden?`<span class="foldcount">${hidden}</span>`:""}
       ${branches.length?`<span class="foldall-btn" data-foldall='${JSON.stringify(p)}'
@@ -8553,16 +8552,6 @@ function renderAdmin(){
         <input class="in mono ${dup.has(m.id)?"dup":""}" value="${esc(m.id)}" data-f="id"></div>
       <div class="fld"><label>Helper text</label>
         <input class="in" value="${esc(m.desc||"")}" data-f="desc" placeholder="Shown under the step title"></div>
-      <div class="fld"><label>Type</label>
-        <select class="in" data-f="kind" title="What kind of step this is. It shows as an icon in the lists; it changes nothing about how the step works.">
-          ${STEP_KINDS.map(k=>`<option value="${k.id}" ${(m.kind||"module")===k.id?"selected":""}
-            ${(k.id==="machine" && sel.length!==1)?"disabled":""}>${k.label}${(k.id==="machine" && sel.length!==1)?" (top level only)":""}</option>`).join("")}
-        </select>
-        <span class="meta">${esc((STEP_KINDS.find(k=>k.id===(m.kind||"module"))||STEP_KINDS[0]).hint)}${
-          (m.kind==="machine" && sel.length!==1)?" This one is set as a machine but sits under an option, so it reads as a module until it is back at the top.":""}</span>
-        ${(m.kind==="question" && (m.options||[]).some(o=>(+o.price||0)||(+o.cost||0)))
-          ?`<span class="kindwarn">A question has no price, but ${(m.options||[]).filter(o=>(+o.price||0)||(+o.cost||0)).length} of its options do.</span>`:""}
-      </div>
     </div>
     <div class="checks">
       <label class="chk"><input type="checkbox" data-f="multi" ${m.multi?"checked":""}> Allow multiple selections</label>
@@ -8616,6 +8605,10 @@ function renderAdmin(){
             ${optionPlaces(o.id).length>1?`<span class="dupnote" title="${esc(optionPlaces(o.id).map(pl=>pl.path).join(" | "))}">also in ${optionPlaces(o.id).length-1} other place${optionPlaces(o.id).length>2?"s":""}
               <button class="dupdel" data-act="odelall" title="Remove this option from every place it stands in">remove everywhere</button></span>`:""}
             <input class="in" value="${esc(o.tag||"")}" data-f="tag" placeholder="Tag (optional)">
+            <select class="in okind" data-f="kind" title="What this option is: a module, a question or a machine. It shows as an icon; it changes nothing about how the option works.">
+              ${STEP_KINDS.map(k=>`<option value="${k.id}" ${(o.kind||"module")===k.id?"selected":""} ${(k.id==="machine" && sel.length!==1)?"disabled":""}>${k.label}${(k.id==="machine" && sel.length!==1)?" (top level only)":""}</option>`).join("")}
+            </select>
+            ${(o.kind==="question" && ((+o.price||0)||(+o.cost||0)))?`<span class="kindwarn">A question has no price of its own.</span>`:""}
           </div>
           ${/* Two columns of always-open cards. These four used to be
                 collapsed <details>, which meant opening and shutting the
