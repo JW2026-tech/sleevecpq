@@ -13301,6 +13301,33 @@ function renderNotices(){
     </div>`);
   }
 
+  /* ---- chosen, but no price ----
+     An item can be in scope or offered with a price of 0 by design, but far
+     more often it is one whose price was never filled in, and the quotation
+     then says "included" about something that costs money. Listed so it is
+     seen before the quotation goes out. A question has no price by nature. */
+  if(cloudQuoteId && !quotePutAway){
+    let noPrice=[];
+    try{
+      const seen=new Set();
+      for(const opt of [false,true]){
+        for(const r of buildItemRows(false,opt)){
+          const o=r.node&&r.node.o;
+          if(!o || r.isGroup || r.subtotal || r.isPropLine || r.hide || r.price) continue;
+          if(o.kind==="question" || o.generated || /^(__|svc)/.test(String(o.id||""))) continue;
+          if(seen.has(o.id)) continue; seen.add(o.id); noPrice.push(o.name||o.id);
+        }
+      }
+    }catch(err){ noPrice=[]; }
+    if(noPrice.length){
+      rows.push(`<div class="notice is-cat">
+        <span class="catdot"></span>
+        <span class="catmsg"><b>${noPrice.length} item${noPrice.length>1?"s":""} in this quotation ${noPrice.length>1?"have":"has"} no price.</b>
+          The quotation shows ${noPrice.length>1?"them":"it"} as "included": ${esc(noPrice.slice(0,4).join(", "))}${noPrice.length>4?" and "+(noPrice.length-4)+" more":""}.</span>
+      </div>`);
+    }
+  }
+
   /* ---- 0. something on this screen is saved nowhere ---- */
   if(checkConfigKeys().length){
     rows.push(`<div class="notice is-stray">
@@ -14003,7 +14030,17 @@ function trimCatalogueForShare(cat, payload){
     }
   })(work);
   withShareCatalogue(work, payload, ()=>shareDocSections().map(x=>x.html).join(""));
-  for(const m of fields) if(m.k==="cost" || !asked.has(m)) delete m.o[m.k];
+  /* The same option can stand in several places under one key. The page reads
+     it from one of them, so only that copy had its price asked for and the
+     others lost theirs — and a customer who took the upgrade, or a page read
+     from another place, then showed "included". A price asked for anywhere
+     is kept for every copy of that key. */
+  const askedIds=new Set();
+  for(const m of fields) if(m.k==="price" && asked.has(m)) askedIds.add(String(m.o.id||""));
+  for(const m of fields){
+    if(m.k==="cost") delete m.o[m.k];
+    else if(!asked.has(m) && !(m.k==="price" && askedIds.has(String(m.o.id||"")))) delete m.o[m.k];
+  }
   const out=clone(work);        // JSON resolves the recorders back to plain numbers
   /* and the steps this quote never had: he cannot reach them, and their
      names alone say what else we sell */
