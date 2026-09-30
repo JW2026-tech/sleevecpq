@@ -14466,6 +14466,9 @@ async function goToLiveCatalogue(){
   if(quotePutAway && mode!=="admin" && mode!=="quotes") setMode("admin");
   renderCatTabs(); renderCatalogueBar(); renderNotices(); refreshView();
   if(mode==="admin") renderAdmin();
+  /* the list on screen still had the quotation as the open one, with a
+     button for it — drawn before it was put away */
+  if(mode==="quotes") renderQuotes();
   return true;
 }
 function renderCatTabs(){
@@ -16224,7 +16227,11 @@ function paintQuoteCards(quotes, shares){
         <div class="meta">${esc(agoWords(q.updated_at))}</div>
       </div>
       <div class="qcacts">
-        <button class="btn sm primary" data-qact="${isOpen?"continue":"open"}">${isOpen?"Continue":"Open"}</button>
+        ${/* A quotation is open or it is not. The open one says so with its
+             badge and needs no button — you are in it, and the Configure tab
+             is the way in. Every other one says Open. "Continue" was a
+             second name for a state that has only two. */""}
+        ${isOpen?"":`<button class="btn sm primary" data-qact="open">Open</button>`}
         ${live?`<button class="btn sm" data-copyshare="${esc(top.token)}">Copy link</button>`:""}
         ${(()=>{
           if(!top) return `<button class="btn sm" data-shnew="${esc(q.id)}" title="Make the first link for this quote">Share</button>`;
@@ -16364,14 +16371,7 @@ function paintQuoteCards(quotes, shares){
   wrap.querySelectorAll("[data-qact]").forEach(b=>{
     const id=qid(b), act=b.dataset.qact;
     b.onclick=async ()=>{
-      if(act==="continue"){
-        if(!await ensureQuoteCatalogue()){
-          alert("Could not load the catalogue this quote was written on (version "+quoteCatVersion+").");
-          return;
-        }
-        setMode("configure");
-      }
-      else if(act==="peek"){ await showQuoteBreakdown(id, b); }
+      if(act==="peek"){ await showQuoteBreakdown(id, b); }
       else if(act==="open"){
         if(!confirm("Open this quote? Anything unsaved on screen is replaced.")) return;
         /* Opening a quote used to throw you into the configurator, which
