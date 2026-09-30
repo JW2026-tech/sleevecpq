@@ -84,6 +84,12 @@
   .savestate.warnstate{color:var(--warn);opacity:1}
   .btn.danger:hover{border-color:var(--bad);color:var(--bad)}
   .btn:disabled{opacity:.4;cursor:not-allowed}
+  /* the kind of a step, in front of its name — not shown for a module */
+  .kindic{flex:0 0 auto;vertical-align:-2px;margin-right:6px}
+  .kindic.machine{color:var(--accent,#28338A)}
+  .kindic.question{color:#EF7B0B}
+  .mrow .ic .kindic{margin:0;vertical-align:middle}
+  .kindwarn{display:block;margin-top:4px;font-size:11px;color:var(--warn)}
   .cattrace{margin-top:4px;font-size:10.5px;color:var(--txt-faint)}
   .cattrace summary{cursor:pointer}
   .cattrace pre{white-space:pre-wrap;word-break:break-word;margin:4px 0 0;font-size:10px;line-height:1.4;max-width:90vw}
@@ -7809,7 +7815,7 @@ function renderConfigure(){
       <div class="guides">${guides(nd.depth)}</div>
       ${toggle}
       <div class="dot">${done?"&#10003;":""}</div>
-      <div class="body"><div class="t">${esc(mm.title)}${hiddenOpen?`<span class="openbadge" title="${hiddenOpen} step${hiddenOpen>1?"s":""} under here still unanswered">${hiddenOpen}</span>`:""}${hasOptSel?' <span class="optpill">optional</span>':""}</div></div>
+      <div class="body"><div class="t">${kindIcon(stepKind(mm, nd.depth))}${esc(mm.title)}${hiddenOpen?`<span class="openbadge" title="${hiddenOpen} step${hiddenOpen>1?"s":""} under here still unanswered">${hiddenOpen}</span>`:""}${hasOptSel?' <span class="optpill">optional</span>':""}</div></div>
       ${/* at the END of the row on purpose: sitting before the dot, it stole
             16px from every row that has children and left the dots of rows
             without children out of line with them */""}
@@ -8148,6 +8154,7 @@ function catalogueRows(){
       if(m.generated) continue;
       const path=trail.concat(m.title||"");
       out.push({level:depth+1, path:path.join(" > "), stepKey:m.id, step:m.title||"",
+                stepType:stepKind(m, depth),
                 stepDesc:m.desc||"", optionKey:"", option:"", desc:"", cost:"", price:"", qty:"", startsAs:""});
       for(const o of (m.options||[])){
         out.push({level:depth+1, path:path.join(" > "), stepKey:m.id, step:m.title||"", stepDesc:"",
@@ -8169,6 +8176,7 @@ function toCsv(rows, cols){
 function exportStepsCsv(){
   const cols=[{key:"level",label:"Level"},{key:"path",label:"Path"},
               {key:"stepKey",label:"Step key"},{key:"step",label:"Step"},
+              {key:"stepType",label:"Step type"},
               {key:"stepDesc",label:"Step description"},
               {key:"optionKey",label:"Option key"},{key:"option",label:"Option"},
               {key:"desc",label:"Description"},
@@ -8188,6 +8196,46 @@ function exportStepsCsv(){
    upgrades, accessories - is not, and every one of them had to have the box
    ticked by hand. The box is still there for the steps that really are a
    choice between one thing and another. */
+/* ============================================================
+   DE SOORT STAP
+   A step is one of three things, and until now they all looked the same:
+     module   a group of options — the default, and what every existing step
+              is, so nothing on screen changes until a step is given a type
+     question a step with no price of its own, asked to steer what comes next
+              (cylindrical or not, which range). Marked as such and nothing
+              more: the answer is an ordinary answer.
+     machine  a step at the top of the tree that stands for a machine.
+   Stored as m.kind, and only when it is not "module", so the catalogue
+   stays as small as it was. A machine is a top-level thing by definition;
+   moved under an option it reads as a module again — and as a machine again
+   if it comes back up — rather than being refused, so a move never destroys
+   what someone set.
+   ============================================================ */
+const STEP_KINDS=[
+  {id:"module",   label:"Module",   hint:"A group of options. The default."},
+  {id:"question", label:"Question", hint:"Has no price of its own; asked to steer what comes next."},
+  {id:"machine",  label:"Machine",  hint:"Stands for a machine. Only at the top of the tree."}
+];
+function stepKind(m, depth){
+  const k=m && m.kind;
+  if(k==="question") return "question";
+  if(k==="machine") return depth===0 ? "machine" : "module";
+  return "module";
+}
+/* the small picture in front of a step name, only for the two that are not
+   the default — a list of forty modules with an icon on each would be noise */
+function kindIcon(kind){
+  if(kind==="machine")
+    return `<svg class="kindic machine" viewBox="0 0 16 16" width="13" height="13" aria-label="Machine" role="img"><title>Machine</title>
+      <circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M8 1.6v2M8 12.4v2M1.6 8h2M12.4 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+  if(kind==="question")
+    return `<svg class="kindic question" viewBox="0 0 16 16" width="13" height="13" aria-label="Question" role="img"><title>Question</title>
+      <circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M6.2 6.2a1.9 1.9 0 1 1 2.7 1.7c-.6.3-.9.7-.9 1.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <circle cx="8" cy="11.6" r=".9" fill="currentColor"/></svg>`;
+  return "";
+}
 function blankModule(){
   return {id:uid("step"),title:"New step",desc:"",multi:true,
     options:[{id:uid("opt"),name:"New option",note:"",price:0,tag:""}]};
@@ -8325,7 +8373,7 @@ function treeHtml(list,path,depth){
       ${branches.length
         ? `<span class="fold-toggle" data-mfold='${mkey}' title="${mCollapsed?"Expand":"Collapse"} this step">${mCollapsed?"&#9656;":"&#9662;"}</span>`
         : `<span class="fold-toggle spacer"></span>`}
-      <span class="ic">${depth?"&#8618;":"&#9679;"}</span>
+      <span class="ic">${kindIcon(stepKind(m, depth)) || (depth?"&#8618;":"&#9679;")}</span>
       <div class="n">${esc(m.title||"Untitled")}</div>
       ${mCollapsed&&hidden?`<span class="foldcount">${hidden}</span>`:""}
       ${branches.length?`<span class="foldall-btn" data-foldall='${JSON.stringify(p)}'
@@ -8505,6 +8553,16 @@ function renderAdmin(){
         <input class="in mono ${dup.has(m.id)?"dup":""}" value="${esc(m.id)}" data-f="id"></div>
       <div class="fld"><label>Helper text</label>
         <input class="in" value="${esc(m.desc||"")}" data-f="desc" placeholder="Shown under the step title"></div>
+      <div class="fld"><label>Type</label>
+        <select class="in" data-f="kind" title="What kind of step this is. It shows as an icon in the lists; it changes nothing about how the step works.">
+          ${STEP_KINDS.map(k=>`<option value="${k.id}" ${(m.kind||"module")===k.id?"selected":""}
+            ${(k.id==="machine" && sel.length!==1)?"disabled":""}>${k.label}${(k.id==="machine" && sel.length!==1)?" (top level only)":""}</option>`).join("")}
+        </select>
+        <span class="meta">${esc((STEP_KINDS.find(k=>k.id===(m.kind||"module"))||STEP_KINDS[0]).hint)}${
+          (m.kind==="machine" && sel.length!==1)?" This one is set as a machine but sits under an option, so it reads as a module until it is back at the top.":""}</span>
+        ${(m.kind==="question" && (m.options||[]).some(o=>(+o.price||0)||(+o.cost||0)))
+          ?`<span class="kindwarn">A question has no price, but ${(m.options||[]).filter(o=>(+o.price||0)||(+o.cost||0)).length} of its options do.</span>`:""}
+      </div>
     </div>
     <div class="checks">
       <label class="chk"><input type="checkbox" data-f="multi" ${m.multi?"checked":""}> Allow multiple selections</label>
@@ -10077,6 +10135,11 @@ function wireEditor(m,list,idx){
       };
       if(f==="id"&&card) el.onchange=()=>{ adoptByKey(m, +card.dataset.oi, el); renderAdmin(); };
       else if(f==="id"||f==="name") el.onchange=()=>renderAdmin();
+      if(f==="kind") el.onchange=()=>{
+        /* the default is the absence of the field */
+        if(el.value==="module") delete target.kind; else target.kind=el.value;
+        renderConfigureQuiet(); renderAdmin();
+      };
       if(f==="defScope") el.onchange=()=>{ target.defScope=el.value; renderConfigureQuiet(); renderAdmin(); };
       if(f==="packaging") el.onchange=()=>{
         const v=Math.max(0,+el.value||0);
