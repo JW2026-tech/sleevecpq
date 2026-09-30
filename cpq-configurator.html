@@ -84,6 +84,9 @@
   .savestate.warnstate{color:var(--warn);opacity:1}
   .btn.danger:hover{border-color:var(--bad);color:var(--bad)}
   .btn:disabled{opacity:.4;cursor:not-allowed}
+  .cattrace{margin-top:4px;font-size:10.5px;color:var(--txt-faint)}
+  .cattrace summary{cursor:pointer}
+  .cattrace pre{white-space:pre-wrap;word-break:break-word;margin:4px 0 0;font-size:10px;line-height:1.4;max-width:90vw}
   /* nothing to be about */
   .toggle button.noquote{opacity:.42;cursor:not-allowed}
   .toggle{display:flex;background:var(--track);border:1px solid var(--line);border-radius:8px;padding:2px}
@@ -13171,10 +13174,12 @@ function renderNotices(){
      Whatever route led here, this is a lie about every price on the screen,
      and it is one click to put right. */
   if(cloudQuoteId && quoteCatVersion && (draftRev!==null || loadedCatalogueVersion!==quoteCatVersion)){
+    healQuoteCatalogueSoon();          // it puts itself right; this says so if it could not
     rows.push(`<div class="notice is-cat">
       <span class="catdot"></span>
       <span class="catmsg"><b>This quote is on catalogue v${quoteCatVersion}, but the ${draftRev!==null?"live catalogue":"catalogue on screen"} is what you are looking at.</b>
-        The prices and steps you see are not the ones this quote was written with.</span>
+        The prices and steps you see are not the ones this quote was written with.
+        ${catTrace.length?`<details class="cattrace"><summary>how did this happen</summary><pre>${esc(catTrace.slice(-8).join("\n"))}</pre></details>`:""}</span>
       <button class="btn sm primary" id="ntOwnCat">Load v${quoteCatVersion}</button>
     </div>`);
   }
@@ -14438,7 +14443,7 @@ function ensurePublishedVersion(){
    live catalogue you are editing the catalogue; that is all.
    ============================================================ */
 let quotePutAway=null;          // {id, number} of the quote a catalogue switch closed
-async function goToLiveCatalogue(){
+async function goToLiveCatalogueNow(){
   if(draftRev!==null) return true;                 // already there
   const dirty=catalogueChanged();
   const heeft=!!cloudQuoteId || quoteHasContent();
@@ -14453,11 +14458,13 @@ async function goToLiveCatalogue(){
      that is the pruning this whole change is about */
   if(heeft){ try{ await flushQuoteNow(); }catch(err){} }
   const was={id:cloudQuoteId, number:nr};
+  catSwitching=true;
   loadedCatalogueVersion=null;
   /* and only then put away: if the catalogue cannot be fetched nothing has
      happened yet and the quotation is still open, untouched */
-  if(!await cloudLoadCatalogueDraft()){ alert("Could not load the live catalogue."); return false; }
+  if(!await cloudLoadCatalogueDraft()){ catSwitching=false; alert("Could not load the live catalogue."); return false; }
   if(heeft){ quotePutAway=was; clearQuoteSide(); }
+  catSwitching=false;
   catUpstream=null; catUpstreamSnoozed=null;
   toast(quotePutAway && quotePutAway.number
     ? `On the live catalogue \u2014 quotation ${quotePutAway.number} put away`
@@ -14792,6 +14799,7 @@ async function cloudLoadCatalogueDraft(){
     restoredDraftBase=null; restoredDraftRev=null;
     if(!applyCatalogue({catalogue:incoming})) return false;
     draftRev=data.rev;
+    traceCat("LIVE draft loaded");
     watchDraft();                 // from here on, their changes come to us
     catKnownRev=data.rev;         // this screen matches that revision
     loadedCatalogueVersion=null;  // working from the draft, not a version
@@ -15184,7 +15192,39 @@ async function quoteCatalogueVersion(id, payload){
    they are collected first and put back on the version — otherwise the swap
    would quietly turn every optional item into an ordinary one.
    ============================================================ */
-async function ensureQuoteCatalogue(){
+/* A short trail of who loaded which catalogue, with the call stack. The state
+   "quote open, live catalogue on screen" kept turning up by a route that could
+   not be reproduced on paper; the next time it does, this says which one it
+   was. Shown under the warning, small, for a screenshot. */
+const catTrace=[];
+function traceCat(what){
+  let where="";
+  try{
+    where=String(new Error().stack||"").split("\n").slice(2,6)
+      .map(l=>l.trim().replace(/^at /,"").replace(/\s*\(?(?:https?|file):[^)\s]*\)?/,"").trim())
+      .filter(Boolean).join(" < ");
+  }catch(err){}
+  catTrace.push(new Date().toLocaleTimeString()+"  "+what+"  [quote "+(cloudQuoteId?"open":"none")+", draft "+draftRev+", version "+loadedCatalogueVersion+", pinned "+quoteCatVersion+"]  "+where);
+  if(catTrace.length>20) catTrace.shift();
+  window.__catTrace=catTrace;
+}
+/* set while goToLiveCatalogue is between loading the live catalogue and
+   putting the quotation away — a state that is meant to disagree for a moment */
+let catSwitching=false;
+const healTried=new Set();
+/* Once per exact state, so a version that will not load cannot loop. */
+function healQuoteCatalogueSoon(){
+  if(catSwitching || quotePutAway || !cloudQuoteId || !quoteCatVersion) return;
+  const sig=[cloudQuoteId, quoteCatVersion, draftRev, loadedCatalogueVersion].join("|");
+  if(healTried.has(sig)) return;
+  healTried.add(sig);
+  setTimeout(async ()=>{
+    traceCat("auto-heal starts");
+    if(await ensureQuoteCatalogue()) toast("Put back on catalogue v"+quoteCatVersion+" \u2014 the one this quote was written on");
+    renderNotices();
+  }, 0);
+}
+async function ensureQuoteCatalogueNow(){
   const want=quoteCatVersion;
   if(!cloudQuoteId || !want) return true;
   if(draftRev===null && loadedCatalogueVersion===want) return true;   // already
@@ -15197,14 +15237,36 @@ async function ensureQuoteCatalogue(){
   const scope=collectScopeFlags();
   if(!applyCatalogue({catalogue:cat})) return false;
   loadedCatalogueVersion=want; draftRev=null; draftConflict=null;
+  traceCat("quote put on its own version");
   applyScopeFlags(scope);
   reconcile();
   markCataloguePublished();
   renderCatTabs(); renderCatalogueBar(); renderNotices();
   return true;
 }
+/* ============================================================
+   ÉÉN CATALOGUS-WISSEL TEGELIJK
+   Going to the live catalogue, opening a quote and putting a quote back on
+   its own version all swap the one catalogue held in memory, and each takes
+   a network round trip. Started close together — Live, and straight away
+   Open on a quote — their ends interleave: the last to finish decides what is
+   in memory, whichever the last to START was. One order came out with no
+   quotation open and version 45 loaded, which is a frozen catalogue you would
+   have been editing believing it was the live one.
+   So they queue: what was asked first happens first, and the state at the end
+   is the state of the last thing asked for.
+   ============================================================ */
+let catOpChain=Promise.resolve();
+function catExclusive(fn){
+  const run=catOpChain.then(fn, fn);
+  catOpChain=run.then(()=>{}, ()=>{});
+  return run;
+}
+const goToLiveCatalogue = () => catExclusive(goToLiveCatalogueNow);
+const cloudOpenQuote = id => catExclusive(()=>cloudOpenQuoteNow(id));
+const ensureQuoteCatalogue = () => catExclusive(ensureQuoteCatalogueNow);
 let openQuoteWhy="";            // why the last cloudOpenQuote said no, when it can say
-async function cloudOpenQuote(id){
+async function cloudOpenQuoteNow(id){
   quotePutAway=null;                 // there is a quotation open again
   if(!supa) return false;
   const {data, error} = await supa.from("quotes").select("data,rev,created_at").eq("id", id).single();
@@ -15251,6 +15313,11 @@ async function cloudOpenQuote(id){
   /* the bar speaks for whichever quote is open, so it has to be told */
   loadQuoteMeta().then(()=>{ renderQuoteBar(); checkCatalogueUpstream(); });
   renderCatalogueBar();
+  /* at the END as well as at the start: a switch to the live catalogue that
+     was still on its way when this began can finish in between and mark the
+     quotation as put away — and then a quotation that is open would have
+     greyed-out tabs and a notice saying it is not */
+  quotePutAway=null; syncQuoteTabs(); renderNotices();
   return true;
 }
 async function cloudDuplicateQuote(id){
