@@ -1987,6 +1987,23 @@
   /* the confirmation, where you are looking. Its own colours rather than
      the theme's: it sits over whatever is underneath and has to read the
      same in light and dark. */
+  /* busy: the bar across the top, the spinner in a note, and the pressed button */
+  #busybar{position:fixed;left:0;right:0;top:0;height:3px;z-index:10000;overflow:hidden;
+    opacity:0;transition:opacity .15s;pointer-events:none;background:rgba(40,51,138,.12)}
+  #busybar.on{opacity:1}
+  #busybar::before{content:"";position:absolute;top:0;bottom:0;left:0;width:34%;
+    background:#EF7B0B;animation:busyslide 1.05s ease-in-out infinite}
+  @keyframes busyslide{0%{transform:translateX(-105%)}100%{transform:translateX(305%)}}
+  .toast.busy{background:#28338A}
+  .busyspin,.busybtn::after{width:14px;height:14px;border-radius:50%;
+    border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:busyturn .7s linear infinite}
+  .busyspin{flex:0 0 14px;display:inline-block}
+  @keyframes busyturn{to{transform:rotate(360deg)}}
+  .busybtn{position:relative;pointer-events:none;opacity:.78}
+  .busybtn::after{content:"";display:inline-block;vertical-align:-2px;margin-left:7px;
+    border-color:rgba(40,51,138,.25);border-top-color:#28338A}
+  .btn.primary.busybtn::after{border-color:rgba(255,255,255,.4);border-top-color:#fff}
+  @media print{ #busybar{display:none} }
   #toasts{position:fixed;left:0;right:0;bottom:26px;z-index:9999;padding:0 16px;
     display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
   .toast{display:flex;align-items:center;gap:9px;max-width:min(92vw,560px);
@@ -14875,6 +14892,17 @@ async function cloudSaveCatalogueDraft(){
   try{
     const cur=cataloguePayload().catalogue;
     const diff = draftBase ? catalogueDiff(draftBase, cur) : {structural:true, patches:[]};
+    /* The signature moved but the catalogue did not: a per-quote mark, an
+       ordering, a normalisation on load. catalogueDiff walks every key and
+       reports any difference, so an empty answer is an identical document —
+       and the whole-document write below used to go ahead anyway, sending
+       the entire 776 KB draft back unchanged. That raised the revision and
+       told every colleague that the catalogue had changed when nothing had.
+       It happened on every switch from a quotation to the live catalogue. */
+    if(draftBase && !diff.structural && !diff.patches.length){
+      draftSavedSig=sig;
+      return draftRev;
+    }
     /* A field change goes as a patch, so it cannot collide with a colleague
        editing something else — that is the whole point. A very large batch
        is not worth resolving path by path, and structural edits can't be
@@ -15262,9 +15290,9 @@ function catExclusive(fn){
   catOpChain=run.then(()=>{}, ()=>{});
   return run;
 }
-const goToLiveCatalogue = () => catExclusive(goToLiveCatalogueNow);
-const cloudOpenQuote = id => catExclusive(()=>cloudOpenQuoteNow(id));
-const ensureQuoteCatalogue = () => catExclusive(ensureQuoteCatalogueNow);
+const goToLiveCatalogue = () => catExclusive(()=>withBusy("Switching to the live catalogue\u2026", goToLiveCatalogueNow));
+const cloudOpenQuote = id => catExclusive(()=>withBusy("Opening the quotation on its catalogue\u2026", ()=>cloudOpenQuoteNow(id)));
+const ensureQuoteCatalogue = () => catExclusive(()=>withBusy("Loading the quotation\u0027s catalogue\u2026", ensureQuoteCatalogueNow));
 let openQuoteWhy="";            // why the last cloudOpenQuote said no, when it can say
 async function cloudOpenQuoteNow(id){
   quotePutAway=null;                 // there is a quotation open again
@@ -16483,7 +16511,7 @@ function paintQuoteCards(quotes, shares){
     };
   });
   wrap.querySelectorAll("[data-shpush]").forEach(b=>{
-    b.onclick=async ()=>{
+    b.onclick=()=>withBusy("Updating the link\u2026", async ()=>{
       try{
         if(cloudQuoteId) await flushQuoteNow();
         const {error}=await pushShare(b.dataset.shpush, +b.dataset.shver||null);
@@ -16493,7 +16521,7 @@ function paintQuoteCards(quotes, shares){
         toast("Link updated \u2014 the customer now sees this version");
         renderQuotes(); renderQuoteBar();
       }catch(err){ alert("Could not update that link: "+(err&&err.message||err)); }
-    };
+    }, b);
   });
   wrap.querySelectorAll("[data-shsend]").forEach(b=>{ b.onclick=()=>markShareSent(b.dataset.shsend); });
   wrap.querySelectorAll("[data-shoffline]").forEach(b=>{
@@ -16758,6 +16786,75 @@ async function syncFromSharedOnStart(){
    confirmation on the button itself would not do: the button is gone.
    flagSaved stays what it is: the quiet running commentary of saving.
    ============================================================ */
+/* ============================================================
+   BEZIG
+   Several of the buttons do real work over the network — update a link,
+   open a quotation on its catalogue, publish, mark as sent — and for the
+   second or two that takes, nothing on screen changed, so it looked as if
+   the press had been lost, and pressing again started it twice.
+   Three things, all appearing only when the wait is long enough to notice
+   (a quarter of a second, so a fast action does not flash): a thin moving
+   bar across the top of the window, a note at the foot saying what is being
+   done, and the button that was pressed goes still and shows a spinner.
+   Wrapped round the action, not put in each button, so every way of getting
+   to it — the bar, the list, the notice — gets the same treatment. The same
+   action pressed again while it runs is answered with the first one.
+   ============================================================ */
+let lastPressed=null, lastPressedAt=0;
+document.addEventListener("click", e=>{
+  const b=e.target && e.target.closest ? e.target.closest("button") : null;
+  if(b){ lastPressed=b; lastPressedAt=Date.now(); }
+}, true);
+const busyTokens=[];
+let busyTimer=null;
+const busyRunning=new Map();
+function paintBusy(){
+  const bar=document.getElementById("busybar") || (()=>{
+    const b=document.createElement("div"); b.id="busybar"; document.body.appendChild(b); return b; })();
+  let host=document.getElementById("toasts");
+  if(!host){ host=document.createElement("div"); host.id="toasts"; document.body.appendChild(host); }
+  let pill=document.getElementById("busypill");
+  const waiting = busyTokens.length && busyTimer===null;
+  bar.classList.toggle("on", !!waiting);
+  if(!waiting){ if(pill) pill.remove(); return; }
+  if(!pill){
+    pill=document.createElement("div"); pill.id="busypill"; pill.className="toast busy in";
+    pill.innerHTML='<span class="busyspin"></span><span></span>';
+    host.appendChild(pill);
+  }
+  pill.lastChild.textContent=busyTokens[busyTokens.length-1].label;
+}
+async function withBusy(label, fn, btn, key){
+  const sleutel=key||label;
+  if(busyRunning.has(sleutel)) return busyRunning.get(sleutel);
+  /* the button that was pressed: the one the last click landed on, when that
+     was just now — focus is no help, not every click gives a button focus */
+  const pressed = btn ||
+    (lastPressed && document.contains(lastPressed) && Date.now()-lastPressedAt<2500 ? lastPressed : null) ||
+    (document.activeElement && document.activeElement.tagName==="BUTTON" ? document.activeElement : null);
+  const wasDisabled=pressed ? pressed.disabled : false;
+  if(pressed){ pressed.classList.add("busybtn"); pressed.disabled=true; }
+  const token={label};
+  busyTokens.push(token);
+  if(busyTimer===null && busyTokens.length===1)
+    busyTimer=setTimeout(()=>{ busyTimer=null; paintBusy(); }, 250);
+  const run=(async ()=>{ return await fn(); })();
+  busyRunning.set(sleutel, run);
+  try{ return await run; }
+  finally{
+    busyRunning.delete(sleutel);
+    busyTokens.splice(busyTokens.indexOf(token),1);
+    if(pressed){ pressed.classList.remove("busybtn"); pressed.disabled=wasDisabled; }
+    if(!busyTokens.length && busyTimer!==null){ clearTimeout(busyTimer); busyTimer=null; }
+    paintBusy();
+  }
+}
+function busyWrap(label, fn){
+  return function(...a){
+    let k=label; try{ k+="|"+JSON.stringify(a); }catch(err){}
+    return withBusy(label, ()=>fn.apply(this, a), undefined, k);
+  };
+}
 function toast(msg, kind){
   let host=document.getElementById("toasts");
   if(!host){ host=document.createElement("div"); host.id="toasts"; document.body.appendChild(host); }
@@ -18451,6 +18548,17 @@ async function boot(){
     else if(event==="SIGNED_OUT") location.reload();
   });
 }
+/* The actions that go to the database and back. Wrapped here, once, so every
+   route to them — the bar, the list, a notice — says it is working. */
+pushShareNow = busyWrap("Updating the link\u2026", pushShareNow);
+markShareSent = busyWrap("Marking as sent\u2026", markShareSent);
+setShareOffline = busyWrap("Changing the link\u2026", setShareOffline);
+restoreCustomerVersion = busyWrap("Going back to the customer\u0027s version\u2026", restoreCustomerVersion);
+pullShareChanges = busyWrap("Taking the customer\u0027s changes\u2026", pullShareChanges);
+moveQuoteToCatalogue = busyWrap("Moving the quotation to the new catalogue\u2026", moveQuoteToCatalogue);
+newQuote = busyWrap("Starting a new quotation\u2026", newQuote);
+newQuoteRevision = busyWrap("Starting a new revision\u2026", newQuoteRevision);
+cloudPublishCatalogue = busyWrap("Publishing the catalogue\u2026", cloudPublishCatalogue);
 boot();
 </script>
 </body>
