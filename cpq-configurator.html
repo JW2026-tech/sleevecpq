@@ -7896,7 +7896,7 @@ function renderConfigure(){
             <label class="${isNA(o.id)?"on na-on":""}" title="Ruled out for this quote — no price, but the decision is recorded"><input type="radio" name="scope-${esc(m.id)}-${esc(o.id)}" data-mode="na" ${isNA(o.id)?"checked":""}> Not applicable</label>
           </div>
           <div class="body">
-            <div class="name">${kindIcon(optKind(o, (CONFIG.modules||[]).includes(m)))}${esc(o.name)}${o.tag?`<span class="tag">${esc(o.tag)}</span>`:""}</div>
+            <div class="name">${kindIcon(optKind(o))}${esc(o.name)}${o.tag?`<span class="tag">${esc(o.tag)}</span>`:""}</div>
             ${o.children&&o.children.length?`<div class="more">${sel?"Opened":"Unlocks"}: ${o.children.map(ch=>`<span class="unl ${sel?"go":""}" ${sel?`data-goto="${esc(ch.id)}"`:""} title="${sel?"Go to this step":"Select this option to open it"}">${esc(ch.title||"Untitled step")}</span>`).join("")}</div>`:""}
             ${(!(sel && !o.optional) && recommendReason(o))?`<div class="recnote" title="Advice from the product and sleeve specifications">Recommended in scope — ${esc(recommendReason(o))}</div>`:""}
             ${selAlt?`<div class="altpick">
@@ -8159,7 +8159,7 @@ function catalogueRows(){
                 stepDesc:m.desc||"", optionKey:"", option:"", desc:"", cost:"", price:"", qty:"", startsAs:""});
       for(const o of (m.options||[])){
         out.push({level:depth+1, path:path.join(" > "), stepKey:m.id, step:m.title||"", stepDesc:"",
-                  optionKey:o.id, option:o.name||"", optType:optKind(o, depth===0), desc:(o.text||"").replace(/\s+/g," ").trim(),
+                  optionKey:o.id, option:o.name||"", optType:optKind(o), desc:(o.text||"").replace(/\s+/g," ").trim(),
                   cost:+o.cost||0, price:+o.price||0,
                   qty:+o.defQty||1,
                   startsAs:({in:"In scope",opt:"Optional",na:"Not applicable"})[o.defScope]||""});
@@ -8214,12 +8214,12 @@ function exportStepsCsv(){
 const STEP_KINDS=[
   {id:"module",   label:"Module",   hint:"An ordinary option. The default."},
   {id:"question", label:"Question", hint:"Has no price of its own; picked to steer what comes next."},
-  {id:"machine",  label:"Machine",  hint:"Stands for a machine. Only in a top-level step."}
+  {id:"machine",  label:"Machine",  hint:"Stands for a machine. Can stand anywhere in the tree."}
 ];
-function optKind(o, top){
+function optKind(o){
   const k=o && o.kind;
   if(k==="question") return "question";
-  if(k==="machine") return top ? "machine" : "module";
+  if(k==="machine") return "machine";
   return "module";
 }
 /* the small picture in front of a step name, only for the two that are not
@@ -8607,7 +8607,7 @@ function renderAdmin(){
               <button class="dupdel" data-act="odelall" title="Remove this option from every place it stands in">remove everywhere</button></span>`:""}
             <input class="in" value="${esc(o.tag||"")}" data-f="tag" placeholder="Tag (optional)">
             <select class="in okind" data-f="kind" title="What this option is: a module, a question or a machine. It shows as an icon; it changes nothing about how the option works.">
-              ${STEP_KINDS.map(k=>`<option value="${k.id}" ${(o.kind||"module")===k.id?"selected":""} ${(k.id==="machine" && sel.length!==1)?"disabled":""}>${k.label}${(k.id==="machine" && sel.length!==1)?" (top level only)":""}</option>`).join("")}
+              ${STEP_KINDS.map(k=>`<option value="${k.id}" ${(o.kind||"module")===k.id?"selected":""}>${k.label}</option>`).join("")}
             </select>
           </div>
           ${/* Two columns of always-open cards. These four used to be
