@@ -9113,7 +9113,7 @@ function renderPriceListAdmin(){
         <td class="num">${r.o.kind==="question"?`<span class="qdash" title="A question has no price">&mdash;</span>`:`<input class="in num" type="number" step="100" value="${+r.o.cost||0}" data-pf2="cost">`}</td>
         <td class="num">${r.o.kind==="question"?`<span class="qdash" title="A question has no price">&mdash;</span>`:`<input class="in num" type="number" step="100" value="${+r.o.price||0}" data-pf2="price">`}</td>
         <td class="num margin ${marg(r.o)!==null&&marg(r.o)<0?"bad":""}">${(r.o.kind==="question"||marg(r.o)===null)?"—":marg(r.o)+"%"}</td>
-        <td><input class="in" value="${esc(r.o.text||"")}" data-pf2="text" placeholder="Description"></td>
+        <td>${r.o.kind==="question"?`<span class="qdash" title="A question has no description">&mdash;</span>`:`<input class="in" value="${esc(r.o.text||"")}" data-pf2="text" placeholder="Description">`}</td>
       </tr>`).join("")}
     </table></div>`:'<div class="meta">Nothing matches that filter.</div>'}`;
 
