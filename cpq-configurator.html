@@ -13167,6 +13167,18 @@ function renderNotices(){
   }
   const rows=[];
 
+  /* ---- the header says one catalogue, the screen holds another ----
+     Whatever route led here, this is a lie about every price on the screen,
+     and it is one click to put right. */
+  if(cloudQuoteId && quoteCatVersion && (draftRev!==null || loadedCatalogueVersion!==quoteCatVersion)){
+    rows.push(`<div class="notice is-cat">
+      <span class="catdot"></span>
+      <span class="catmsg"><b>This quote is on catalogue v${quoteCatVersion}, but the ${draftRev!==null?"live catalogue":"catalogue on screen"} is what you are looking at.</b>
+        The prices and steps you see are not the ones this quote was written with.</span>
+      <button class="btn sm primary" id="ntOwnCat">Load v${quoteCatVersion}</button>
+    </div>`);
+  }
+
   /* ---- the quotation a catalogue switch put away ----
      It is not gone and nothing is wrong; it simply is not open, and without
      saying so the Configure screen looks like an empty new quotation. */
@@ -13258,10 +13270,15 @@ function renderNotices(){
   on("ntDiff", showCatalogueDiff);
   /* no "got it": hiding the notice would leave the two grey tabs with
      nothing to explain them. There are two ways out and they are both here. */
+  on("ntOwnCat", async ()=>{
+    if(await ensureQuoteCatalogue()) toast("Now on catalogue v"+quoteCatVersion);
+    else alert("Could not load catalogue version "+quoteCatVersion+". Try again in a moment.");
+    renderNotices(); refreshView();
+  });
   on("ntReopen", async ()=>{
     const id=quotePutAway && quotePutAway.id;
     quotePutAway=null; syncQuoteTabs();
-    if(id) await cloudOpenQuote(id);
+    if(id && !await cloudOpenQuote(id)){ quotePutAway={id, number:(quotePutAway&&quotePutAway.number)||""}; alert(openQuoteWhy||"Could not open that quote."); }
     renderNotices();
   });
   on("ntPutAwayNew", async ()=>{ quotePutAway=null; syncQuoteTabs(); await newQuote(); renderNotices(); });
@@ -13788,12 +13805,19 @@ const _catCache=new Map();
 async function catalogueVersionData(v){
   if(!v || !supa) return null;
   if(_catCache.has(v)) return _catCache.get(v);
-  try{
-    const {data}=await supa.from("catalogue_versions").select("data").eq("version",v).maybeSingle();
-    const d=(data&&data.data)||null;
-    _catCache.set(v,d);
-    return d;
-  }catch(err){ return null; }
+  /* Twice, and a failure is never remembered. The cache used to keep a null
+     for the rest of the session: one dropped request and every quote pinned
+     to that version opened on the live catalogue until the tab was
+     reloaded, with nothing said. */
+  for(let poging=0; poging<2; poging++){
+    try{
+      const {data, error}=await supa.from("catalogue_versions").select("data").eq("version",v).maybeSingle();
+      const d=(!error && data && data.data) || null;
+      if(d){ _catCache.set(v,d); return d; }
+    }catch(err){}
+    if(poging===0) await new Promise(r=>setTimeout(r,350));
+  }
+  return null;
 }
 
 /* ============================================================
@@ -15176,6 +15200,7 @@ async function ensureQuoteCatalogue(){
   renderCatTabs(); renderCatalogueBar(); renderNotices();
   return true;
 }
+let openQuoteWhy="";            // why the last cloudOpenQuote said no, when it can say
 async function cloudOpenQuote(id){
   quotePutAway=null;                 // there is a quotation open again
   if(!supa) return false;
@@ -15196,8 +15221,16 @@ async function cloudOpenQuote(id){
          catalogue everyone else is editing */
       draftRev=null; draftConflict=null;
       flagSaved("Opened on catalogue version "+want);
+    } else {
+      /* It used to carry on regardless: the quote opened on whatever was in
+         memory - the live catalogue - while the header named the quote own
+         the silent repricing the comment above says this exists to stop.
+         Better not to open it at all, and say why. */
+      openQuoteWhy="Could not load catalogue version "+want+", the one this quote was written on, so it was not opened. Nothing has been changed. Try again in a moment.";
+      return false;
     }
   }
+  openQuoteWhy="";
   quoteCatVersion=want||null;
   quoteRevision=(data.data&&data.data.revision)||null;
   /* the date the quotation carries. Written into the quote the first time
@@ -16347,7 +16380,7 @@ function paintQuoteCards(quotes, shares){
            marks it as the open one and offers Continue when you do want to
            go on with it. */
         if(await cloudOpenQuote(id)){ flagSaved("Opened"); renderQuotes(); }
-        else alert("Could not open that quote.");
+        else alert(openQuoteWhy || "Could not open that quote.");
       } else if(act==="dup"){
         try{ await cloudDuplicateQuote(id); flagSaved("Duplicated"); renderQuotes(); }
         catch(err){ alert("Could not duplicate: "+(err&&err.message||err)); }
@@ -18328,7 +18361,8 @@ async function boot(){
   /* the snapshot had no row to point at; the number on screen may still */
   await reattachByNumber();
   /* and now that we know which quote it is: its catalogue, not the live one */
-  await ensureQuoteCatalogue();
+  if(!await ensureQuoteCatalogue())
+    toast("Could not load catalogue version "+quoteCatVersion+" for this quote \u2014 you are looking at the live catalogue", "warn");
   await loadQuoteMeta();
   renderCatTabs();
   renderQuoteBar();
