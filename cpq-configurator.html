@@ -4113,6 +4113,17 @@ function applyPropSkip(p){
     setVariantScope(p, c.o.id, def.id, "in", true);
   }
 }
+/* A property can be marked in Admin as left out of a new quote (p.skipDefault).
+   That is a starting position, not a rule: it is applied ONCE, when the quote
+   is made, and from then on the quote owns it — "Include trapped keys in this
+   quote" stays included. It is deliberately not applied to quotes that already
+   exist, so ticking the box in Admin cannot quietly change a quotation that
+   has been sent. */
+function seedPropDefaults(){
+  for(const p of (CONFIG.props||[])){
+    if(p && p.skipDefault && !propSkipped(p)) setPropSkipped(p, true);
+  }
+}
 function applyAllPropSkips(){
   for(const p of (CONFIG.props||[])) if(propSkipped(p)) applyPropSkip(p);
 }
@@ -9538,6 +9549,10 @@ function renderPropsAdmin(){
         <input class="in oname" value="${esc(p.plural||"")}" data-pf="plural" placeholder="Plural, e.g. Adjustments">
         <input class="in punit" value="${unit}" data-pf="unit" placeholder="unit" title="pcs, m, kg…">
         <span class="spacer"></span>
+        <label class="clstoggle ${p.skipDefault?"on":""}"
+          title="A new quote starts with this property left out: the standard type is fitted and priced, but nothing about it is offered or printed. The salesperson can still include it in a quote with one click.">
+          <input type="checkbox" data-pskipdef ${p.skipDefault?"checked":""}> not in new quotes
+        </label>
         ${cls.length?`<label class="clstoggle ${p.useClasses?"on":""}"
           title="Turn on where the price depends on which section carries it — cable tray, drip tray, central drain. Leave off and this property has one price, as most do.">
           <input type="checkbox" data-pcls ${p.useClasses?"checked":""}> price per class
@@ -9702,6 +9717,13 @@ function renderPropsAdmin(){
   ed.querySelectorAll("[data-pf]").forEach(el=>{
     const p=CONFIG.props[+el.closest(".ocard").dataset.pi];
     el.oninput=()=>{ p[el.dataset.pf]=el.value; };
+  });
+  ed.querySelectorAll("[data-pskipdef]").forEach(el=>{
+    const p=CONFIG.props[+el.closest(".ocard").dataset.pi];
+    el.onchange=()=>{
+      if(el.checked) p.skipDefault=true; else delete p.skipDefault;
+      renderAdmin();
+    };
   });
   ed.querySelectorAll("[data-pcls]").forEach(el=>{
     const p=CONFIG.props[+el.closest(".ocard").dataset.pi];
@@ -15306,6 +15328,7 @@ async function newQuote(){
     catUpstream=null; catUpstreamSnoozed=null;
     renderCatalogueBar();
   }
+  seedPropDefaults();                // after the catalogue is the right one
   reconcile();
   saveNow();
   setMode("configure");
