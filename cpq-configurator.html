@@ -2460,6 +2460,16 @@
        it in words instead */
     .shareupcard .sharetaken{display:flex}
     .sharepropt.shut .pmachrow{display:table-row!important}
+    /* The type tables are laid out for a screen: 760px wide at the least, in a
+       box that scrolls sideways. A page cannot scroll, so the third type was
+       simply cut off. On paper the table takes the width of the page, and the
+       pictures are smaller so that every type fits. (The link keeps its size.) */
+    .shareproptscroll{overflow:visible!important}
+    .shareprotable{min-width:0!important;width:100%!important}
+    .sharepropt .tpic{max-width:150px!important;height:96px!important;padding:4px!important;margin-bottom:6px!important}
+    .sharepropt .tnote{font-size:10.5px!important}
+    .shareprotable th,.shareprotable td{padding-right:8px!important}
+    .shareprotable col.pmachcol{width:22%!important}
 
     /* Print every colour and background exactly as rendered. Without this
        browsers drop background fills by default, which would flatten the
@@ -12526,7 +12536,12 @@ function quoteChapters(){
      body:()=>shareAlternativesBody()},
     {id:"terms",    title:"Commercial terms and conditions",   cls:"",
      body:(no)=>stripOwnHeading(deliverySectionHtml())+termsChapterHtml(no)},
-  ];
+  ].filter(c=>{
+    /* a chapter with nothing in it is not printed as an empty page, and the
+       numbers close up; the link follows the same list, so both agree */
+    if(c.id!=="alts") return true;
+    try{ return !!String(c.body()||"").replace(/<[^>]*>/g,"").trim(); }catch(err){ return true; }
+  });
 }
 /* the builders still write a heading of their own; the chapter owns the
    title now, so that one comes off */
