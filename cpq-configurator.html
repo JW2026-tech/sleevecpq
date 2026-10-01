@@ -2470,6 +2470,11 @@
     .sharepropt .tnote{font-size:10.5px!important}
     .shareprotable th,.shareprotable td{padding-right:8px!important}
     .shareprotable col.pmachcol{width:22%!important}
+    /* The buttons that set a type are hidden on paper, and with them the one
+       thing the cell has to say: what that type would cost. Kept as plain text. */
+    .shareprotable button[data-propall],.shareprotable button[data-cmpswap]{
+      display:inline-block!important;border:0!important;background:none!important;box-shadow:none!important;
+      padding:0!important;font:inherit!important;font-size:13px!important;color:#222!important}
 
     /* Print every colour and background exactly as rendered. Without this
        browsers drop background fills by default, which would flatten the
@@ -17475,7 +17480,7 @@ function sharePropTablesHtml(frac){
   if(!list.length) return "";
   const alleOpen=list.every(t=>sharePropOpen.has(t.p.id));
   return `<div class="sharesectionhead">
-      <h3>Types for this line</h3>
+      <h3>Optional types</h3>
       <div class="sharesectionsub">Feet, counters and access doors are fitted throughout the line. Choose once for every machine, or set a machine on its own.</div>
       <button class="btn sm pbtn no-print sharepropall" data-proptall="${alleOpen?"shut":"open"}">${
         alleOpen?"Hide the machines":"Show every machine"}</button>
@@ -17514,7 +17519,7 @@ function sharePropTablesHtml(frac){
               const cellen=t.rows.map(r=>r.cells.find(x=>x.vid===v.id)).filter(Boolean);
               if(cellen.every(c=>c.current))
                 return `<span class="pcur">&#10003; ${(()=>{const d=cellen.reduce((n,c)=>n+(+c.delta||0),0);
-                  return d?fmt(d):"included";})()}</span>`;
+                  return d?"included &ndash; "+fmt(d):"included";})()}</span>`;
               const kan=cellen.filter(c=>!c.blocked && c.offered);
               if(!kan.length) return `<span class="pna">&mdash;</span>`;
               const som=kan.reduce((n,c)=>n+(+c.delta||0),0);
@@ -17535,7 +17540,7 @@ function sharePropTablesHtml(frac){
             <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>${
               r.mixed?`<span class="pmixed">not all the same &mdash; pick one to align them</span>`:""}</td>
             ${r.cells.map(x=>`<td>${x.current
-              ? `<span class="pcur">&#10003; ${x.delta?fmt(x.delta):"included"}</span>`
+              ? `<span class="pcur">&#10003; ${x.delta>0?"included &ndash; "+fmt(x.delta):"included"}</span>`
               : (x.blocked
                  ? (x.blocked.enabler
                     ? `<span class="pwaits" title="This machine can only have it together with ${esc(x.blocked.enabler.v.name)}, which is offered above.">
