@@ -8188,6 +8188,14 @@ function catalogueRows(){
       }
     }
   })(CONFIG.modules||[], 0, []);
+  /* the option properties, one line per type, after the options: the same
+     columns, with the property where the step goes and "property" as the type */
+  for(const p of (CONFIG.props||[])) for(const v of (p.variants||[])){
+    out.push({level:"", path:"Option properties > "+(p.plural||p.label||""), stepKey:p.id, step:p.plural||p.label||"",
+              stepDesc:"", optionKey:v.id, option:v.name||"", optType:"property",
+              desc:(v.note||"").replace(/s+/g," ").trim(),
+              cost:+v.unitCost||0, price:+v.unitPrice||0, qty:"", startsAs:""});
+  }
   return out;
 }
 function toCsv(rows, cols){
