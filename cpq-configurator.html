@@ -91,6 +91,10 @@
   .mrow .ic .kindic{margin:0;vertical-align:middle}
   .qnote{padding:12px 14px;font-size:12px;color:var(--txt-faint);border:1px dashed var(--line);border-radius:8px;margin-top:8px}
   .pricetable tr.prophead td{padding:14px 6px 6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-faint);font-weight:600;border-bottom:1px solid var(--line)}
+  .svdrag{flex:0 0 auto;color:var(--txt-faint);cursor:grab;letter-spacing:-3px;user-select:none;padding:0 2px}
+  .svdrag:active{cursor:grabbing}
+  .svrow.svdragging{opacity:.4}
+  .svrow.svover{box-shadow:0 -2px 0 var(--accent)}
   .svxname{width:100%;max-width:360px;margin-bottom:4px}
   .vcost{margin-top:4px}
   .pricetable .pvkey{color:var(--txt-faint);font-size:11.5px}
@@ -5115,6 +5119,22 @@ function extraLines(){
     return x;
   });
 }
+/* The lines from Admin and the extra ones stand in one list, and the order is
+   the quotation's own: drag a line to where it belongs — a health check
+   between installation and commissioning. The order is kept as the keys in
+   the order they were put, and anything not in it yet (a line just added)
+   goes at the end. Prices, the link and the PDF all follow it. */
+const ORDER_KEY="__order";
+function serviceItems(){
+  const items=[];
+  for(const x of serviceLines()) items.push({kind:"line", key:x.line.id, x});
+  for(const x of extraLines()) items.push({kind:"extra", key:"__x:"+x.id, x});
+  const saved=serviceState()[ORDER_KEY];
+  if(!Array.isArray(saved) || !saved.length) return items;
+  const pos=new Map(saved.map((k,i)=>[k,i]));
+  return items.filter(it=>pos.has(it.key)).sort((a,b)=>pos.get(a.key)-pos.get(b.key))
+    .concat(items.filter(it=>!pos.has(it.key)));
+}
 const extraTotal = wantOpt => extraLines()
   .filter(x=>(x.scope==="opt")===!!wantOpt && x.price>0 && (x.label||"").trim())
   .reduce((t,x)=>t+x.price,0);
@@ -5680,9 +5700,9 @@ function formatStepSummary(){
 }
 function stepSummary(m){
   if(m.service){
-    const rows=serviceLines().filter(x=>x.days>0);
-    const more=extraLines().filter(x=>(x.label||"").trim() && x.price>0).map(x=>x.label.trim());
-    const all=rows.map(x=>`${x.line.label} ${x.charged}d${x.eng>1?` ×${x.eng}`:""}`).concat(more);
+    const all=serviceItems().map(it=>it.kind==="extra"
+      ? ((it.x.label||"").trim() && it.x.price>0 ? it.x.label.trim() : "")
+      : (it.x.days>0 ? `${it.x.line.label} ${it.x.charged}d${it.x.eng>1?` ×${it.x.eng}`:""}` : "")).filter(Boolean);
     return all.length ? all.join(", ") : null;
   }
   if(m.custom){
@@ -6216,7 +6236,17 @@ function buildItemRows(forceTop, wantOptional){
   const serviceBlock=()=>{
     if(want==="alt") return;
     const ss=serviceStep();
-    if(ss) for(const x of serviceLines()){
+    if(ss) for(const it of serviceItems()){
+      if(it.kind==="extra"){
+        const e=it.x;
+        if(!(e.label||"").trim() || !e.price || (e.scope==="opt")!==!!wantOptional) continue;
+        raw.push(at({
+          isPropLine:true, price:e.price, rolled:false, hide:false, canHide:false,
+          node:{ m:ss, root:ss, depth:0, trail:[], o:{ id:"__svc_x_"+e.id, name:extraName(e), qty:0, isPropLine:true, optional:e.scope==="opt" } }
+        }));
+        continue;
+      }
+      const x=it.x;
       if(!x.charged) continue;
       const isOpt = x.entry.scope==="opt";
       if(isOpt!==!!wantOptional) continue;
@@ -6244,10 +6274,6 @@ function buildItemRows(forceTop, wantOptional){
     };
     add("__svc_pack", `Packaging${packType().label?`: ${packType().label.toLowerCase()}`:""}`,
         packagingTotal(), packEntry().scope);
-    for(const x of extraLines()){
-      if(!(x.label||"").trim()) continue;
-      add("__svc_x_"+x.id, extraName(x), x.price, x.scope);
-    }
     if(transportAtCost()){
       if((transEntry().scope==="opt")===!!wantOptional) raw.push(at({
         isPropLine:true, price:0, rolled:false, hide:false, canHide:false,
@@ -11066,6 +11092,28 @@ function scopePillsHtml(name, scope){
     <label class="${scope==="opt"?"on opt-on":""}"><input type="radio" name="${name}" data-svscope="opt" ${scope==="opt"?"checked":""}> Optional</label>
   </div>`;
 }
+/* one extra line, in the same list as the ones from Admin */
+function extraRowHtml(x, cur){
+  return `<div class="svrow ${x.scope==="opt"?"is-opt":""} ${x.price?"":"empty"}" data-sv="__x:${esc(x.id)}">
+      <span class="svdrag" draggable="true" title="Drag to change the order">&#8942;&#8942;</span>
+      ${scopePillsHtml("sv-x-"+x.id, x.scope)}
+      <div class="svbody">
+        <input class="in svxname" value="${esc(x.label)}" data-xl="label" placeholder="e.g. Start-up health check">
+        <div class="svcalc">
+          <select class="in svterm" data-xl="mode">
+            <option value="days" ${x.mode==="days"?"selected":""}>days at the day rate</option>
+            <option value="fixed" ${x.mode==="fixed"?"selected":""}>fixed price</option>
+          </select></div>
+      </div>
+      ${x.mode==="days"
+        ? `<label class="svadj" title="Days of work"><span>days</span><input class="in" type="number" min="0" step="0.5" value="${x.days}" data-xl="days"></label>
+           <label class="svadj" title="How many field service engineers go — more people, fewer days on site"><span>engineers</span><input class="in" type="number" min="1" step="1" value="${x.eng}" data-xl="engineers"></label>
+           <label class="svadj" title="Travel days per engineer, there and back"><span>travel</span><input class="in" type="number" min="0" step="0.5" value="${x.travelEach}" data-xl="travel"></label>`
+        : `<label class="svadj" title="The price of this line"><span>amount ${esc(cur)}</span><input class="in" type="number" min="0" step="100" value="${Math.round(toShown(x.amount)*100)/100}" data-xl="amount"></label>`}
+      <div class="svprice">${x.price?fmt(x.price):"—"}</div>
+      <button class="x" data-xdel="${esc(x.id)}" title="Remove this line">&times;</button>
+    </div>`;
+}
 function serviceScreenHtml(){
   const sv=ensureService();
   const rows=serviceLines();
@@ -11113,27 +11161,6 @@ function serviceScreenHtml(){
         :(transportTotal()?fmt(transportTotal()):"—")}</div>
     </div>
 
-    <h3 class="svhead">Extra services</h3>
-    <div class="sublbl" style="margin:0 0 8px">Anything else for this job — a start-up health check, a training day, a yearly service visit. Days at the day rate, or a fixed price.</div>
-    ${extraLines().map(x=>`<div class="svrow ${x.scope==="opt"?"is-opt":""} ${x.price?"":"empty"}" data-sv="__x:${esc(x.id)}">
-      ${scopePillsHtml("sv-x-"+x.id, x.scope)}
-      <div class="svbody">
-        <input class="in svxname" value="${esc(x.label)}" data-xl="label" placeholder="e.g. Start-up health check">
-        <div class="svcalc">
-          <select class="in svterm" data-xl="mode">
-            <option value="days" ${x.mode==="days"?"selected":""}>days at the day rate</option>
-            <option value="fixed" ${x.mode==="fixed"?"selected":""}>fixed price</option>
-          </select></div>
-      </div>
-      ${x.mode==="days"
-        ? `<label class="svadj" title="Days of work"><span>days</span><input class="in" type="number" min="0" step="0.5" value="${x.days}" data-xl="days"></label>
-           <label class="svadj" title="How many field service engineers go — more people, fewer days on site"><span>engineers</span><input class="in" type="number" min="1" step="1" value="${x.eng}" data-xl="engineers"></label>
-           <label class="svadj" title="Travel days per engineer, there and back"><span>travel</span><input class="in" type="number" min="0" step="0.5" value="${x.travelEach}" data-xl="travel"></label>`
-        : `<label class="svadj" title="The price of this line"><span>amount ${esc(cur)}</span><input class="in" type="number" min="0" step="100" value="${Math.round(toShown(x.amount)*100)/100}" data-xl="amount"></label>`}
-      <div class="svprice">${x.price?fmt(x.price):"—"}</div>
-      <button class="x" data-xdel="${esc(x.id)}" title="Remove this line">&times;</button>
-    </div>`).join("")}
-    <button class="btn sm" id="svAddExtra">+ Add an extra service</button>
 
     <div class="meta" style="margin-top:16px">Delivery time and payment terms are set on the Investment proposal, with the discount${
       dl.time?` — ${esc(dl.time)}`:""}${dl.payment?` · ${esc(dl.payment)}`:""}.</div>`;
@@ -11143,7 +11170,8 @@ function serviceScreenHtml(){
       <span class="meta">Used for every line without a rate of its own. Set the rules in Admin &rsaquo; Service &amp; support.</span>
     </div>
     <h3 class="svhead">Days on site</h3>
-    ${rows.map(x=>`<div class="svrow ${x.entry.scope==="opt"?"is-opt":""} ${x.days?"":"empty"}" data-sv="${esc(x.line.id)}">
+    <div class="svlist">${serviceItems().map(it=>it.kind==="extra"?extraRowHtml(it.x,cur):(x=>`<div class="svrow ${x.entry.scope==="opt"?"is-opt":""} ${x.days?"":"empty"}" data-sv="${esc(x.line.id)}">
+      <span class="svdrag" draggable="true" title="Drag to change the order">&#8942;&#8942;</span>
       <div class="scope">
         <label class="${x.entry.scope!=="opt"?"on":""}"><input type="radio" name="sv-${esc(x.line.id)}" data-svscope="in" ${x.entry.scope!=="opt"?"checked":""}> In scope</label>
         <label class="${x.entry.scope==="opt"?"on opt-on":""}"><input type="radio" name="sv-${esc(x.line.id)}" data-svscope="opt" ${x.entry.scope==="opt"?"checked":""}> Optional</label>
@@ -11162,7 +11190,9 @@ function serviceScreenHtml(){
       <label class="svadj" title="Travel days per engineer — ${+x.line.travelDays||0} by default"><span>travel</span>
         <input class="in" type="number" min="0" step="0.5" value="${x.travelEach}" data-svtravel="${esc(x.line.id)}"></label>
       <div class="svprice">${x.days?fmt(x.price):"—"}</div>
-    </div>`).join("")}
+    </div>`)(it.x)).join("")}</div>
+    <button class="btn sm" id="svAddExtra">+ Add an extra service</button>
+    <div class="meta" style="margin:6px 0 0">Anything else for this job &mdash; a start-up health check, a training day. Drag a line by its handle to put it where it belongs.</div>
     ${extra}
     <div class="svnotebox">
       <span class="deflabel">Note on the quote${serviceNoteEdited()?` <button class="pbtn" id="svNoteReset">back to the standard text</button>`:""}</span>
@@ -11202,6 +11232,34 @@ function wireServiceScreen(root){
   el.querySelectorAll("[data-xdel]").forEach(b=>{
     b.onclick=()=>{ const m=serviceState(); m[EXTRA_KEY]=extraLines().filter(e=>e.id!==b.dataset.xdel); renderCurrent(); };
   });
+  /* drag a line by its handle to a new place in the list; the order is the quotation's own */
+  (function(){
+    const list=el.querySelector(".svlist"); if(!list) return;
+    let from=null;
+    list.querySelectorAll(".svdrag").forEach(h=>{
+      const row=h.closest(".svrow");
+      h.addEventListener("dragstart",e=>{
+        from=row; row.classList.add("svdragging");
+        e.dataTransfer.effectAllowed="move";
+        try{ e.dataTransfer.setData("text/plain",row.dataset.sv); e.dataTransfer.setDragImage(row,10,10); }catch(err){}
+      });
+      h.addEventListener("dragend",()=>{ row.classList.remove("svdragging");
+        list.querySelectorAll(".svover").forEach(x=>x.classList.remove("svover")); from=null; });
+    });
+    list.querySelectorAll(".svrow").forEach(row=>{
+      row.addEventListener("dragover",e=>{ if(!from||from===row) return; e.preventDefault();
+        list.querySelectorAll(".svover").forEach(x=>x.classList.remove("svover")); row.classList.add("svover"); });
+      row.addEventListener("drop",e=>{
+        if(!from||from===row) return; e.preventDefault();
+        const rows=[...list.querySelectorAll(".svrow")];
+        const keys=rows.map(r=>r.dataset.sv);
+        const k=from.dataset.sv; keys.splice(keys.indexOf(k),1);
+        /* dropped on a row: it takes that row's place, the rows below it move down */
+        keys.splice(keys.indexOf(row.dataset.sv)+(rows.indexOf(from)<rows.indexOf(row)?1:0),0,k);
+        serviceState()[ORDER_KEY]=keys; renderCurrent();
+      });
+    });
+  })();
   const xa=el.querySelector("#svAddExtra");
   if(xa) xa.onclick=()=>{ extraLines(); serviceState()[EXTRA_KEY].push({id:"x"+Date.now().toString(36), label:"", mode:"days", days:1, amount:0, rate:0, engineers:1, travel:0, scope:"opt"}); renderCurrent(); };
   const pe=el.querySelector("[data-packextra]");
