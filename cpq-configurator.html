@@ -91,6 +91,7 @@
   .mrow .ic .kindic{margin:0;vertical-align:middle}
   .qnote{padding:12px 14px;font-size:12px;color:var(--txt-faint);border:1px dashed var(--line);border-radius:8px;margin-top:8px}
   .pricetable tr.prophead td{padding:14px 6px 6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-faint);font-weight:600;border-bottom:1px solid var(--line)}
+  .vcost{margin-top:4px}
   .pricetable .pvkey{color:var(--txt-faint);font-size:11.5px}
   .qdash{display:inline-block;padding:0 10px;color:var(--txt-faint)}
   .okind{width:auto;flex:0 0 auto}
@@ -4560,6 +4561,8 @@ function rebuildFollowVariants(p){
            the same thing, and nobody is going to photograph the pair */
         if(v.image) g.image=v.image; else delete g.image;
         g.unitPrice=(+v.unitPrice||0)+fprice;
+        { const gc=(+v.unitCost||0)+(src?(+src.v.unitCost||0):0);
+          if(gc) g.unitCost=gc; else delete g.unitCost; }
         delete g.follow;
         /* priced by class: the extra costs the same on top of whatever the
            class pays, and a class with no price of its own falls through to
@@ -9148,11 +9151,11 @@ function renderPriceListAdmin(){
       ${vrows.length?`<tr class="prophead"><td colspan="7">Option properties &mdash; the price of each type, per piece (or per metre)</td></tr>
       ${vrows.map((r,i)=>`<tr data-pvi="${i}">
         <td class="pathcell">${esc(r.p.plural||r.p.label||"")}</td>
-        <td><input class="in" value="${esc(r.v.name||"")}" data-pv2="name"></td>
+        <td><input class="in" value="${esc(r.v.name||"")}" data-pv2="name" ${r.v.from?"disabled":""}></td>
         <td><span class="keyin pvkey">${esc(r.v.id||"")}</span></td>
-        <td class="num"><span class="qdash" title="Properties carry no cost of their own">&mdash;</span></td>
-        <td class="num"><input class="in num" type="number" step="10" value="${+r.v.unitPrice||0}" data-pv2="unitPrice" ${r.v.byClass?'title="Base price. This type also has prices per machine class, set on the Option properties screen."':""}></td>
-        <td class="num margin">${r.v.byClass?"per class":"&mdash;"}</td>
+        <td class="num"><input class="in num" type="number" step="10" value="${+r.v.unitCost||0}" data-pv2="unitCost" ${r.v.from?'disabled title="Worked out from the two types it is made of"':""}></td>
+        <td class="num"><input class="in num" type="number" step="10" value="${+r.v.unitPrice||0}" data-pv2="unitPrice" ${r.v.from?'disabled title="Worked out from the two types it is made of"':""} ${r.v.byClass?'title="Base price. This type also has prices per machine class, set on the Option properties screen."':""}></td>
+        <td class="num margin ${(()=>{const p=+r.v.unitPrice||0,c=+r.v.unitCost||0;return (p>0&&!r.v.byClass&&c>p)?"bad":"";})()}">${r.v.byClass?"per class":((+r.v.unitPrice||0)>0?Math.round(((+r.v.unitPrice||0)-(+r.v.unitCost||0))/(+r.v.unitPrice||0)*100)+"%":"&mdash;")}</td>
         <td><input class="in" value="${esc(r.v.note||"")}" data-pv2="note" placeholder="Description"></td>
       </tr>`).join("")}`:""}
     </table></div>`:'<div class="meta">Nothing matches that filter.</div>'}`;
@@ -9174,9 +9177,9 @@ function renderPriceListAdmin(){
   });
   ed.querySelectorAll("[data-pv2]").forEach(inp=>{
     const r=vrows[+inp.closest("tr").dataset.pvi], k=inp.dataset.pv2;
-    if(k==="unitPrice"){
-      inp.oninput=()=>{ r.v.unitPrice=+inp.value||0; };
-      inp.onchange=()=>{ renderConfigureQuiet(); renderPriceListAdmin(); };
+    if(k==="unitPrice"||k==="unitCost"){
+      inp.oninput=()=>{ r.v[k]=+inp.value||0; };
+      inp.onchange=()=>{ rebuildFollowVariants(r.p); renderConfigureQuiet(); renderPriceListAdmin(); };
     } else inp.oninput=()=>{ r.v[k]=inp.value; };
   });
   ed.querySelectorAll("[data-prigo]").forEach(b=>{
@@ -9759,6 +9762,8 @@ function renderPropsAdmin(){
                   <input class="in oprice" type="number" step="10" value="${val}"
                     ${c.id?`data-vcf="price" data-cls="${esc(c.id)}" placeholder="${+v.unitPrice||0}"`:`data-vf="unitPrice"`}
                     title="${c.id?`Leave empty and a ${esc(c.name.toLowerCase())} pays ${fmt(+v.unitPrice||0)}`:"What a part with no class pays"}">
+                  ${c.id?"":`<input class="in oprice vcost" type="number" step="10" value="${+v.unitCost||0}" data-vf="unitCost"
+                    placeholder="cost" title="What it costs us per piece. Kept for the margin, never shown to a customer.">`}
                   ${c.id?`<input class="in vcname" value="${esc(cell.name||"")}" data-vcf="name" data-cls="${esc(c.id)}"
                     placeholder="${esc(v.name)}" title="What the quote line calls it for this class. Empty means the type's own name.">`:""}
                 </td>`;
@@ -9919,7 +9924,7 @@ function renderPropsAdmin(){
     /* a type with follow-ups lends them its name and its price, so those
        have to be built again before the screen is drawn from them */
     const settle=()=>{ rebuildFollowVariants(p); renderConfigureQuiet(); renderAdmin(); };
-    if(f==="unitPrice"){ el.oninput=()=>{ v.unitPrice=+el.value||0; }; el.onchange=settle; }
+    if(f==="unitPrice"||f==="unitCost"){ el.oninput=()=>{ v[f]=+el.value||0; }; el.onchange=settle; }
     else {
       el.oninput=()=>{ v[f]=el.value; };
       if((v.follow||[]).length) el.onchange=settle;
