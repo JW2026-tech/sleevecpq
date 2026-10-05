@@ -90,6 +90,8 @@
   .kindic.question{color:#EF7B0B}
   .mrow .ic .kindic{margin:0;vertical-align:middle}
   .qnote{padding:12px 14px;font-size:12px;color:var(--txt-faint);border:1px dashed var(--line);border-radius:8px;margin-top:8px}
+  .pricetable tr.prophead td{padding:14px 6px 6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-faint);font-weight:600;border-bottom:1px solid var(--line)}
+  .pricetable .pvkey{color:var(--txt-faint);font-size:11.5px}
   .qdash{display:inline-block;padding:0 10px;color:var(--txt-faint)}
   .okind{width:auto;flex:0 0 auto}
   .kindwarn{display:block;margin-top:4px;font-size:11px;color:var(--warn)}
@@ -9092,8 +9094,21 @@ function renderCommercialAdmin(){
   const clr=document.getElementById("pmClear");
   if(clr) clr.onclick=()=>{ c.defaultPayment=""; renderAdmin(); };
 }
+/* The option properties (feet, counters, doors…) have prices too — per piece,
+   per type — and used to be reachable only from the Option properties screen.
+   One row per type, under the options, edited in place. */
+function propPriceRows(){
+  const f=priceFilter.trim().toLowerCase();
+  const out=[];
+  for(const p of (CONFIG.props||[])) for(const v of (p.variants||[])){
+    const row={p, v};
+    if(!f || ((p.label||"")+" "+(p.plural||"")+" "+(v.name||"")+" "+(v.id||"")+" "+(v.note||"")).toLowerCase().includes(f)) out.push(row);
+  }
+  return out;
+}
 function renderPriceListAdmin(){
   const rows=priceListRows();
+  const vrows=propPriceRows();
   const all=(function(){ const t=priceFilter; priceFilter=""; const n=priceListRows().length; priceFilter=t; return n; })();
   const sum=k=>rows.reduce((t,r)=>t+(r.o.kind==="question"?0:(+r.o[k]||0)),0);
   const marg=(o)=>{ const p=+o.price||0, c=+o.cost||0; return p>0 ? Math.round((p-c)/p*100) : null; };
@@ -9108,7 +9123,7 @@ function renderPriceListAdmin(){
       <span class="meta">cost <b>${fmt(sum("cost"))}</b> · price <b>${fmt(sum("price"))}</b></span>
       <button class="btn sm" id="priceCsv">Export CSV</button>
     </div>
-    ${rows.length?`<div class="tablewrap" style="overflow-x:auto"><table class="partstable pricetable" style="width:${priceColW.reduce((a,b)=>a+b,0)}px">
+    ${(rows.length||vrows.length)?`<div class="tablewrap" style="overflow-x:auto"><table class="partstable pricetable" style="width:${priceColW.reduce((a,b)=>a+b,0)}px">
       ${/* The key as well. It is what the option is called everywhere that
            is not this screen — in the export, in an order, in a mail from
            the works — and this list, the one place you go to compare prices
@@ -9130,6 +9145,16 @@ function renderPriceListAdmin(){
         <td class="num margin ${marg(r.o)!==null&&marg(r.o)<0?"bad":""}">${(r.o.kind==="question"||marg(r.o)===null)?"—":marg(r.o)+"%"}</td>
         <td>${r.o.kind==="question"?`<span class="qdash" title="A question has no description">&mdash;</span>`:`<input class="in" value="${esc(r.o.text||"")}" data-pf2="text" placeholder="Description">`}</td>
       </tr>`).join("")}
+      ${vrows.length?`<tr class="prophead"><td colspan="7">Option properties &mdash; the price of each type, per piece (or per metre)</td></tr>
+      ${vrows.map((r,i)=>`<tr data-pvi="${i}">
+        <td class="pathcell">${esc(r.p.plural||r.p.label||"")}</td>
+        <td><input class="in" value="${esc(r.v.name||"")}" data-pv2="name"></td>
+        <td><span class="keyin pvkey">${esc(r.v.id||"")}</span></td>
+        <td class="num"><span class="qdash" title="Properties carry no cost of their own">&mdash;</span></td>
+        <td class="num"><input class="in num" type="number" step="10" value="${+r.v.unitPrice||0}" data-pv2="unitPrice" ${r.v.byClass?'title="Base price. This type also has prices per machine class, set on the Option properties screen."':""}></td>
+        <td class="num margin">${r.v.byClass?"per class":"&mdash;"}</td>
+        <td><input class="in" value="${esc(r.v.note||"")}" data-pv2="note" placeholder="Description"></td>
+      </tr>`).join("")}`:""}
     </table></div>`:'<div class="meta">Nothing matches that filter.</div>'}`;
 
   const search=document.getElementById("priceSearch");
@@ -9146,6 +9171,13 @@ function renderPriceListAdmin(){
          matches all sorts of things it is not meant to be */
       inp.onchange=()=>{ adoptByKey(r.m, r.i, inp); renderAdmin(); };
     } else inp.oninput=()=>{ r.o[f]=inp.value; };
+  });
+  ed.querySelectorAll("[data-pv2]").forEach(inp=>{
+    const r=vrows[+inp.closest("tr").dataset.pvi], k=inp.dataset.pv2;
+    if(k==="unitPrice"){
+      inp.oninput=()=>{ r.v.unitPrice=+inp.value||0; };
+      inp.onchange=()=>{ renderConfigureQuiet(); renderPriceListAdmin(); };
+    } else inp.oninput=()=>{ r.v[k]=inp.value; };
   });
   ed.querySelectorAll("[data-prigo]").forEach(b=>{
     const r=rows[+b.dataset.prigo];
