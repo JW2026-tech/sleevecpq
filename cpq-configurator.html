@@ -5103,14 +5103,24 @@ function extraLines(){
     if(x.mode!=="fixed") x.mode="days";
     x.days=Math.max(0,+x.days||0); x.amount=Math.max(0,+x.amount||0); x.rate=Math.max(0,+x.rate||0);
     if(x.scope!=="in") x.scope="opt";
-    x.price = x.mode==="fixed" ? x.amount : x.days*(x.rate>0?x.rate:sv.dayRate);
+    /* days are worked out the way the lines in Admin are: two engineers halve
+       the time on site but not the bill, and everyone travels, so travel is
+       charged per engineer */
+    x.eng=Math.max(1,Math.floor(+x.engineers||1));
+    x.travelEach=Math.max(0,+x.travel||0);
+    x.onSite = x.eng>1 ? Math.ceil((x.days/x.eng)*2)/2 : x.days;
+    x.travelTotal = x.travelEach*x.eng;
+    x.charged = x.days + x.travelTotal;
+    x.price = x.mode==="fixed" ? x.amount : x.charged*(x.rate>0?x.rate:sv.dayRate);
     return x;
   });
 }
 const extraTotal = wantOpt => extraLines()
   .filter(x=>(x.scope==="opt")===!!wantOpt && x.price>0 && (x.label||"").trim())
   .reduce((t,x)=>t+x.price,0);
-const extraName = x => (x.label||"").trim()+(x.mode==="days" && x.days ? `: ${x.days} day${x.days===1?"":"s"}` : "");
+const extraName = x => (x.label||"").trim()+(x.mode==="days" && x.charged
+  ? `: ${x.charged} day${x.charged===1?"":"s"}${x.travelTotal?` (${x.days} work + ${x.travelTotal} travel)`:""}${
+      x.eng>1?` \u00b7 ${x.eng} engineers, ${x.onSite} on site`:""}` : "");
 const transportLabel = () => `Transport${transEntry().incoterm?`: ${transEntry().incoterm}`:""}`;
 const INCOTERMS=["Ex Works","Free Carrier","Free Alongside Ship","Free On Board","Cost and Freight",
                  "Cost, Insurance and Freight","Carriage Paid To","Carriage and Insurance Paid To",
@@ -11116,7 +11126,9 @@ function serviceScreenHtml(){
           </select></div>
       </div>
       ${x.mode==="days"
-        ? `<label class="svadj" title="Days of work"><span>days</span><input class="in" type="number" min="0" step="0.5" value="${x.days}" data-xl="days"></label>`
+        ? `<label class="svadj" title="Days of work"><span>days</span><input class="in" type="number" min="0" step="0.5" value="${x.days}" data-xl="days"></label>
+           <label class="svadj" title="How many field service engineers go — more people, fewer days on site"><span>engineers</span><input class="in" type="number" min="1" step="1" value="${x.eng}" data-xl="engineers"></label>
+           <label class="svadj" title="Travel days per engineer, there and back"><span>travel</span><input class="in" type="number" min="0" step="0.5" value="${x.travelEach}" data-xl="travel"></label>`
         : `<label class="svadj" title="The price of this line"><span>amount ${esc(cur)}</span><input class="in" type="number" min="0" step="100" value="${Math.round(toShown(x.amount)*100)/100}" data-xl="amount"></label>`}
       <div class="svprice">${x.price?fmt(x.price):"—"}</div>
       <button class="x" data-xdel="${esc(x.id)}" title="Remove this line">&times;</button>
@@ -11184,13 +11196,14 @@ function wireServiceScreen(root){
     if(k==="label"){ inp.oninput=()=>{ x.label=inp.value; }; inp.onchange=()=>renderCurrent(); }
     else if(k==="mode") inp.onchange=()=>{ x.mode=inp.value; renderCurrent(); };
     else if(k==="amount") inp.onchange=()=>{ x.amount=Math.max(0,toEur(inp.value)); renderCurrent(); };
+    else if(k==="engineers") inp.onchange=()=>{ x.engineers=Math.max(1,Math.floor(+inp.value||1)); renderCurrent(); };
     else inp.onchange=()=>{ x[k]=Math.max(0,+inp.value||0); renderCurrent(); };
   });
   el.querySelectorAll("[data-xdel]").forEach(b=>{
     b.onclick=()=>{ const m=serviceState(); m[EXTRA_KEY]=extraLines().filter(e=>e.id!==b.dataset.xdel); renderCurrent(); };
   });
   const xa=el.querySelector("#svAddExtra");
-  if(xa) xa.onclick=()=>{ extraLines(); serviceState()[EXTRA_KEY].push({id:"x"+Date.now().toString(36), label:"", mode:"days", days:1, amount:0, rate:0, scope:"opt"}); renderCurrent(); };
+  if(xa) xa.onclick=()=>{ extraLines(); serviceState()[EXTRA_KEY].push({id:"x"+Date.now().toString(36), label:"", mode:"days", days:1, amount:0, rate:0, engineers:1, travel:0, scope:"opt"}); renderCurrent(); };
   const pe=el.querySelector("[data-packextra]");
   if(pe) pe.onchange=()=>{ packEntry().extra=toEur(pe.value); renderCurrent(); };
   const ta=el.querySelector("[data-transamount]");
