@@ -11166,7 +11166,7 @@ function serviceScreenHtml(){
       dl.time?` — ${esc(dl.time)}`:""}${dl.payment?` · ${esc(dl.payment)}`:""}.</div>`;
   return `<div class="fmtpickhint">Days on site, packaging and transport — worked out from the configuration where possible, adjustable per job.</div>
     <div class="svrate">
-      <label>Day rate<input class="in num" id="svRate" type="number" min="0" step="50" value="${+sv.dayRate||0}"></label>
+      <label>Day rate ${esc(cur)}<input class="in num" id="svRate" type="number" min="0" step="50" value="${Math.round(toShown(sv.dayRate)*100)/100}"></label>
       <span class="meta">Used for every line without a rate of its own. Set the rules in Admin &rsaquo; Service &amp; support.</span>
     </div>
     <h3 class="svhead">Days on site</h3>
@@ -11204,7 +11204,7 @@ function serviceScreenHtml(){
 function wireServiceScreen(root){
   const el=root||document;
   const rate=el.querySelector("#svRate");
-  if(rate) rate.onchange=()=>{ ensureService().dayRate=Math.max(0,+rate.value||0); renderCurrent(); };
+  if(rate) rate.onchange=()=>{ ensureService().dayRate=Math.max(0,toEur(rate.value)); renderCurrent(); };
   el.querySelectorAll("[data-svextra]").forEach(inp=>{
     inp.onchange=()=>{ serviceEntry(inp.dataset.svextra).extraDays=Math.round(+inp.value||0); renderCurrent(); };
   });
