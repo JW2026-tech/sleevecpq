@@ -91,6 +91,7 @@
   .mrow .ic .kindic{margin:0;vertical-align:middle}
   .qnote{padding:12px 14px;font-size:12px;color:var(--txt-faint);border:1px dashed var(--line);border-radius:8px;margin-top:8px}
   .pricetable tr.prophead td{padding:14px 6px 6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-faint);font-weight:600;border-bottom:1px solid var(--line)}
+  .svxname{width:100%;max-width:360px;margin-bottom:4px}
   .vcost{margin-top:4px}
   .pricetable .pvkey{color:var(--txt-faint);font-size:11.5px}
   .qdash{display:inline-block;padding:0 10px;color:var(--txt-faint)}
@@ -5082,6 +5083,34 @@ function transportCostText(){
 const transportTotal = () => transportAtCost() ? 0 : Math.max(0, +transEntry().amount||0);
 /* …but the line still belongs in the quote */
 const transportShown = () => transportAtCost() || transportTotal()>0;
+/* ============================================================
+   EXTRA SERVICE LINES
+   The lines in Admin are the ones every quotation has — installation,
+   commissioning. Others come up per job and are never the same twice: a
+   start-up health check, a training day, a service visit a year on. These
+   are written on the quotation itself, with a name and either days at the
+   day rate or a fixed price, and offered in scope or as optional like any
+   other service. Kept inside the service part of the state, so they travel
+   with the quotation and need nothing in the catalogue.
+   ============================================================ */
+const EXTRA_KEY="__extras";
+function extraLines(){
+  const m=serviceState();
+  if(!Array.isArray(m[EXTRA_KEY])) m[EXTRA_KEY]=[];
+  const sv=ensureService();
+  return m[EXTRA_KEY].map(x=>{
+    if(typeof x.label!=="string") x.label="";
+    if(x.mode!=="fixed") x.mode="days";
+    x.days=Math.max(0,+x.days||0); x.amount=Math.max(0,+x.amount||0); x.rate=Math.max(0,+x.rate||0);
+    if(x.scope!=="in") x.scope="opt";
+    x.price = x.mode==="fixed" ? x.amount : x.days*(x.rate>0?x.rate:sv.dayRate);
+    return x;
+  });
+}
+const extraTotal = wantOpt => extraLines()
+  .filter(x=>(x.scope==="opt")===!!wantOpt && x.price>0 && (x.label||"").trim())
+  .reduce((t,x)=>t+x.price,0);
+const extraName = x => (x.label||"").trim()+(x.mode==="days" && x.days ? `: ${x.days} day${x.days===1?"":"s"}` : "");
 const transportLabel = () => `Transport${transEntry().incoterm?`: ${transEntry().incoterm}`:""}`;
 const INCOTERMS=["Ex Works","Free Carrier","Free Alongside Ship","Free On Board","Cost and Freight",
                  "Cost, Insurance and Freight","Carriage Paid To","Carriage and Insurance Paid To",
@@ -5145,12 +5174,13 @@ const serviceTotal = wantOpt => serviceLines()
   .filter(x=>(x.entry.scope==="opt")===!!wantOpt && x.charged>0)
   .reduce((t,x)=>t+x.price,0)
   + ((packEntry().scope==="opt")===!!wantOpt ? packagingTotal() : 0)
-  + ((transEntry().scope==="opt")===!!wantOpt ? transportTotal() : 0);
+  + ((transEntry().scope==="opt")===!!wantOpt ? transportTotal() : 0)
+  + extraTotal(wantOpt);
 let _serviceStep=null;
 function serviceStep(){
   ensureService();
   const rows=serviceLines().filter(x=>x.charged>0);
-  if(!rows.length && !packagingTotal() && !transportShown()) return null;
+  if(!rows.length && !packagingTotal() && !transportShown() && !extraTotal(false) && !extraTotal(true)) return null;
   const st=_serviceStep||(_serviceStep={id:"__service_step", options:[]});
   st.generated=true; st.service=true; st.options=[];
   st.title="Services";
@@ -5159,6 +5189,7 @@ function serviceStep(){
   if(d) bits.push(`${d} days`);
   if(packagingTotal()) bits.push("packaging");
   if(transportShown()) bits.push("transport");
+  if(extraTotal(false)||extraTotal(true)) bits.push("extra services");
   st.desc=bits.join(", ")+" — worked out from the configuration and this job.";
   return st;
 }
@@ -5640,7 +5671,9 @@ function formatStepSummary(){
 function stepSummary(m){
   if(m.service){
     const rows=serviceLines().filter(x=>x.days>0);
-    return rows.length ? rows.map(x=>`${x.line.label} ${x.charged}d${x.eng>1?` ×${x.eng}`:""}`).join(", ") : null;
+    const more=extraLines().filter(x=>(x.label||"").trim() && x.price>0).map(x=>x.label.trim());
+    const all=rows.map(x=>`${x.line.label} ${x.charged}d${x.eng>1?` ×${x.eng}`:""}`).concat(more);
+    return all.length ? all.join(", ") : null;
   }
   if(m.custom){
     const l=customItems().filter(c=>(c.name||"").trim());
@@ -6201,6 +6234,10 @@ function buildItemRows(forceTop, wantOptional){
     };
     add("__svc_pack", `Packaging${packType().label?`: ${packType().label.toLowerCase()}`:""}`,
         packagingTotal(), packEntry().scope);
+    for(const x of extraLines()){
+      if(!(x.label||"").trim()) continue;
+      add("__svc_x_"+x.id, extraName(x), x.price, x.scope);
+    }
     if(transportAtCost()){
       if((transEntry().scope==="opt")===!!wantOptional) raw.push(at({
         isPropLine:true, price:0, rolled:false, hide:false, canHide:false,
@@ -6612,6 +6649,7 @@ function takeOptional(id){
   if(s.startsWith("__svc_")){
     if(s==="__svc_pack") packEntry().scope="in";
     else if(s==="__svc_trans") transEntry().scope="in";
+    else if(s.startsWith("__svc_x_")){ const x=extraLines().find(e=>"__svc_x_"+e.id===s); if(x) x.scope="in"; }
     return done();
   }
   const line=(ensureService().lines||[]).find(l=>l.id===s);
@@ -6698,6 +6736,7 @@ function putBackOptional(id){
   if(s.startsWith("__svc_")){
     if(s==="__svc_pack") packEntry().scope="opt";
     else if(s==="__svc_trans") transEntry().scope="opt";
+    else if(s.startsWith("__svc_x_")){ const x=extraLines().find(e=>"__svc_x_"+e.id===s); if(x) x.scope="opt"; }
     return done();
   }
   const line=(ensureService().lines||[]).find(l=>l.id===s);
@@ -11064,6 +11103,26 @@ function serviceScreenHtml(){
         :(transportTotal()?fmt(transportTotal()):"—")}</div>
     </div>
 
+    <h3 class="svhead">Extra services</h3>
+    <div class="sublbl" style="margin:0 0 8px">Anything else for this job — a start-up health check, a training day, a yearly service visit. Days at the day rate, or a fixed price.</div>
+    ${extraLines().map(x=>`<div class="svrow ${x.scope==="opt"?"is-opt":""} ${x.price?"":"empty"}" data-sv="__x:${esc(x.id)}">
+      ${scopePillsHtml("sv-x-"+x.id, x.scope)}
+      <div class="svbody">
+        <input class="in svxname" value="${esc(x.label)}" data-xl="label" placeholder="e.g. Start-up health check">
+        <div class="svcalc">
+          <select class="in svterm" data-xl="mode">
+            <option value="days" ${x.mode==="days"?"selected":""}>days at the day rate</option>
+            <option value="fixed" ${x.mode==="fixed"?"selected":""}>fixed price</option>
+          </select></div>
+      </div>
+      ${x.mode==="days"
+        ? `<label class="svadj" title="Days of work"><span>days</span><input class="in" type="number" min="0" step="0.5" value="${x.days}" data-xl="days"></label>`
+        : `<label class="svadj" title="The price of this line"><span>amount ${esc(cur)}</span><input class="in" type="number" min="0" step="100" value="${Math.round(toShown(x.amount)*100)/100}" data-xl="amount"></label>`}
+      <div class="svprice">${x.price?fmt(x.price):"—"}</div>
+      <button class="x" data-xdel="${esc(x.id)}" title="Remove this line">&times;</button>
+    </div>`).join("")}
+    <button class="btn sm" id="svAddExtra">+ Add an extra service</button>
+
     <div class="meta" style="margin-top:16px">Delivery time and payment terms are set on the Investment proposal, with the discount${
       dl.time?` — ${esc(dl.time)}`:""}${dl.payment?` · ${esc(dl.payment)}`:""}.</div>`;
   return `<div class="fmtpickhint">Days on site, packaging and transport — worked out from the configuration where possible, adjustable per job.</div>
@@ -11115,9 +11174,23 @@ function wireServiceScreen(root){
   });
   el.querySelectorAll("[data-svscope]").forEach(r=>{
     const id=r.closest("[data-sv]").dataset.sv;
-    const target = id===PACK_KEY?packEntry() : id===TRANS_KEY?transEntry() : serviceEntry(id);
+    const target = id===PACK_KEY?packEntry() : id===TRANS_KEY?transEntry()
+      : id.startsWith("__x:") ? (extraLines().find(e=>e.id===id.slice(4))||{}) : serviceEntry(id);
     r.onclick=()=>{ target.scope=r.dataset.svscope; renderCurrent(); };
   });
+  el.querySelectorAll("[data-xl]").forEach(inp=>{
+    const x=extraLines().find(e=>e.id===inp.closest("[data-sv]").dataset.sv.slice(4)), k=inp.dataset.xl;
+    if(!x) return;
+    if(k==="label"){ inp.oninput=()=>{ x.label=inp.value; }; inp.onchange=()=>renderCurrent(); }
+    else if(k==="mode") inp.onchange=()=>{ x.mode=inp.value; renderCurrent(); };
+    else if(k==="amount") inp.onchange=()=>{ x.amount=Math.max(0,toEur(inp.value)); renderCurrent(); };
+    else inp.onchange=()=>{ x[k]=Math.max(0,+inp.value||0); renderCurrent(); };
+  });
+  el.querySelectorAll("[data-xdel]").forEach(b=>{
+    b.onclick=()=>{ const m=serviceState(); m[EXTRA_KEY]=extraLines().filter(e=>e.id!==b.dataset.xdel); renderCurrent(); };
+  });
+  const xa=el.querySelector("#svAddExtra");
+  if(xa) xa.onclick=()=>{ extraLines(); serviceState()[EXTRA_KEY].push({id:"x"+Date.now().toString(36), label:"", mode:"days", days:1, amount:0, rate:0, scope:"opt"}); renderCurrent(); };
   const pe=el.querySelector("[data-packextra]");
   if(pe) pe.onchange=()=>{ packEntry().extra=toEur(pe.value); renderCurrent(); };
   const ta=el.querySelector("[data-transamount]");
