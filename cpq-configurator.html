@@ -95,6 +95,8 @@
   .svdrag:active{cursor:grabbing}
   .svrow.svdragging{opacity:.4}
   .svrow.svover{box-shadow:0 -2px 0 var(--accent)}
+  .adminlock{margin:0 0 14px;padding:10px 14px;border:1px solid var(--warn);background:var(--warn-soft);border-radius:8px;font-size:12.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .adminlock b{color:var(--txt)}
   .svxname{width:100%;max-width:360px;margin-bottom:4px}
   .vcost{margin-top:4px}
   .pricetable .pvkey{color:var(--txt-faint);font-size:11.5px}
@@ -8561,7 +8563,50 @@ function applyNavSearch(visD){
     };
   });
 }
-function renderAdmin(){
+/* ============================================================
+   A PUBLISHED VERSION IS NOT CHANGED
+   Quotations are written on a version and keep it, so that the prices they
+   were given do not move. That only means something if the version itself
+   does not move: a change made while looking at version 58 reached the
+   screen, was never saved, and was in the way of every other quotation on
+   58. Published versions are therefore read-only in Admin; changes are made
+   in the Live catalogue and published as a new version, and a quotation
+   moves to it deliberately.
+   ============================================================ */
+const catalogueIsLocked = () => !!loadedCatalogueVersion && draftRev===null;
+/* what can still be used on a locked version: looking, filtering, opening a step */
+const LOCK_KEEPS='#priceSearch,#priceCsv,.pathgo,[data-prigo],[data-adminlock-keep]';
+function applyAdminLock(){
+  const ed=document.getElementById("editor");
+  const old=document.getElementById("adminlock"); if(old) old.remove();
+  const add=document.getElementById("addModule");
+  const locked=catalogueIsLocked();
+  if(add) add.disabled=locked;
+  if(!ed || !locked) return;
+  const bar=document.createElement("div");
+  bar.id="adminlock"; bar.className="adminlock";
+  bar.innerHTML=`<b>Version ${esc(String(loadedCatalogueVersion))} is published and cannot be changed.</b>
+    Quotations are written on it. Make the change in the Live catalogue and publish it as a new version.
+    <button class="btn sm" id="adminlockLive" data-adminlock-keep>Go to the Live catalogue</button>`;
+  ed.insertBefore(bar, ed.firstChild);
+  ed.querySelectorAll("input,select,textarea,button").forEach(el=>{
+    if(el.matches(LOCK_KEEPS)) return;
+    el.disabled=true;
+  });
+  ed.querySelectorAll("[contenteditable]").forEach(el=>el.setAttribute("contenteditable","false"));
+  const go=document.getElementById("adminlockLive");
+  if(go) go.onclick=()=>goToLiveCatalogue();
+}
+function renderAdmin(){ renderAdminCore(); applyAdminLock(); }
+/* several Admin screens redraw their own part (a filter typed in All prices);
+   whenever the editor is redrawn on a locked version the lock goes back on */
+(function(){
+  const ed=document.getElementById("editor");
+  if(!ed || typeof MutationObserver==="undefined") return;
+  new MutationObserver(()=>{ if(catalogueIsLocked() && !document.getElementById("adminlock")) applyAdminLock(); })
+    .observe(ed,{childList:true});
+})();
+function renderAdminCore(){
   if(typeof saveSoon==="function") saveSoon();   // remember which section is open
   renderCatalogueBar();                          // publish state, above everything
   invalidateQtyCache();
@@ -14148,7 +14193,11 @@ function readQuoteAgainst(payload, cat){
 const _catCache=new Map();
 async function catalogueVersionData(v){
   if(!v || !supa) return null;
-  if(_catCache.has(v)) return _catCache.get(v);
+  /* A copy each time. The cache used to hand out the object itself, and the
+     catalogue on screen IS that object: a price changed in Admin while a
+     quotation sat on version 58 changed the cached version 58, and every
+     other quotation opened on it afterwards was priced on the change. */
+  if(_catCache.has(v)) return clone(_catCache.get(v));
   /* Twice, and a failure is never remembered. The cache used to keep a null
      for the rest of the session: one dropped request and every quote pinned
      to that version opened on the live catalogue until the tab was
@@ -14157,7 +14206,7 @@ async function catalogueVersionData(v){
     try{
       const {data, error}=await supa.from("catalogue_versions").select("data").eq("version",v).maybeSingle();
       const d=(!error && data && data.data) || null;
-      if(d){ _catCache.set(v,d); return d; }
+      if(d){ _catCache.set(v,d); return clone(d); }
     }catch(err){}
     if(poging===0) await new Promise(r=>setTimeout(r,350));
   }
