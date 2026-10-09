@@ -6869,17 +6869,8 @@ function priceRowHtml(r, actPrefix){
   const shareMode=document.body.classList.contains("share-mode");
   const movePriceDown = shareMode && takeBtn;
   const pvalBlock=`<div class="pval">${priceTxt}</div>${altTxt}`;
-  return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""}" style="padding-left:${nd.depth*18}px">
-    <div class="pmain">
-      <div class="ptitle"><span class="bullet"></span>${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${
-        r.taken?' <span class="takenpill">in the quotation</span>':""}${(o.unitPrice && o.qty>1)?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
-        :((!o.isPropLine && optQty(o)>1 && +o.price) ? ` <span class="snote">(${fmt(+o.price)} each)</span>`:"")}${o.fmtFor?` <span class="snote">— ${esc(o.fmtFor)}</span>`:""}${
-        shareMode?"":takeBtn}${propsMapLabel(r.propsAgg)?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${r.rolled?'<span class="tag rollup">incl. sub-items</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
-      ${movePriceDown?"":pvalBlock}
-    </div>
-    ${movePriceDown?`<div class="takerow">${pvalBlock}${takeBtn}</div>`:""}
-    ${breakdown}
-    ${(()=>{
+  /* folded out, the properties are listed with their prices, so the blue summary of them is not needed */
+  const propListHtml=(()=>{
       /* the screen the salesperson works on: the link and the PDF have their
          own property tables and a list of lines under every row would say it twice */
       if(shareMode || document.body.classList.contains("print-all")) return "";
@@ -6891,7 +6882,18 @@ function priceRowHtml(r, actPrefix){
           <span class="pq">${l.qty}${l.unit?" "+esc(l.unit):"&times;"}</span>
           <span class="pn">${esc(l.name)}${l.each?` <span class="snote">(${fmt(l.each*k)} each)</span>`:""}</span>
           <span class="pa">${l.total?fmt(l.total*k):"included"}</span></div>`).join("")}</div>`;
-    })()}
+    })();
+  return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""}" style="padding-left:${nd.depth*18}px">
+    <div class="pmain">
+      <div class="ptitle"><span class="bullet"></span>${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${
+        r.taken?' <span class="takenpill">in the quotation</span>':""}${(o.unitPrice && o.qty>1)?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
+        :((!o.isPropLine && optQty(o)>1 && +o.price) ? ` <span class="snote">(${fmt(+o.price)} each)</span>`:"")}${o.fmtFor?` <span class="snote">— ${esc(o.fmtFor)}</span>`:""}${
+        shareMode?"":takeBtn}${(!propListHtml && propsMapLabel(r.propsAgg))?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${r.rolled?'<span class="tag rollup">incl. sub-items</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
+      ${movePriceDown?"":pvalBlock}
+    </div>
+    ${movePriceDown?`<div class="takerow">${pvalBlock}${takeBtn}</div>`:""}
+    ${breakdown}
+    ${propListHtml}
     ${toggles}
   </div>`;
 }
