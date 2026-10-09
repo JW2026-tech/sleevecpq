@@ -6869,26 +6869,6 @@ function priceRowHtml(r, actPrefix){
   const shareMode=document.body.classList.contains("share-mode");
   const movePriceDown = shareMode && takeBtn;
   const pvalBlock=`<div class="pval">${priceTxt}</div>${altTxt}`;
-  /* The option properties of an open item, each as a line of its own at the
-     next level down, the way every other item is written: bullet, quantity,
-     name, price. Only on the screen the salesperson works on — the link and
-     the PDF have their own property tables. */
-  const propRows=(()=>{
-    if(shareMode || document.body.classList.contains("print-all")) return "";
-    if(o.isPropLine || r.rolled || r.hide) return "";
-    const k=r.disc?1-r.disc:1;
-    const lines=propPricedLines(o);
-    if(!lines.length) return "";
-    const d=Math.min(nd.depth,3);
-    return lines.map(l=>`<div class="pline lvl${d}" style="padding-left:${nd.depth*18}px">
-      <div class="pmain">
-        <div class="ptitle"><span class="bullet"></span><span class="qty">${l.qty}${(l.unit&&l.unit!=="pcs")?" "+esc(l.unit):"&times;"}</span> ${esc(l.name)}${
-          l.each?` <span class="snote">(${fmt(l.each*k)} each)</span>`:""}</div>
-        <div class="pval">${l.total?fmt(l.total*k):"included"}</div>
-        ${hasAltCur()?`<div class="pval alt">${l.total?fmtAlt(l.total*k):"included"}</div>`:""}
-      </div>
-    </div>`).join("");
-  })();
   return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""}" style="padding-left:${nd.depth*18}px">
     <div class="pmain">
       <div class="ptitle"><span class="bullet"></span>${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${
@@ -6899,8 +6879,21 @@ function priceRowHtml(r, actPrefix){
     </div>
     ${movePriceDown?`<div class="takerow">${pvalBlock}${takeBtn}</div>`:""}
     ${breakdown}
+    ${(()=>{
+      /* the screen the salesperson works on: the link and the PDF have their
+         own property tables and a list of lines under every row would say it twice */
+      if(shareMode || document.body.classList.contains("print-all")) return "";
+      if(o.isPropLine || r.rolled || r.hide) return "";
+      const k=r.disc?1-r.disc:1;
+      const lines=propPricedLines(o);
+      if(!lines.length) return "";
+      return `<div class="proplist">${lines.map(l=>`<div class="proprow">
+          <span class="pq">${l.qty}${l.unit?" "+esc(l.unit):"&times;"}</span>
+          <span class="pn">${esc(l.name)}${l.each?` <span class="snote">(${fmt(l.each*k)} each)</span>`:""}</span>
+          <span class="pa">${l.total?fmt(l.total*k):"included"}</span></div>`).join("")}</div>`;
+    })()}
     ${toggles}
-  </div>${propRows}`;
+  </div>`;
 }
 /* the step heading above a run of items. Carries its own "only show top
    price" control, which collapses everything that step produced onto this
