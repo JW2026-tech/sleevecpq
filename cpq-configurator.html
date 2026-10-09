@@ -6879,8 +6879,8 @@ function priceRowHtml(r, actPrefix){
     const k=r.disc?1-r.disc:1;
     const lines=propPricedLines(o);
     if(!lines.length) return "";
-    const d=Math.min(nd.depth+1,3);
-    return lines.map(l=>`<div class="pline lvl${d} propline" style="padding-left:${(nd.depth+1)*18}px">
+    const d=Math.min(nd.depth,3);
+    return lines.map(l=>`<div class="pline lvl${d}" style="padding-left:${nd.depth*18}px">
       <div class="pmain">
         <div class="ptitle"><span class="bullet"></span><span class="qty">${l.qty}${(l.unit&&l.unit!=="pcs")?" "+esc(l.unit):"&times;"}</span> ${esc(l.name)}${
           l.each?` <span class="snote">(${fmt(l.each*k)} each)</span>`:""}</div>
