@@ -368,6 +368,7 @@
   :where(.termstext) thead th{background:var(--rail);font-weight:600}
   :where(.termstext) tbody th{font-weight:600;white-space:nowrap}
   .fxnote{font-size:11.5px;color:var(--txt-faint);font-style:italic;margin-top:10px;line-height:1.5}
+  .grandtotal .savednote{display:block;font-size:11px;font-weight:600;color:#c15c00;margin-top:2px;text-align:right}
   .grandtotal .amtalt{display:block;font-size:14px;font-weight:600;color:var(--txt-dim);margin-top:2px}
   .pxhidden{color:var(--txt-faint);font-style:italic}
   .tag.rollup{background:var(--warn-soft);color:var(--warn)}
@@ -1307,6 +1308,10 @@
   .shareupname{font-size:13.5px;font-weight:600;color:#222}
   .shareupdesc{font-size:12px;color:#777;line-height:1.4;margin-top:3px}
   .shareupprice{font-size:15px;font-weight:700;color:#222;margin:10px 0 10px}
+  .shareupwas{font-size:11.5px;color:#888;margin-top:8px}
+  .shareupwas s{margin-right:4px}
+  .shareupwas span{color:#c15c00;font-weight:600}
+  .shareupwas + .shareupprice{margin-top:2px}
   .shareupeach{display:block;font-size:11.5px;font-weight:500;color:#888;margin-top:2px}
   .shareupcard .btn{width:100%;text-align:center;border-radius:8px;margin-top:auto}
   .shareupcard.is-taken{border-color:#1c2563}
@@ -2726,6 +2731,16 @@
     body.print-all .sharesectionhead{break-after:avoid;break-inside:avoid}
     .pxtext{font-size:9pt;color:#28338A;font-style:italic}
     body.print-all .pline.discountrow .ptitle,body.print-all .pline.discountrow .pval{color:#EF7B0B}
+    /* The discount used to be a thin line between two others, in the same
+       size as everything else. It is a number the customer looks for, so on
+       paper it is a band of its own: larger, bold, in the accent colour. */
+    body.print-all .pline.subtotalrow .ptitle,body.print-all .pline.subtotalrow .pval{font-size:11pt}
+    body.print-all .pline.discountrow{background:#fff3e6;border:1pt solid #EF7B0B;border-radius:1.5mm;
+      padding:2.6mm 3.5mm;margin:2mm 0;break-inside:avoid}
+    body.print-all .pline.discountrow .ptitle{font-size:13pt;font-weight:700}
+    body.print-all .pline.discountrow .pval{font-size:15pt;font-weight:700}
+    body.print-all .discintro{font-size:11pt;font-weight:600;margin:5mm 0 2mm}
+    body.print-all .grandtotal .savednote{display:block;font-size:9.5pt;font-weight:600;color:#EF7B0B;margin-top:1mm;text-align:right}
     .discintro{color:#222;font-size:9.5pt;margin:10px 0 4px}
     .descsection-title{color:#28338A;border-top-color:#EF7B0B}
     .descitem .ditle, .descrow .ditle{color:#111}
@@ -12111,10 +12126,12 @@ function proposalHtml(opts){
     ${altCompareHtml(frac)}` : "";
   /* days on site and packaging keep a section of their own, since they sit
      below the discount with the rest of the service lines */
-  const optSection = (optSvc.length && !o_.skipOptional) ? `
-    <h3 class="optsection-title">Optional service &amp; support</h3>
-    <div class="secnote">Selected but excluded from the total investment above.</div>
-    ${optionalRowsHtml(scaleRows(optSvc, frac))}` : "";
+  const optSection = (optRowsAll.length && !o_.skipOptional) ? `
+    <h3 class="optsection-title">Optional items</h3>
+    <div class="secnote">Offered on top of the scope above and not counted in the total investment.${
+      frac?` The prices below already have the same ${(frac*100).toFixed(1)}% discount taken off.`:""}${
+      optSvc.length?" Service &amp; support is not discounted.":""}</div>
+    ${optionalRowsHtml(scaleRows(optRowsAll, frac))}` : "";
   const t=activeTemplate();
   const colHead = hasAltCur()
     ? `<div class="pline pheadrow"><div class="pmain">
@@ -12128,8 +12145,8 @@ function proposalHtml(opts){
     <div class="docsub">${esc(CONFIG.model||"")}</div>
     <div class="docmeta">Generated ${new Date().toLocaleDateString()}</div>`}
     ${colHead}
-    ${(equipRows.length||(optEquip.length&&!o_.skipOptional))
-      ? proposalItemsHtml(equipRows, o_.skipOptional?[]:optEquip, frac)
+    ${equipRows.length
+      ? proposalItemsHtml(equipRows, [], frac)
       : '<div class="docempty">Nothing in scope yet — everything selected so far is optional.</div>'}
     ${propSummaryHtml("in",true)}
     ${discountControlHtml(subtotal, svcTotal)}
@@ -12151,7 +12168,7 @@ function proposalHtml(opts){
         <div class="pval">${fmt(svcTotal)}</div>
         ${hasAltCur()?`<div class="pval alt">${fmtAlt(svcTotal)}</div>`:""}
       </div></div>`:""}`:""}
-    <div class="grandtotal"><span class="lbl">Total investment${t.priceLabel?` (${esc(t.priceLabel)})`:""}</span><span class="amt">${grand?fmt(grand):"—"}${hasAltCur()&&grand?`<span class="amtalt">${fmtAlt(grand)}</span>`:""}</span></div>
+    <div class="grandtotal"><span class="lbl">Total investment${t.priceLabel?` (${esc(t.priceLabel)})`:""}</span><span class="amt">${grand?fmt(grand):"—"}${hasAltCur()&&grand?`<span class="amtalt">${fmtAlt(grand)}</span>`:""}${disc?`<span class="savednote">after the discount of ${fmt(disc)}</span>`:""}</span></div>
     ${fxNote}
     ${optSection}
     ${altSection}`;
@@ -18326,7 +18343,7 @@ function shareSummaryCardHtml(frac){
 /* every optional item the customer can add, one card each — the same
    take/put-back buttons the price list has, so wirePriceToggles() picks
    them up unchanged */
-function shareUpgradeCardHtml(r){
+function shareUpgradeCardHtml(r, frac){
   const o=r.node.o, id=takeableId(o);
   const q=+(o.qty||0)||optQty(o);
   const note=(o.text||"").trim() || (featuresOf(o)[0]
@@ -18342,6 +18359,8 @@ function shareUpgradeCardHtml(r){
          quotation, which is why there are two. */""}
     <div class="shareupname">${esc(o.name||"")}</div>
     ${note?`<div class="shareupdesc">${esc(note)}</div>`:""}
+    ${(frac && !r.hide && r.price && !isServiceRow(r))
+      ? `<div class="shareupwas"><s>${fmt(r.price/(1-frac))}</s> <span>&minus;${(frac*100).toFixed(1)}% discount</span></div>` : ""}
     <div class="shareupprice">${r.hide?"price on request":(r.price?fmt(r.price):"included")}
       ${(q>1 && !r.hide && r.price)?`<span class="shareupeach">${q} &times; ${fmt(r.price/q)}</span>`:""}</div>
     ${/* On paper the buttons are gone, and then a card the customer had
@@ -18371,9 +18390,9 @@ function shareUpgradeCardsHtml(frac, blocks){
   if(!rows.length) return "";
   return `<div class="sharesectionhead">
       <h3>Optional items</h3>
-      <div class="sharesectionsub">Each of these is quoted <b>on top of</b> the investment on the previous page, and none of them is counted in it. Take one and it joins the quotation and its total.</div>
+      <div class="sharesectionsub">Each of these is quoted <b>on top of</b> the investment on the previous page, and none of them is counted in it. Take one and it joins the quotation and its total.${frac?` The prices shown already have your ${(frac*100).toFixed(1)}% discount taken off.`:""}</div>
     </div>
-    <div class="shareupgrades">${rows.map(shareUpgradeCardHtml).join("")}</div>`;
+    <div class="shareupgrades">${rows.map(r=>shareUpgradeCardHtml(r, frac)).join("")}</div>`;
 }
 /* A page with the investment summary beside it. The summary belongs on
    every page where the customer is weighing something to add or swap: an
