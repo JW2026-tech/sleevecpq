@@ -6900,6 +6900,15 @@ function priceRowHtml(r, actPrefix){
 /* the step heading above a run of items. Carries its own "only show top
    price" control, which collapses everything that step produced onto this
    one line — the coarsest of the three levels of price detail. */
+/* What a folded-up step holds, by name. A step folded onto one line said only
+   its own title — "Drying" under a heading "Drying" — and the item inside
+   (Airknives 15kW) turned up when it was opened, as if from nowhere. */
+function groupItemNames(m, actPrefix){
+  const v=state[m && m.id]; if(v===undefined) return [];
+  const ids=Array.isArray(v)?v:[v];
+  return (m.options||[]).filter(o=>ids.includes(o.id) &&
+      (actPrefix==="opt" ? !!o.optional : (!o.optional && !o.alt))).map(o=>o.name).filter(Boolean);
+}
 function groupHeadHtml(m, actPrefix, collapsed, price, propsAgg){
   const act = actPrefix==="opt" ? "optgrouprollup" : "grouprollup";
   /* a collapsed group stands in for its items, so it carries their
@@ -6913,7 +6922,10 @@ function groupHeadHtml(m, actPrefix, collapsed, price, propsAgg){
      list underneath is for what things cost. */
   return `<div class="grouphead ${collapsed?"collapsed":""}">
     <div class="ghmain">
-      <div class="ghtitle">${esc(m.title||"")}${props}</div>
+      <div class="ghtitle">${esc((()=>{
+        const names=collapsed?groupItemNames(m, actPrefix):[];
+        return (names.length && names.length<=3) ? names.join(", ") : (m.title||"");
+      })())}${props}</div>
       <div class="pval">${collapsed?(price?fmt(price):"—"):""}</div>
       ${collapsed&&hasAltCur()?`<div class="pval alt">${price?fmtAlt(price):"—"}</div>`:""}
     </div>
