@@ -101,6 +101,9 @@
   .adminlock .ownlist{flex-basis:100%;font-size:11.5px;color:var(--txt-dim)}
   .adminlock .ownlist summary{cursor:pointer}
   .cattab .catown{margin-left:4px;font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;padding:1px 5px;border-radius:8px;background:var(--warn-soft);color:var(--warn)}
+  .stepchip .ed{margin-left:6px;opacity:.55;cursor:pointer}
+  .stepchip .ed:hover{opacity:1}
+  .dupmachine{width:auto;max-width:240px;margin:6px 0 0;font-size:12px;padding:4px 8px}
   .svxname{width:100%;max-width:360px;margin-bottom:4px}
   .vcost{margin-top:4px}
   .pricetable .pvkey{color:var(--txt-faint);font-size:11.5px}
@@ -7826,18 +7829,45 @@ function renderConfigure(){
     goToStep("__custom_step");
   };
   const clashing=(CONFIG.modules||[]).filter(m=>stepInQuote(m) && stepBlockedBy(m).length);
+  const dupable=(CONFIG.modules||[]).filter(m=>stepInQuote(m) && !m.always && !m.generated);
   document.getElementById("addedChips").innerHTML = (added.length
-    ? added.map(m=>`<span class="stepchip ${stepBlockedBy(m).length?"clash":""}" data-rm="${esc(m.id)}" title="${
-        stepBlockedBy(m).length?`Doesn't go with ${esc(stepBlockedReason(m))}`:""}">${esc(m.title||"Untitled")}<span class="x">&times;</span></span>`).join("")
+    ? added.map(m=>`<span class="stepchip ${stepBlockedBy(m).length?"clash":""} ${m.cloneOf?"is-clone":""}" data-rm="${esc(m.id)}" title="${
+        stepBlockedBy(m).length?`Doesn't go with ${esc(stepBlockedReason(m))}`:""}">${esc(m.title||"Untitled")}${
+        m.cloneOf?'<span class="ed" data-rename="'+esc(m.id)+'" title="Rename">&#9998;</span>':""}<span class="x">&times;</span></span>`).join("")
     : '<div class="chiphint">Only the always-needed steps so far.</div>')
+    + (dupable.length?`<select class="in dupmachine" id="dupMachine" title="Another machine of the same kind, with its own choices">
+        <option value="">+ Another machine\u2026</option>
+        ${dupable.filter(m=>!m.cloneOf).map(m=>`<option value="${esc(m.id)}">${esc(m.title||"Untitled")}</option>`).join("")}
+      </select>`:"")
     + (clashing.length?`<div class="chipwarn">${esc(clashing.map(m=>m.title).join(" and "))} don't belong in one machine — remove one of them.</div>`:"");
   document.querySelectorAll("#addedChips .stepchip").forEach(c=>c.onclick=()=>{
     const m=(CONFIG.modules||[]).find(x=>x.id===c.dataset.rm);
+    if(m && m.cloneOf){
+      if(!confirm(`Remove "${m.title}" from this quote? The machine, its selections and its price are removed with it.`)) return;
+      removeMachine(m.id); cursor=0; renderConfigure(); return;
+    }
     if(m && state[m.id]!==undefined &&
        !confirm(`Remove "${m.title}" from this quote? Its selections and price are removed with it.`)) return;
     includedSteps=includedSteps.filter(id=>id!==c.dataset.rm);
     cursor=0; renderConfigure();
   });
+  document.querySelectorAll("#addedChips [data-rename]").forEach(b=>b.onclick=(e)=>{
+    e.stopPropagation();
+    const m=(CONFIG.modules||[]).find(x=>x.id===b.dataset.rename); if(!m) return;
+    const nm=prompt("Name of this machine", m.title||"");
+    if(nm && nm.trim()){ m.title=nm.trim(); renderConfigure(); }
+  });
+  const dupSel=document.getElementById("dupMachine");
+  if(dupSel) dupSel.onchange=()=>{
+    if(!dupSel.value) return;
+    const src=(CONFIG.modules||[]).find(x=>x.id===dupSel.value); dupSel.value="";
+    if(!src) return;
+    const same=(CONFIG.modules||[]).filter(x=>x.cloneOf===src.id).length+2;
+    const nm=prompt("Name of the new machine", (src.title||"Machine").replace(/\s+#\d+$/,"")+" #"+same);
+    if(nm===null) return;
+    const copy=duplicateMachine(src.id, nm);
+    if(copy){ cursor=0; renderConfigure(); try{ goToStep(copy.id); }catch(err){} }
+  };
 
   const visD=flattenD(activeModules());
   /* with everything collapsed by default the step under the cursor could
@@ -14245,7 +14275,27 @@ function ownDiff(base, cur){
       if(!Array.isArray(b)||!Array.isArray(c)){ patches.push({op:"set", path, value:c}); return; }
       if(idArray(b)&&idArray(c)){
         const bi=b.map(idOf), ci=c.map(idOf);
-        if(bi.length!==ci.length || bi.some((id,i)=>id!==ci[i])){ patches.push({op:"set", path, value:c}); return; }
+        const same = bi.length===ci.length && bi.every((id,i)=>id===ci[i]);
+        if(!same){
+          /* a list that only gained items, or only lost some, with the rest
+             in the same order: say exactly that. Anything else (moved,
+             replaced) is carried as the whole list. */
+          const sub=(small,big)=>{ let j=0; for(const x of big) if(j<small.length && x===small[j]) j++; return j===small.length; };
+          const unique=a=>new Set(a).size===a.length;
+          if(unique(bi) && unique(ci) && sub(bi,ci) && ci.length>bi.length){
+            const have=new Set(bi), bmap=new Map(b.map((el,i)=>[bi[i],el]));
+            ci.forEach((id,i)=>{ if(!have.has(id)) patches.push({op:"ins", path, index:i, value:c[i]}); });
+            c.forEach((el,i)=>{ if(have.has(ci[i])) walk(bmap.get(ci[i]), el, path.concat(ci[i])); });
+            return;
+          }
+          if(unique(bi) && unique(ci) && sub(ci,bi) && bi.length>ci.length){
+            const keep=new Set(ci), cmap=new Map(c.map((el,i)=>[ci[i],el]));
+            bi.forEach(id=>{ if(!keep.has(id)) patches.push({op:"rm", path:path.concat(id)}); });
+            b.forEach((el,i)=>{ if(keep.has(bi[i])) walk(el, cmap.get(bi[i]), path.concat(bi[i])); });
+            return;
+          }
+          patches.push({op:"set", path, value:c}); return;
+        }
         b.forEach((el,i)=>walk(el, c[i], path.concat(bi[i])));
         return;
       }
@@ -14269,10 +14319,21 @@ function applyOwnPatches(cat, patches){
   const idOf=o=>(o&&typeof o==="object"&&!Array.isArray(o))?(o.id||o.code||null):null;
   const step=(node,key)=>Array.isArray(node) ? node.find(el=>idOf(el)===key) : (node?node[key]:undefined);
   for(const p of (patches||[])){
-    if(!p || !Array.isArray(p.path) || !p.path.length) continue;
+    if(!p || !Array.isArray(p.path)) continue;
+    if(p.op==="ins"){                                  // an item put into a list
+      let arr=cat;
+      for(let i=0;i<p.path.length && arr;i++) arr=step(arr,p.path[i]);
+      if(Array.isArray(arr)) arr.splice(Math.min(Math.max(0,+p.index||0), arr.length), 0, clone(p.value));
+      continue;
+    }
+    if(!p.path.length) continue;
     let node=cat;
     for(let i=0;i<p.path.length-1 && node;i++) node=step(node,p.path[i]);
     const last=p.path[p.path.length-1];
+    if(p.op==="rm"){                                   // an item taken out of a list
+      if(Array.isArray(node)){ const i=node.findIndex(el=>idOf(el)===last); if(i>=0) node.splice(i,1); }
+      continue;
+    }
     if(!node || typeof node!=="object" || Array.isArray(node)) continue;
     if(p.op==="del") delete node[last]; else node[last]=clone(p.value);
   }
@@ -14342,6 +14403,84 @@ async function resetOwnCatalogue(){
   renderCatTabs(); renderCatalogueBar(); renderNotices(); refreshView();
   if(mode==="admin") renderAdmin();
 }
+/* ============================================================
+   ANOTHER MACHINE OF THE SAME KIND
+   A quotation had one of each: one applicator, one tunnel. Two applicators
+   with different configurations had no place to go, because a choice is
+   kept per step and there was only one such step.
+   Another machine is a copy of the whole branch — the step, its options
+   and every sub-step — with new ids, added to this quotation's catalogue
+   (so it travels in the quotation's own changes, and the version and the
+   other quotations never see it). Its choices start empty. The ids of the
+   steps and options get a suffix, because a choice, an optional mark or a
+   taken upgrade is kept by id and two machines must not share them.
+   ============================================================ */
+const MACHINE_SKIP_KEYS=new Set(["name","title","text","desc","note","label","tag","plural","unit","image","fmtFor"]);
+const MACHINE_SCOPE_KEYS=new Set(["scope","defScope","kind","want"]);
+const MACHINE_STANDING=new Set(["in","opt","alt"]);
+function machineIdMap(src, suffix){
+  const map=new Map();
+  (function collect(m){
+    if(m.id) map.set(m.id, m.id+suffix);
+    for(const o of (m.options||[])){ if(o.id) map.set(o.id, o.id+suffix); for(const c of (o.children||[])) collect(c); }
+  })(src);
+  return map;
+}
+function renameMachineIds(node, map, key){
+  if(Array.isArray(node)){
+    const onlyStanding=node.length>0 && node.every(x=>typeof x==="string" && MACHINE_STANDING.has(x));
+    return node.map(x=>onlyStanding?x:renameMachineIds(x,map,key));
+  }
+  if(node && typeof node==="object"){
+    const out={};
+    for(const k of Object.keys(node)) out[map.has(k)?map.get(k):k]=renameMachineIds(node[k],map,k);
+    return out;
+  }
+  if(typeof node==="string" && map.has(node) && !MACHINE_SKIP_KEYS.has(key) && !MACHINE_SCOPE_KEYS.has(key)) return map.get(node);
+  return node;
+}
+/* may this quotation's catalogue be changed? Not the shared one, and not a version on the shelf */
+function ownCatalogueAllowed(){
+  if(!supa) return true;                       // working on this machine only
+  return quoteOwnContext();
+}
+function duplicateMachine(srcId, name){
+  if(!ownCatalogueAllowed()){
+    alert("Another machine is added to this quotation's own catalogue, and this quotation is not on one yet. Open the quotation from the list first.");
+    return null;
+  }
+  const mods=CONFIG.modules||[];
+  const idx=mods.findIndex(m=>m.id===srcId);
+  if(idx<0) return null;
+  const src=mods[idx];
+  let n=2; while(mods.some(m=>m.id===src.id+"~"+n)) n++;
+  const suffix="~"+n, map=machineIdMap(src, suffix);
+  const copy=renameMachineIds(clone(src), map, "");
+  copy.cloneOf=src.cloneOf||src.id;
+  copy.title=(name||"").trim() || ((src.title||"Machine").replace(/\s+#\d+$/,"")+" #"+n);
+  /* its choices start empty: no scope marks carried over from the first one */
+  (function clean(m){ for(const o of (m.options||[])){ for(const k of PERQUOTE_OPTION_FIELDS) delete o[k]; for(const c of (o.children||[])) clean(c); } })(copy);
+  mods.splice(idx+1, 0, copy);
+  if(!copy.always && !includedSteps.includes(copy.id)) includedSteps.push(copy.id);
+  invalidateQtyCache(); reconcile();
+  return copy;
+}
+function machineStepIds(m){
+  const ids=[];
+  (function w(x){ ids.push(x.id); for(const o of (x.options||[])) for(const c of (o.children||[])) w(c); })(m);
+  return ids;
+}
+function removeMachine(id){
+  const mods=CONFIG.modules||[];
+  const i=mods.findIndex(m=>m.id===id && m.cloneOf);
+  if(i<0 || !ownCatalogueAllowed()) return false;
+  const gone=machineStepIds(mods[i]);
+  mods.splice(i,1);
+  for(const sid of gone) delete state[sid];
+  includedSteps=includedSteps.filter(x=>!gone.includes(x));
+  invalidateQtyCache(); reconcile();
+  return true;
+}
 /* what the changes touch, in words: step > option > field */
 function describeOwnChanges(own, limit){
   if(!own || !own.patches || !quoteBase) return [];
@@ -14353,7 +14492,9 @@ function describeOwnChanges(own, limit){
       node = Array.isArray(node) ? node.find(el=>idOf(el)===k) : node[k];
       if(node && typeof node==="object" && !Array.isArray(node) && (node.name||node.title||node.label)) names.push(node.name||node.title||node.label);
     }
+    if(p.op==="ins") return "added: "+((p.value&&(p.value.name||p.value.title||p.value.label))||p.value.id||"an item");
     const field=String(p.path[p.path.length-1]);
+    if(p.op==="rm") return "removed: "+(names.length?names[names.length-1]:field);
     return (names.length?names.slice(-2).join(" \u203a ")+" \u203a ":"")+field+(p.op==="del"?" (removed)":"");
   });
 }
