@@ -97,6 +97,10 @@
   .svrow.svover{box-shadow:0 -2px 0 var(--accent)}
   .adminlock{margin:0 0 14px;padding:10px 14px;border:1px solid var(--warn);background:var(--warn-soft);border-radius:8px;font-size:12.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .adminlock b{color:var(--txt)}
+  .adminlock.is-own{border-color:var(--accent);background:var(--accent-soft)}
+  .adminlock .ownlist{flex-basis:100%;font-size:11.5px;color:var(--txt-dim)}
+  .adminlock .ownlist summary{cursor:pointer}
+  .cattab .catown{margin-left:4px;font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;padding:1px 5px;border-radius:8px;background:var(--warn-soft);color:var(--warn)}
   .svxname{width:100%;max-width:360px;margin-bottom:4px}
   .vcost{margin-top:4px}
   .pricetable .pvkey{color:var(--txt-faint);font-size:11.5px}
@@ -8573,7 +8577,7 @@ function applyNavSearch(visD){
    in the Live catalogue and published as a new version, and a quotation
    moves to it deliberately.
    ============================================================ */
-const catalogueIsLocked = () => !!loadedCatalogueVersion && draftRev===null;
+const catalogueIsLocked = () => !!loadedCatalogueVersion && draftRev===null && !quoteCatVersion && !cloudQuoteId;
 /* what can still be used on a locked version: looking, filtering, opening a step */
 const LOCK_KEEPS='#priceSearch,#priceCsv,.pathgo,[data-prigo],[data-adminlock-keep]';
 function applyAdminLock(){
@@ -8582,6 +8586,21 @@ function applyAdminLock(){
   const add=document.getElementById("addModule");
   const locked=catalogueIsLocked();
   if(add) add.disabled=locked;
+  const ownOld=document.getElementById("adminown"); if(ownOld) ownOld.remove();
+  if(ed && quoteOwnContext()){
+    const own=ownCatalogueNow(), n=own?own.patches.length:0;
+    const bar2=document.createElement("div");
+    bar2.id="adminown"; bar2.className="adminlock is-own";
+    bar2.innerHTML = n
+      ? `<b>Version ${esc(String(quoteCatVersion))}, changed for this quote.</b>
+         ${n} change${n===1?" applies":"s apply"} to this quote only; other quotes on version ${esc(String(quoteCatVersion))} are not affected.
+         <button class="btn sm" id="adminownReset" data-adminlock-keep>Back to version ${esc(String(quoteCatVersion))}</button>
+         <details class="ownlist"><summary>what changed</summary>${describeOwnChanges(own,12).map(t=>"<div>"+esc(t)+"</div>").join("")}${n>12?"<div>… and "+(n-12)+" more</div>":""}</details>`
+      : `<b>You are working in the catalogue of this quote (version ${esc(String(quoteCatVersion))}).</b>
+         Changes you make here apply to this quote only.`;
+    if(ed.firstChild) ed.insertBefore(bar2, ed.firstChild); else ed.appendChild(bar2);
+    const rs=document.getElementById("adminownReset"); if(rs) rs.onclick=()=>resetOwnCatalogue();
+  }
   if(!ed || !locked) return;
   const bar=document.createElement("div");
   bar.id="adminlock"; bar.className="adminlock";
@@ -8603,7 +8622,9 @@ function renderAdmin(){ renderAdminCore(); applyAdminLock(); }
 (function(){
   const ed=document.getElementById("editor");
   if(!ed || typeof MutationObserver==="undefined") return;
-  new MutationObserver(()=>{ if(catalogueIsLocked() && !document.getElementById("adminlock")) applyAdminLock(); })
+  new MutationObserver(()=>{
+    if((catalogueIsLocked() && !document.getElementById("adminlock")) || (quoteOwnContext() && !document.getElementById("adminown"))) applyAdminLock();
+  })
     .observe(ed,{childList:true});
 })();
 function renderAdminCore(){
@@ -13474,7 +13495,8 @@ async function restoreCustomerVersion(){
        the swap, and doing it the other way round would reprice what has
        just been restored. */
     if(quoteShare.catalogue_version && quoteShare.catalogue_version!==loadedCatalogueVersion){
-      const cat=await catalogueVersionData(quoteShare.catalogue_version);
+      quoteOwnCat=(quoteShare.data && quoteShare.data.ownCatalogue) || null;
+      const cat=await loadOwnCatalogue(quoteShare.catalogue_version);
       if(cat && applyCatalogue({catalogue:cat})){
         loadedCatalogueVersion=quoteShare.catalogue_version;
         draftRev=null; draftConflict=null;
@@ -14190,6 +14212,151 @@ function readQuoteAgainst(payload, cat){
     for(const k of CATALOGUE_KEYS.concat(QUOTE_KEYS)) CONFIG[k]=keepCfg[k];
   }
 }
+/* ============================================================
+   A QUOTATION'S OWN CATALOGUE
+   A quotation is written on a catalogue version and keeps it. What can
+   also happen is that, for this one job, something in that version has to
+   be different: a price agreed with the customer, an option added. That
+   used to mean editing the version — which is shared by every quotation
+   on it — or not doing it at all.
+   Now the quotation carries the difference. Opened on its version, the
+   catalogue in memory is the version with the quotation's changes laid on
+   top; saved, only the changes go into the quotation (as id-addressed
+   patches, like the live draft is saved), so the version itself is never
+   touched and other quotations on it never see them. The link and the PDF
+   are made from the same combination, so the customer sees what the
+   quotation says. Where an item list changes (something added, removed or
+   moved) that one list is carried whole.
+   ============================================================ */
+const OWN_STRIP=(k,v)=>PERQUOTE_OPTION_FIELDS.has(k)?undefined:v;
+/* a catalogue as it is compared: only what a catalogue holds, without the
+   marks that record this quotation's scope choices */
+function catForDiff(cat){
+  const c=pickKeys(cat, CATALOGUE_KEYS);
+  if(Array.isArray(c.props)) for(const p of c.props) if(p) delete p.step;
+  return JSON.parse(JSON.stringify(c, OWN_STRIP));
+}
+function ownDiff(base, cur){
+  const patches=[];
+  const idOf=o=>(o&&typeof o==="object"&&!Array.isArray(o))?(o.id||o.code||null):null;
+  const idArray=a=>Array.isArray(a) && a.length>0 && a.every(x=>idOf(x));
+  const walk=(b,c,path)=>{
+    if(Array.isArray(b)||Array.isArray(c)){
+      if(!Array.isArray(b)||!Array.isArray(c)){ patches.push({op:"set", path, value:c}); return; }
+      if(idArray(b)&&idArray(c)){
+        const bi=b.map(idOf), ci=c.map(idOf);
+        if(bi.length!==ci.length || bi.some((id,i)=>id!==ci[i])){ patches.push({op:"set", path, value:c}); return; }
+        b.forEach((el,i)=>walk(el, c[i], path.concat(bi[i])));
+        return;
+      }
+      if(JSON.stringify(b)!==JSON.stringify(c)) patches.push({op:"set", path, value:c});
+      return;
+    }
+    if(b&&c&&typeof b==="object"&&typeof c==="object"){
+      for(const k of new Set([...Object.keys(b),...Object.keys(c)])){
+        if(!(k in c)){ patches.push({op:"del", path:path.concat(k)}); continue; }
+        if(!(k in b)){ patches.push({op:"set", path:path.concat(k), value:c[k]}); continue; }
+        walk(b[k], c[k], path.concat(k));
+      }
+      return;
+    }
+    if(b!==c) patches.push({op:"set", path, value:c});
+  };
+  walk(base, cur, []);
+  return patches;
+}
+function applyOwnPatches(cat, patches){
+  const idOf=o=>(o&&typeof o==="object"&&!Array.isArray(o))?(o.id||o.code||null):null;
+  const step=(node,key)=>Array.isArray(node) ? node.find(el=>idOf(el)===key) : (node?node[key]:undefined);
+  for(const p of (patches||[])){
+    if(!p || !Array.isArray(p.path) || !p.path.length) continue;
+    let node=cat;
+    for(let i=0;i<p.path.length-1 && node;i++) node=step(node,p.path[i]);
+    const last=p.path[p.path.length-1];
+    if(!node || typeof node!=="object" || Array.isArray(node)) continue;
+    if(p.op==="del") delete node[last]; else node[last]=clone(p.value);
+  }
+  return cat;
+}
+let quoteBase=null;      // {v, cat}: the version the open quotation started from, as compared
+let quoteOwnCat=null;    // {base, patches}: this quotation's changes to it
+let _ownMemo={sig:null, val:null};
+/* the quotation's changes as they stand now; null when there are none */
+function ownCatalogueNow(force){
+  const onOwn = !!quoteCatVersion && draftRev===null && loadedCatalogueVersion===quoteCatVersion;
+  if(!onOwn) return quoteOwnCat;                      // not on it: what was last known
+  if(!quoteBase || quoteBase.v!==loadedCatalogueVersion) return quoteOwnCat;   // no baseline to compare with: keep what was loaded
+  if(force) _sigCache={at:0, sig:null};      // the fingerprint is kept for a moment; when it matters, ask for a fresh one
+  const sig=catalogueSig();
+  if(_ownMemo.sig===sig) return _ownMemo.val;
+  try{
+    const patches=ownDiff(quoteBase.cat, catForDiff(catalogueForStorage()));
+    quoteOwnCat = patches.length ? {base:quoteBase.v, patches} : null;
+  }catch(err){ return quoteOwnCat; }
+  _ownMemo={sig, val:quoteOwnCat};
+  return quoteOwnCat;
+}
+/* a version with a quotation's own changes on top */
+async function quoteCatalogueData(v, payload){
+  const cat=await catalogueVersionData(v);
+  if(!cat) return null;
+  const own=payload && payload.ownCatalogue;
+  if(own && own.base===v && Array.isArray(own.patches) && own.patches.length) applyOwnPatches(cat, own.patches);
+  return cat;
+}
+/* what a quotation is opened on: its version plus its own changes, and the
+   untouched version kept to compare against */
+async function loadOwnCatalogue(v){
+  const base=await catalogueVersionData(v);
+  if(!base) return null;
+  quoteBase={v, cat:catForDiff(base)};
+  _ownMemo={sig:null, val:null};
+  return await quoteCatalogueData(v, {ownCatalogue:quoteOwnCat});
+}
+/* After an edit in Admin the tab and the bar above the editor say what has changed, a moment later so typing is not interrupted */
+let _ownUiTimer=null;
+function scheduleOwnUi(){
+  if(_ownUiTimer) clearTimeout(_ownUiTimer);
+  _ownUiTimer=setTimeout(()=>{
+    _ownUiTimer=null;
+    if(!quoteOwnContext()) return;
+    ownCatalogueNow(true); renderCatTabs();
+    if(mode==="admin") applyAdminLock();
+  }, 700);
+}
+["input","change","click"].forEach(ev=>document.addEventListener(ev, ()=>{ if(mode==="admin" && quoteOwnContext()) scheduleOwnUi(); }, true));
+const quoteOwnContext = () => !!quoteCatVersion && draftRev===null && loadedCatalogueVersion===quoteCatVersion;
+/* back to the version as published, for this quotation */
+async function resetOwnCatalogue(){
+  if(!quoteOwnContext()) return;
+  const v=quoteCatVersion;
+  if(!confirm("Take away this quotation's own changes to catalogue version "+v+"?\n\nPrices and steps go back to what was published. Nothing else about the quotation changes.")) return;
+  const scope=collectScopeFlags();
+  quoteOwnCat=null;
+  const cat=await loadOwnCatalogue(v);
+  if(!cat || !applyCatalogue({catalogue:cat})){ alert("Could not load version "+v+"."); return; }
+  loadedCatalogueVersion=v; draftRev=null; draftConflict=null;
+  applyScopeFlags(scope); reconcile(); markCataloguePublished();
+  cloudSavedSig=null; saveSoon();
+  flagSaved("Back to catalogue v"+v);
+  renderCatTabs(); renderCatalogueBar(); renderNotices(); refreshView();
+  if(mode==="admin") renderAdmin();
+}
+/* what the changes touch, in words: step > option > field */
+function describeOwnChanges(own, limit){
+  if(!own || !own.patches || !quoteBase) return [];
+  const idOf=o=>(o&&typeof o==="object"&&!Array.isArray(o))?(o.id||o.code||null):null;
+  return own.patches.slice(0,limit||8).map(p=>{
+    let node=quoteBase.cat; const names=[];
+    for(let i=0;i<p.path.length && node;i++){
+      const k=p.path[i];
+      node = Array.isArray(node) ? node.find(el=>idOf(el)===k) : node[k];
+      if(node && typeof node==="object" && !Array.isArray(node) && (node.name||node.title||node.label)) names.push(node.name||node.title||node.label);
+    }
+    const field=String(p.path[p.path.length-1]);
+    return (names.length?names.slice(-2).join(" \u203a ")+" \u203a ":"")+field+(p.op==="del"?" (removed)":"");
+  });
+}
 const _catCache=new Map();
 async function catalogueVersionData(v){
   if(!v || !supa) return null;
@@ -14318,11 +14485,18 @@ async function giveShareItsOwnCatalogue(shareId){
       .select("id,sent_at,catalogue_version,catalogue_data,data").eq("id",shareId).maybeSingle();
     if(error || !sh || !sh.data) return false;
     if(sh.sent_at) return true;                 // a record, not a draft
-    const full=await catalogueVersionData(sh.catalogue_version);
+    const full=await quoteCatalogueData(sh.catalogue_version, sh.data);
     if(!full) return false;
     const trimmed=trimCatalogueForShare(full, sh.data);
     if(shareRenderSig(trimmed, sh.data)!==shareRenderSig(full, sh.data)){
       console.warn("CPQ: the trimmed catalogue would change the customer's page — sending it whole");
+      /* Whole for a quotation that has changes of its own means the whole
+         combination: the version on the shelf does not have them, and the
+         link would show the customer the unchanged one. */
+      if(sh.data && sh.data.ownCatalogue && sh.data.ownCatalogue.patches && sh.data.ownCatalogue.patches.length){
+        const {error:e2}=await supa.rpc("set_share_catalogue",{p_share_id:sh.id, p_catalogue:full});
+        return !e2;
+      }
       return false;
     }
     const {error:werr}=await supa.rpc("set_share_catalogue",{p_share_id:sh.id, p_catalogue:trimmed});
@@ -14438,7 +14612,10 @@ async function moveQuoteToCatalogue(v){
   if(!v || !supa) return false;
   const mineUnsaved = draftRev!==null && draftSavedSig!==catalogueSig();
   if(mineUnsaved && !confirm("You have catalogue changes that have not been saved yet. " + "Moving this quote to version " + v + " replaces what is on screen and those are lost." + "\n\nContinue?")) return false;
-  const cat=await catalogueVersionData(v);
+  const hadOwn=ownCatalogueNow();
+  if(hadOwn && hadOwn.patches.length && !confirm("This quote has its own changes to catalogue version "+hadOwn.base+" ("+hadOwn.patches.length+").\n\nOn version "+v+" they are dropped: prices and steps are the published ones."+"\n\nContinue?")) return false;
+  quoteOwnCat=null;
+  const cat=await loadOwnCatalogue(v);
   if(!cat || !applyCatalogue({catalogue:cat})){
     alert("Could not load catalogue version "+v+".");
     return false;
@@ -14843,7 +15020,8 @@ function ensurePublishedVersion(){
 let quotePutAway=null;          // {id, number} of the quote a catalogue switch closed
 async function goToLiveCatalogueNow(){
   if(draftRev!==null) return true;                 // already there
-  const dirty=catalogueChanged();
+  ownCatalogueNow(true);                           // the quotation's own changes, up to date, before the swap
+  const dirty=false;                               // they stay with the quotation, nothing is lost
   const heeft=!!cloudQuoteId || quoteHasContent();
   const nr=(CONFIG.quoteNumber||"").trim();
   if(!confirm("Go to the live catalogue?"+
@@ -14890,7 +15068,7 @@ function renderCatTabs(){
         : "Switch to the catalogue the whole team works in"}">
       <span class="catdotlive"></span>Live catalogue</button>
     ${pinned?`<button class="cattab ${(onVersion&&loadedCatalogueVersion===pinned)?"on":""}" id="catTabVer"
-      title="The frozen catalogue this quote was written against. Its prices cannot move.">v${pinned}</button>`:""}
+      title="${ownCatalogueNow()?"The catalogue this quote was written against, with changes of its own. Other quotes on this version do not have them.":"The catalogue this quote was written against. Changes you make here belong to this quote only."}">v${pinned}${ownCatalogueNow()?" <span class=\"catown\">changed</span>":""}</button>`:""}
     ${/* The catalogue belongs to the QUOTE, so moving it forward is an
           action on the quote — here, beside the version it is on, and
           whether or not the quote has ever been shared. It used to be
@@ -14913,8 +15091,8 @@ function renderCatTabs(){
   if(ver) ver.onclick=async ()=>{
     if(draftRev===null && loadedCatalogueVersion===pinned) return;
     if(!confirm("Go back to catalogue version "+pinned+", the one this quote was written against?"+
-        "\n\nIt is frozen, so editing there changes nothing for the team.")) return;
-    const cat=await catalogueVersionData(pinned);
+        "\n\nChanges you make there belong to this quote only.")) return;
+    const cat=await loadOwnCatalogue(pinned);
     if(cat && applyCatalogue({catalogue:cat})){
       loadedCatalogueVersion=pinned; draftRev=null; draftConflict=null;
       markCataloguePublished();
@@ -14945,8 +15123,8 @@ function renderCatalogueBar(){
       <span class="catmsg"><b>Catalogue version ${loadedCatalogueVersion}.</b>
         This is the catalogue the open quote was written against, so its prices
         and steps are the ones it was made with.
-        ${dirty?`Your edits here go nowhere — this is a frozen version, not the shared catalogue.`
-               :`Editing here does not reach the shared catalogue.`}</span>
+        ${dirty?`Your edits here belong to this quote only — the version and the shared catalogue are not changed.`
+               :`Editing here changes this quote only, not the version or the shared catalogue.`}</span>
       <button class="btn sm" id="catToDraft" title="Leave this quote's catalogue and work in the one the team shares. The quotation is saved and put away — in the live catalogue you are editing the catalogue, not configuring.">Back to the shared catalogue</button>`;
     const home=document.getElementById("catToDraft");
     if(home) home.onclick=()=>goToLiveCatalogue();
@@ -15020,6 +15198,7 @@ function quotePayload(name){
              draft the closest true anchor is the newest published one,
              which is also what a customer link would pin to. */
           catalogueVersion: quoteCatVersion || loadedCatalogueVersion || publishedVersion || null,
+          ownCatalogue: ownCatalogueNow() || null,
           revision: quoteRevision || null,
           createdAt: quoteCreatedAt || null,
           /* only a customer link ever fills this; see shareAdds */
@@ -15129,6 +15308,7 @@ function applyScopeFlags(map){
 }
 function applyQuote(d){
   if(!d || !d.quote) return false;
+  quoteOwnCat=d.ownCatalogue||null;
   for(const k of QUOTE_KEYS) if(d.quote[k]!==undefined) CONFIG[k]=clone(d.quote[k]);
   state=d.state||{};
   docLang=d.docLang||null;
@@ -15457,7 +15637,7 @@ function quoteContentSig(payload, noScope){
        to the customer's version could not clear a difference the copy does
        not describe. One push and the copy has a map, and the full
        comparison takes over by itself. */
-    return stableStringify({q:payload.quote||null, s:payload.state||null,
+    return stableStringify({q:payload.quote||null, s:payload.state||null, o:payload.ownCatalogue||null,
                             c:noScope?undefined:(payload.scope||null),
                             i:payload.includedSteps||null, l:payload.docLang||null});
   }catch(err){ return null; }
@@ -15636,12 +15816,16 @@ function healQuoteCatalogueSoon(){
 async function ensureQuoteCatalogueNow(){
   const want=quoteCatVersion;
   if(!cloudQuoteId || !want) return true;
-  if(draftRev===null && loadedCatalogueVersion===want) return true;   // already
+  if(draftRev===null && loadedCatalogueVersion===want){
+    /* already there; the untouched version is still needed to see what changed */
+    if(!quoteBase || quoteBase.v!==want){ const b=await catalogueVersionData(want); if(b) quoteBase={v:want, cat:catForDiff(b)}; }
+    return true;
+  }
   /* leaving the live draft: whatever of it is still only in memory goes up first */
   if(draftRev!==null && draftSavedSig!==catalogueSig()){
     try{ await cloudSaveCatalogueDraft(); }catch(err){}
   }
-  const cat=await catalogueVersionData(want);
+  const cat=await loadOwnCatalogue(want);
   if(!cat) return false;
   const scope=collectScopeFlags();
   if(!applyCatalogue({catalogue:cat})) return false;
@@ -15685,10 +15869,11 @@ async function cloudOpenQuoteNow(id){
      repricing this is meant to stop. applyAnyFile carries the quote's own
      scope marks across the catalogue swap. */
   const want=await quoteCatalogueVersion(id, data.data);
+  quoteOwnCat=(data.data && data.data.ownCatalogue) || null;
   /* draftRev being set means the live draft is what is in memory, whatever
      loadedCatalogueVersion still says */
   if(want && (want!==loadedCatalogueVersion || draftRev!==null)){
-    const cat=await catalogueVersionData(want);
+    const cat=await loadOwnCatalogue(want);
     if(cat && applyCatalogue({catalogue:cat})){
       loadedCatalogueVersion=want;
       /* off the shared draft: nothing typed here may be written back to the
@@ -15841,6 +16026,7 @@ function clearQuoteSide(){
   quoteShare=null; quoteStatus="draft"; quoteEvents=[]; quoteVersions=[]; quoteRevision=null;
   quoteCreatedAt=null;
   quoteUpdatedAt=null; linkBarSnoozed=null; quoteCatVersion=null;
+  quoteOwnCat=null; quoteBase=null; _ownMemo={sig:null,val:null};
   /* No number yet, on purpose: next_quote_number() is a shared counter, so
      handing one out before the quote is saved would burn numbers on quotes
      that never happen. "Save as new quote" draws the number. */
@@ -15989,6 +16175,7 @@ function saveNow(){
    you updated it. */
 async function flushQuoteNow(){
   clearTimeout(saveTimer);
+  ownCatalogueNow(true);
   if(storageOK){
     try{ localStorage.setItem(SAVE_KEY, snapshot()); flagSaved("Saved"); }
     catch(err){ storageOK=false; flagSaved("Not saved — use Download config", true); }
@@ -16388,7 +16575,7 @@ async function fillRevisionTotals(shares){
     if(!sh || !sh.data) continue;
     await new Promise(r=>setTimeout(r,0));
     let cat=null;
-    try{ cat=await catalogueVersionData(sh.catalogue_version); }catch(err){}
+    try{ cat=await quoteCatalogueData(sh.catalogue_version, sh.data); }catch(err){}
     let t=null;
     try{ t=readQuoteAgainst(sh.data, cat).total; }catch(err){ continue; }
     if(!cell.isConnected) return;            // the list was drawn again
@@ -16616,7 +16803,7 @@ async function showCustomerDiff(shareId, btn, shares){
   if(btn){ btn.disabled=true; btn.textContent="Reading…"; }
   let ours=null, his=null;
   try{
-    const cat=await catalogueVersionData(sh.catalogue_version);
+    const cat=await quoteCatalogueData(sh.catalogue_version, sh.data);
     ours=readQuoteAgainst(sh.data, cat);
     his =readQuoteAgainst(sh.customer_data, cat);
   }catch(err){}
