@@ -107,6 +107,11 @@
   .svxname{width:100%;max-width:360px;margin-bottom:4px}
   .vcost{margin-top:4px}
   .pricetable .pvkey{color:var(--txt-faint);font-size:11.5px}
+  .proplist{margin:1px 0 3px 22px;font-size:11.5px;color:var(--txt-dim)}
+  .proprow{display:flex;gap:8px;align-items:baseline;padding:1px 0}
+  .proprow .pq{min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
+  .proprow .pn{flex:1}
+  .proprow .pa{font-variant-numeric:tabular-nums;color:var(--txt)}
   .qdash{display:inline-block;padding:0 10px;color:var(--txt-faint)}
   .okind{width:auto;flex:0 0 auto}
   .kindwarn{display:block;margin-top:4px;font-size:11px;color:var(--warn)}
@@ -3690,6 +3695,22 @@ function partOwnerIds(x){
 }
 function partOwnerId(x){ const l=partOwnerIds(x); return l.length?l[0]:""; }
 const partIsOwned = x => !!partOwnerId(x);
+/* The parts that need a machine option used to be written under that option,
+   inside the machine, and were counted into the machine's own price: an
+   applicator "incl. sub-items" held its tooling, and the tooling was named
+   nowhere with the other format parts. They are listed with the formats now,
+   per format, and each says which option it is needed for — "needed for
+   Horizontal eliminator (Applicator HSSA2000)". */
+function partNeededFor(x){
+  const ids=partOwnerIds(x);
+  if(!ids.length) return "";
+  return ids.map(id=>{
+    const name=optionLabel(id);
+    let top=null; try{ top=topStepOfOption(id); }catch(err){}
+    const mach=top && top.title;
+    return (mach && name.indexOf(mach)<0) ? `${name} (${mach})` : name;
+  }).join(" / ");
+}
 /* the parts of one option, per product, for one of the three lists */
 function ownedFormatRows(optId, want){
   if(!optId) return [];
@@ -6034,7 +6055,7 @@ const wantKind = w => w==="alt" ? "alt" : (w ? "opt" : "in");
 /* sum of one branch, counting only items of the requested kind */
 function branchSum(node, wantOptional){
   const want=wantKind(wantOptional);
-  let n = (scopeKind(node.o)===want) ? optionTotal(node.o)+ownedPartsTotal(node.o.id, want) : 0;
+  let n = (scopeKind(node.o)===want) ? optionTotal(node.o) : 0;
   for(const k of node.kids) n += branchSum(k, wantOptional);
   return n;
 }
@@ -6133,44 +6154,6 @@ function buildItemRows(forceTop, wantOptional){
         raw.push(at({node:nd, own:optionPrice(nd.o)+propsSurcharge(nd.o), rolled:false, parentOid,
                   propsAgg:branchProps({o:nd.o, kids:[]}, wantOptional)}));
         mine=nd.o.id;
-        /* format parts stay: those are this quotation's own parts, named
-           per product, and they are written down nowhere else */
-        /* the format parts this option carries, one line per product */
-        for(const fr of ownedFormatRows(nd.o.id, want)){
-          raw.push(at({
-            isPropLine:true, price:(+fr.x.price||0)*fr.qty, rolled:false, hide:false, canHide:false,
-            node:{ m:nd.m, root:nd.root, depth:nd.depth+1, trail:nd.trail,
-                   o:{ id:"__ofp_"+nd.o.id+"_"+fr.prId+"_"+fr.x.id, name:fr.x.desc,
-                       qty:fr.qty>1?fr.qty:0, unitPrice:+fr.x.price||0, isPropLine:true,
-                       fmtFor:fr.product, optional:!!nd.o.optional, alt:!!nd.o.alt } }
-          }));
-        }
-        let sub=0;
-        for(const fr of ownedFormatRows(nd.o.id, want)) sub+=(+fr.x.price||0)*fr.qty;
-        /* what the item comes to with the format parts under it — a reading
-           line, never counted again in any total */
-        if(sub) raw.push(at({
-          isPropLine:true, subtotal:true, price:optionPrice(nd.o)+propsSurcharge(nd.o)+sub,
-          rolled:false, hide:false, canHide:false,
-          node:{ m:nd.m, root:nd.root, depth:nd.depth+1, trail:nd.trail,
-                 o:{ id:"__tot_"+nd.o.id, name:"Together", isPropLine:true, isTotal:true,
-                     optional:!!nd.o.optional, alt:!!nd.o.alt } }
-        }));
-      }
-      /* a part quoted as optional under an item that is itself in scope:
-         the item has no line in this list, so its parts would fall through
-         the floor — they are listed here, named after the item they need */
-      if(!skip && want!=="in" && scopeKind(nd.o)==="in"){
-        for(const fr of ownedFormatRows(nd.o.id, want)){
-          raw.push(at({
-            isPropLine:true, price:(+fr.x.price||0)*fr.qty, rolled:false, hide:false, canHide:false,
-            node:{ m:nd.m, root:nd.root, depth:0, trail:nd.trail,
-                   o:{ id:"__ofp_"+nd.o.id+"_"+fr.prId+"_"+fr.x.id, name:fr.x.desc,
-                       qty:fr.qty>1?fr.qty:0, unitPrice:+fr.x.price||0, isPropLine:true,
-                       fmtFor:[fr.product, `for ${nd.o.name}`].filter(Boolean).join(" · "),
-                       optional:true, alt:want==="alt" } }
-          }));
-        }
       }
       if(nd.kids.length) walk(nd.kids, mine, underAlt||nodeIsAlt);
     }
@@ -6201,7 +6184,6 @@ function buildItemRows(forceTop, wantOptional){
       if(want==="alt")   parts = partsForProduct(pr,"alt");
       else if(pr.optional) parts = wantOptional ? partsForProduct(pr,false).concat(partsForProduct(pr,true)) : [];
       else               parts = partsForProduct(pr, !!wantOptional);
-      parts = parts.filter(x=>!partIsOwned(x));      // those sit under their own option now
       if(!parts.length) continue;
       const q=Math.max(1,+pr.qty||1);
       /* "only show top price" on a format: one line carrying the sum of
@@ -6223,6 +6205,7 @@ function buildItemRows(forceTop, wantOptional){
           isPropLine:true, price:(+x.price||0)*q, rolled:false, hide:false, canHide:false,
           node:{ m:fstep, root:fstep, depth:1, trail:[],
                  o:{ id:"__prdp_"+pr.id+"_"+x.id, name:x.desc,
+                     fmtFor:partNeededFor(x)?"needed for "+partNeededFor(x):"",
                      qty:q>1?q:0, unitPrice:+x.price||0, isPropLine:true,
                      optional:want==="alt"?true:!!pr.optional, alt:want==="alt" } }
         }));
@@ -6232,7 +6215,7 @@ function buildItemRows(forceTop, wantOptional){
   /* general format parts — one group, bought once for the machine */
   {
     const fstep=formatStep();
-    const chosen=generalChosen(want==="alt" ? "alt" : !!wantOptional).filter(g=>!partIsOwned(g.part));
+    const chosen=generalChosen(want==="alt" ? "alt" : !!wantOptional);
     if(fstep && chosen.length){
       const gf=rollFlags("__genhdr"), gk=want==="alt"?"altRollup":wantOptional?"optRollup":"rollup";
       const gRolled = forceTop || !!gf[gk];
@@ -6251,6 +6234,7 @@ function buildItemRows(forceTop, wantOptional){
           isPropLine:true, price:(+g.part.price||0)*g.qty, rolled:false, hide:false, canHide:false,
           node:{ m:fstep, root:fstep, depth:1, trail:[],
                  o:{ id:"__genp_"+g.part.id, name:g.part.desc, qty:g.qty>1?g.qty:0,
+                     fmtFor:partNeededFor(g.part)?"needed for "+partNeededFor(g.part):"",
                      unitPrice:+g.part.price||0, isPropLine:true, optional:want!=="in", alt:want==="alt" } }
         }));
       }
@@ -6831,6 +6815,23 @@ function stepPicture(m){
   return o?o.image:"";
 }
 const rowPicture = o => (o && o.image) ? o.image : "";
+/* What one item carries of each option property, with the type chosen for it
+   and what that comes to: "8× Hygenic feet (111,25 each) 890,00". The row
+   above shows only the counts; when a row is open this says what they cost. */
+function propPricedLines(o){
+  if(!o || !o.props) return [];
+  const out=[];
+  for(const p of (CONFIG.props||[])){
+    if(propSkipped(p)) continue;
+    const q=propQtyOf(o, p.id);
+    if(!(q>0)) continue;
+    const v=(p.variants&&p.variants.length)?assignedVariant(p,o.id):null;
+    if(!v && (p.variants||[]).length) continue;            // nothing chosen yet
+    const each=v?variantPriceFor(v,o.id):0;
+    out.push({qty:q, unit:p.unit, name:v?variantNameFor(v,o.id):propName(p,q), each, total:q*each});
+  }
+  return out;
+}
 function priceRowHtml(r, actPrefix){
   const nd=r.node, o=nd.o, top=nd.depth===0;
   const canHide = r.canHide===undefined ? true : r.canHide;
@@ -6878,6 +6879,19 @@ function priceRowHtml(r, actPrefix){
     </div>
     ${movePriceDown?`<div class="takerow">${pvalBlock}${takeBtn}</div>`:""}
     ${breakdown}
+    ${(()=>{
+      /* the screen the salesperson works on: the link and the PDF have their
+         own property tables and a list of lines under every row would say it twice */
+      if(shareMode || document.body.classList.contains("print-all")) return "";
+      if(o.isPropLine || r.rolled || r.hide) return "";
+      const k=r.disc?1-r.disc:1;
+      const lines=propPricedLines(o);
+      if(!lines.length) return "";
+      return `<div class="proplist">${lines.map(l=>`<div class="proprow">
+          <span class="pq">${l.qty}${l.unit?" "+esc(l.unit):"&times;"}</span>
+          <span class="pn">${esc(l.name)}${l.each?` <span class="snote">(${fmt(l.each*k)} each)</span>`:""}</span>
+          <span class="pa">${l.total?fmt(l.total*k):"included"}</span></div>`).join("")}</div>`;
+    })()}
     ${toggles}
   </div>`;
 }
@@ -11769,8 +11783,8 @@ function formatScopeHtml(wantOptional){
   ensureParts();
   const want=!!wantOptional;
   const rows=formatProducts().map((pr,i)=>{
-    const parts=partsForProduct(pr,false).filter(x=>!partIsOwned(x)).map(x=>({x, opt:!!pr.optional}))
-      .concat(partsForProduct(pr,true).filter(x=>!partIsOwned(x)).map(x=>({x, opt:true})))
+    const parts=partsForProduct(pr,false).map(x=>({x, opt:!!pr.optional}))
+      .concat(partsForProduct(pr,true).map(x=>({x, opt:true})))
       .concat(sharedParts(pr).map(x=>({x, shared:sharedLabel(pr,x)})))
       .filter(r=>!!r.opt===want);
     if(!parts.length) return "";
@@ -11779,17 +11793,19 @@ function formatScopeHtml(wantOptional){
       + parts.map(r=>`<div class="scopeline lvl1${r.opt?" is-optional":""}" style="padding-left:18px">
           <span class="bullet"></span>
           <div class="stitle">${(q>1&&!r.shared)?`<span class="qty">${q}&times;</span> `:""}${esc(r.x.desc)}${
-            r.shared?` <span class="snote">— shared with ${esc(r.shared)}</span>`:""}</div>
+            r.shared?` <span class="snote">— shared with ${esc(r.shared)}</span>`:""}${
+            partNeededFor(r.x)?` <span class="snote">— needed for ${esc(partNeededFor(r.x))}</span>`:""}</div>
         </div>`).join("");
   }).join("");
-  const gen=generalChosen(false).filter(g=>!partIsOwned(g.part)).map(g=>({g, opt:false}))
-    .concat(generalChosen(true).filter(g=>!partIsOwned(g.part)).map(g=>({g, opt:true})))
+  const gen=generalChosen(false).map(g=>({g, opt:false}))
+    .concat(generalChosen(true).map(g=>({g, opt:true})))
     .filter(r=>!!r.opt===want);
   const genRows=gen.length
     ? `<div class="grouphead"><div class="ghmain"><div class="ghtitle">General format parts</div></div></div>`
       + gen.map(r=>`<div class="scopeline lvl1${r.opt?" is-optional":""}" style="padding-left:18px">
           <span class="bullet"></span>
-          <div class="stitle">${r.g.qty>1?`<span class="qty">${r.g.qty}&times;</span> `:""}${esc(r.g.part.desc)}</div>
+          <div class="stitle">${r.g.qty>1?`<span class="qty">${r.g.qty}&times;</span> `:""}${esc(r.g.part.desc)}${
+          partNeededFor(r.g.part)?` <span class="snote">— needed for ${esc(partNeededFor(r.g.part))}</span>`:""}</div>
         </div>`).join("")
     : "";
   return (rows||genRows)
@@ -11960,6 +11976,7 @@ function scopeDescriptionsHtml(){
    as extra machinery. */
 /* the format parts of one option, a level deeper than the option itself */
 function ownedScopeLines(o, depth){
+  return "";                           // listed with the formats now, see partNeededFor
   const rows=ownedFormatRows(o.id, scopeKind(o));
   if(!rows.length) return "";
   const d=Math.min(depth+1,3);
@@ -12080,7 +12097,7 @@ const serviceRowsTotal = rows => rows.filter(r=>!r.hide && isServiceRow(r)).redu
    service lines are left at their full rate */
 function scaleRows(rows, f){
   if(!f) return rows;
-  return rows.map(r=>isServiceRow(r) ? r : Object.assign({}, r, {price:(+r.price||0)*(1-f)}));
+  return rows.map(r=>isServiceRow(r) ? r : Object.assign({}, r, {price:(+r.price||0)*(1-f), disc:f}));
 }
 /* same total proposalHtml() itself computes (subtotal minus discount) —
    pulled out so the customer link's sticky total card can show it without
