@@ -117,6 +117,7 @@
   .odoorow{display:flex;gap:10px;justify-content:space-between;align-items:baseline;text-align:left;border:1px solid var(--line);background:var(--panel);color:var(--txt);border-radius:6px;padding:6px 10px;cursor:pointer;font:inherit}
   .odoorow:hover{border-color:var(--accent);background:var(--accent-soft)}
   .odoorow span{color:var(--txt-faint);font-size:12px}
+  .odoolimit{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--txt-dim);margin-top:4px}
   .odoomsg{font-size:12px;color:var(--txt-dim);padding:2px 0;display:flex;gap:10px;align-items:center}
   .qdash{display:inline-block;padding:0 10px;color:var(--txt-faint)}
   .okind{width:auto;flex:0 0 auto}
@@ -11516,6 +11517,7 @@ function odooFillCompany(p){
   const c=ensureCustomer();
   c.company=p.company||p.name||c.company;
   CONFIG.customer=c.company;
+  c.odooId=p.companyId||p.id||c.odooId;
   if(p.address) c.address=p.address;
   if(p.city) c.city=p.city;
   if(p.country) c.country=p.country;
@@ -11563,6 +11565,11 @@ function customerFormHtml(){
       </label>
     </div>
     <h4 class="custhead">Contact persons</h4>
+    <div class="odoobox no-print">
+      <label class="wide">Look up a contact person in Odoo<input class="in" id="odooPQ" autocomplete="off" placeholder="Type at least three letters of a name or e-mail address"></label>
+      ${c.odooId?`<label class="chk odoolimit"><input type="checkbox" id="odooPOnly" checked> only people of ${esc(c.company||"this company")}</label>`:""}
+      <div id="odooPRes" class="odoores"></div>
+    </div>
     <div class="contacts">
       ${c.contacts.map((k,i)=>`<div class="contactrow" data-ci="${i}">
         <input class="in" data-kf="name"  value="${esc(k.name||"")}"  placeholder="Name">
@@ -11642,6 +11649,42 @@ function renderCustomer(el){
       }, 350);
     };
     persons();
+  }
+  /* a contact person, looked up on his own — within the company when there is one */
+  const pq=el.querySelector("#odooPQ"), pres=el.querySelector("#odooPRes");
+  if(pq && pres){
+    const say=t=>{ pres.innerHTML=`<div class="odoomsg">${esc(t)}</div>`; };
+    let timer=null, last="";
+    const run=()=>{
+      clearTimeout(timer);
+      const q=pq.value.trim();
+      if(q.length<3){ pres.innerHTML=""; last=""; return; }
+      timer=setTimeout(async ()=>{
+        last=q; say("Looking\u2026");
+        try{
+          const only=el.querySelector("#odooPOnly");
+          const params={q, persons:"1"};
+          if(only && only.checked && c.odooId) params.of=String(c.odooId);
+          const j=await odooGet(params);
+          if(pq.value.trim()!==last) return;
+          const list=j.results||[];
+          if(!list.length){ say(`Nothing found for \u201c${q}\u201d${params.of?" among the people of this company":""}.`); return; }
+          pres.innerHTML=list.map((p,i)=>`<button class="odoorow" data-pp="${i}">
+              <b>${esc(p.name)}</b>
+              <span>${esc([p.role, p.email, p.company].filter(Boolean).join(" \u00b7 "))}</span>
+            </button>`).join("");
+          pres.querySelectorAll("[data-pp]").forEach(b=>b.onclick=()=>{
+            const p=list[+b.dataset.pp];
+            odooAddContact(p);
+            /* no company on the quotation yet: the person's company is the customer */
+            if(!(c.company||"").trim() && p.company){ c.company=p.company; CONFIG.customer=p.company; c.odooId=p.companyId||c.odooId; }
+            renderDocs();
+          });
+        }catch(err){ say(err.message||"The Odoo lookup failed."); }
+      }, 350);
+    };
+    pq.oninput=run;
+    const only=el.querySelector("#odooPOnly"); if(only) only.onchange=run;
   }
 }
 

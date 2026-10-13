@@ -13,6 +13,7 @@
 //                  request comes from
 //
 //   GET /api/odoo-contacts?q=<text>        companies and persons matching the text
+//   GET /api/odoo-contacts?q=<text>&persons=1[&of=<id>]   contact persons only, optionally of one company
 //   GET /api/odoo-contacts?company=<id>    the contact persons of one company
 //   GET /api/odoo-contacts?id=<id>         one customer or person
 
@@ -88,6 +89,8 @@ module.exports = async (req, res) => {
   const q = String((req.query || {}).q || '').trim();
   const company = parseInt((req.query || {}).company, 10);
   const id = parseInt((req.query || {}).id, 10);
+  const personsOnly = String((req.query || {}).persons || '') === '1';
+  const of = parseInt((req.query || {}).of, 10);
 
   try {
     if (id > 0) {
@@ -103,8 +106,11 @@ module.exports = async (req, res) => {
     }
     // a short text matches half the address book; three characters is a name
     if (q.length < 3) return res.status(200).json({ results: [] });
+    let domain = ['|', '|', ['name', 'ilike', q], ['email', 'ilike', q], ['commercial_company_name', 'ilike', q]];
+    if (personsOnly) domain = ['&', ['is_company', '=', false]].concat(domain);   // contact persons only
+    if (of > 0) domain = ['&', ['parent_id', '=', of]].concat(domain);            // of one company
     const rows = await odoo('res.partner', 'search_read', {
-      domain: ['|', '|', ['name', 'ilike', q], ['email', 'ilike', q], ['commercial_company_name', 'ilike', q]],
+      domain,
       fields: FIELDS, limit: 15, order: 'is_company desc, name',
     });
     return res.status(200).json({ results: rows.map(shape) });
