@@ -112,6 +112,12 @@
   .proprow .pq{min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
   .proprow .pn{flex:1}
   .proprow .pa{font-variant-numeric:tabular-nums;color:var(--txt)}
+  .odoobox{margin:10px 0 14px;max-width:640px}
+  .odoores{margin-top:6px;display:flex;flex-direction:column;gap:2px}
+  .odoorow{display:flex;gap:10px;justify-content:space-between;align-items:baseline;text-align:left;border:1px solid var(--line);background:var(--panel);color:var(--txt);border-radius:6px;padding:6px 10px;cursor:pointer;font:inherit}
+  .odoorow:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .odoorow span{color:var(--txt-faint);font-size:12px}
+  .odoomsg{font-size:12px;color:var(--txt-dim);padding:2px 0;display:flex;gap:10px;align-items:center}
   .qdash{display:inline-block;padding:0 10px;color:var(--txt-faint)}
   .okind{width:auto;flex:0 0 auto}
   .kindwarn{display:block;margin-top:4px;font-size:11px;color:var(--warn)}
@@ -11490,11 +11496,49 @@ function primaryContact(){
   const c=ensureCustomer();
   return c.contacts.find(x=>(x.name||"").trim()) || null;
 }
+/* ============================================================
+   LOOKING UP A CUSTOMER IN ODOO
+   Companies and their contact persons are kept in Odoo; typing them again
+   into every quotation is where the typing errors in an address come from.
+   The page does not talk to Odoo itself: the key that opens it must not be
+   in a page everyone can read. It asks /api/odoo-contacts, a small function
+   that holds the key, reads only, and answers with the few fields the form
+   needs. Nothing is written back to Odoo.
+   ============================================================ */
+async function odooGet(params){
+  if(!/^https?:$/.test(location.protocol)) throw new Error("The Odoo lookup works from the web version of the app.");
+  const r=await fetch("/api/odoo-contacts?"+new URLSearchParams(params));
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error||("The Odoo lookup failed ("+r.status+")"));
+  return j;
+}
+function odooFillCompany(p){
+  const c=ensureCustomer();
+  c.company=p.company||p.name||c.company;
+  CONFIG.customer=c.company;
+  if(p.address) c.address=p.address;
+  if(p.city) c.city=p.city;
+  if(p.country) c.country=p.country;
+  if(p.vat) c.vat=p.vat;
+}
+function odooAddContact(p){
+  const c=ensureCustomer();
+  const key=x=>String(x.email||x.name||"").trim().toLowerCase();
+  c.contacts=c.contacts.filter(k=>(k.name||k.role||k.email||k.phone||"").toString().trim());   // an empty row makes room
+  if(!c.contacts.some(k=>key(k)===key(p)))
+    c.contacts.push({name:p.name||"", role:p.role||"", email:p.email||"", phone:p.phone||""});
+  if(!c.contacts.length) c.contacts.push({name:"",role:"",email:"",phone:""});
+}
+let odooPersons=[];       // the contact persons of the company just picked
 function customerFormHtml(){
   const c=ensureCustomer();
   return `<h2>Customer</h2>
     <div class="docsub">Who this quote is for. The company name and reference appear on the cover page; the address and contacts on the contact page of the complete PDF.</div>
     <div class="docmeta">Travels with the quote — saved and loaded with it.</div>
+    <div class="odoobox no-print">
+      <label class="wide">Look up in Odoo<input class="in" id="odooQ" autocomplete="off" placeholder="Type at least three letters of a company or contact name"></label>
+      <div id="odooRes" class="odoores"></div>
+    </div>
     <div class="custgrid">
       <label class="wide">Company<input class="in" data-cf="company" value="${esc(c.company)}" placeholder="Alamance Foods Inc."></label>
       <label class="wide">Address<textarea class="in" data-cf="address" rows="3" placeholder="Street and number&#10;PO box">${esc(c.address)}</textarea></label>
@@ -11549,6 +11593,56 @@ function renderCustomer(el){
   document.getElementById("addContact").onclick=()=>{
     c.contacts.push({name:"",role:"",email:"",phone:""}); renderDocs();
   };
+  /* the Odoo lookup */
+  const oq=el.querySelector("#odooQ"), ores=el.querySelector("#odooRes");
+  if(oq && ores){
+    const say=t=>{ ores.innerHTML=`<div class="odoomsg">${esc(t)}</div>`; };
+    const persons=()=>{
+      if(!odooPersons.length){ ores.innerHTML=""; return; }
+      ores.innerHTML=`<div class="odoomsg">Contact persons of ${esc(odooPersons[0].company)}
+          <button class="btn sm" id="odooAll">Add all</button></div>`
+        + odooPersons.map((p,i)=>`<button class="odoorow" data-op="${i}"><b>${esc(p.name)}</b>
+            <span>${esc([p.role,p.email].filter(Boolean).join(" · "))}</span></button>`).join("");
+      ores.querySelectorAll("[data-op]").forEach(b=>b.onclick=()=>{ odooAddContact(odooPersons[+b.dataset.op]); renderDocs(); });
+      const all=ores.querySelector("#odooAll");
+      if(all) all.onclick=()=>{ odooPersons.forEach(odooAddContact); odooPersons=[]; renderDocs(); };
+    };
+    let timer=null, last="";
+    oq.oninput=()=>{
+      clearTimeout(timer);
+      const q=oq.value.trim();
+      if(q.length<3){ ores.innerHTML=""; last=""; return; }
+      timer=setTimeout(async ()=>{
+        last=q; say("Looking\u2026");
+        try{
+          const j=await odooGet({q});
+          if(oq.value.trim()!==last) return;             // typed on since
+          const list=j.results||[];
+          if(!list.length){ say("Nothing found in Odoo for \u201c"+q+"\u201d."); return; }
+          ores.innerHTML=list.map((p,i)=>`<button class="odoorow" data-or="${i}">
+              <b>${esc(p.name)}</b>
+              <span>${p.isCompany?"company":esc(p.company||"contact")}${p.city?" \u00b7 "+esc(p.city):""}${p.country?", "+esc(p.country):""}</span>
+            </button>`).join("");
+          ores.querySelectorAll("[data-or]").forEach(b=>b.onclick=async ()=>{
+            const p=list[+b.dataset.or];
+            say("Reading from Odoo\u2026");
+            try{
+              let comp=p;
+              /* a person's own record often has no address of its own: the company has it */
+              if(!p.isCompany && p.companyId){ const r=await odooGet({id:p.companyId}); if(r.partner) comp=r.partner; }
+              odooFillCompany(comp);
+              if(p.isCompany){
+                const r=await odooGet({company:p.id});
+                odooPersons=(r.persons||[]).map(x=>Object.assign({}, x, {company:comp.name}));
+              } else { odooAddContact(p); odooPersons=[]; }
+              renderDocs();
+            }catch(err){ say(err.message||"The Odoo lookup failed."); }
+          });
+        }catch(err){ say(err.message||"The Odoo lookup failed."); }
+      }, 350);
+    };
+    persons();
+  }
 }
 
 /* ---------------------------------------------------------------------
