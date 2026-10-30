@@ -2926,6 +2926,7 @@
     <div class="mrow section-nav" id="partsNavBtn"><span class="ic">&#128295;</span><div class="n">Format parts catalogue</div></div>
     <div class="mrow section-nav" id="comNavBtn"><span class="ic">&#128203;</span><div class="n">Commercial defaults</div></div>
     <div class="mrow section-nav" id="priceNavBtn"><span class="ic">&#128181;</span><div class="n">All prices</div></div>
+    <div class="mrow section-nav" id="trNavBtn"><span class="ic">&#127760;</span><div class="n">Translations (Spanish)</div></div>
     <div class="mrow section-nav" id="elecNavBtn"><span class="ic">&#9889;</span><div class="n">Electrical supply</div></div>
     <div class="mrow section-nav" id="svcNavBtn"><span class="ic">&#128736;</span><div class="n">Services</div></div>
     <div class="nav-label" style="margin-top:16px">Configuration tree</div>
@@ -3365,6 +3366,8 @@ function ensureLanguages(){
   CONFIG.templates.forEach(t=>{
     if(CONFIG.termsDefaults[t.code]===undefined) CONFIG.termsDefaults[t.code]="";
     if(!CONFIG.docs.terms[t.code]) CONFIG.docs.terms[t.code]=CONFIG.termsDefaults[t.code]||"";
+    const es=t.code+"~es";
+    if(CONFIG.termsDefaults[es]!==undefined && !CONFIG.docs.terms[es]) CONFIG.docs.terms[es]=CONFIG.termsDefaults[es]||"";
   });
   if(!docLang || !CONFIG.templates.some(t=>t.code===docLang)) docLang=CONFIG.templates[0].code;
 }
@@ -8753,6 +8756,7 @@ function renderAdminCore(){
   document.getElementById("svcNavBtn").classList.toggle("on",adminSection==="service");
   document.getElementById("elecNavBtn").classList.toggle("on",adminSection==="electrical");
   document.getElementById("priceNavBtn").classList.toggle("on",adminSection==="prices");
+  document.getElementById("trNavBtn").classList.toggle("on",adminSection==="translations");
   document.getElementById("comNavBtn").classList.toggle("on",adminSection==="commercial");
 
   if(!CONFIG.modules.length){ sel=[]; }
@@ -8792,6 +8796,7 @@ function renderAdminCore(){
   if(adminSection==="service"){ renderServiceAdmin(); return; }
   if(adminSection==="electrical"){ renderElectricalAdmin(); return; }
   if(adminSection==="prices"){ renderPriceListAdmin(); return; }
+  if(adminSection==="translations"){ renderTranslationsAdmin(); return; }
   if(adminSection==="commercial"){ renderCommercialAdmin(); return; }
 
   const ed=document.getElementById("editor");
@@ -9097,18 +9102,18 @@ function renderLangAdmin(){
         <label>Contact lines<textarea class="in ta" data-lf="phone" rows="3">${esc((l.phone||[]).join("\n"))}</textarea></label>
         <label>Bank block (blank = omit)<textarea class="in ta" data-lf="bank" rows="3">${esc((l.bank||[]).join("\n"))}</textarea></label>
       </div>
-      ${(()=>{
-        const open=openTerms.has(l.code);
-        const txt=String(CONFIG.termsDefaults[l.code]||"");
+      ${[l.code, l.code+"~es"].map((key)=>{
+        const open=openTerms.has(key);
+        const txt=String(CONFIG.termsDefaults[key]||"");
         const words=txt.replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim();
         const n=words?words.split(" ").length:0;
-        return `<div class="termsfold ${open?"open":""}" data-termsfold="${esc(l.code)}">
+        return `<div class="termsfold ${open?"open":""}" data-termsfold="${esc(key)}">
             <span class="fold-toggle">${open?"&#9662;":"&#9656;"}</span>
-            Default terms &amp; conditions text for this template
+            ${key.endsWith("~es")?"Default terms &amp; conditions text — Spanish version (optional)":"Default terms &amp; conditions text for this template"}
             <span class="meta">${n?`${n} words`:"empty"}</span>
           </div>
-          ${open?`<div class="freetext" contenteditable="true" data-lkey="${esc(l.code)}" style="margin-top:0;min-height:140px;border-top:1px solid var(--line);border-radius:var(--radius)">${txt||'<p class="ph">No default text yet for this template…</p>'}</div>`:""}`;
-      })()}
+          ${open?`<div class="freetext" contenteditable="true" data-lkey="${esc(key)}" style="margin-top:0;min-height:140px;border-top:1px solid var(--line);border-radius:var(--radius)">${txt||'<p class="ph">No default text yet for this template…</p>'}</div>`:""}`;
+      }).join("")}
     </div>`).join("");
 
   ed.innerHTML=`
@@ -11490,6 +11495,7 @@ document.getElementById("partsNavBtn").onclick=()=>{ adminSection="parts"; rende
 document.getElementById("svcNavBtn").onclick=()=>{ adminSection="service"; renderAdmin(); };
 document.getElementById("elecNavBtn").onclick=()=>{ adminSection="electrical"; renderAdmin(); };
 document.getElementById("priceNavBtn").onclick=()=>{ adminSection="prices"; renderAdmin(); };
+document.getElementById("trNavBtn").onclick=()=>{ adminSection="translations"; renderAdmin(); };
 document.getElementById("comNavBtn").onclick=()=>{ adminSection="commercial"; renderAdmin(); };
 
 /* ============================= 5. DOCUMENTS =============================
@@ -11576,6 +11582,327 @@ function odooAddContact(p){
   if(!c.contacts.length) c.contacts.push({name:"",role:"",email:"",phone:""});
 }
 let odooPersons=[];       // the contact persons of the company just picked
+/* ============================================================
+   THE LANGUAGE OF A QUOTATION
+   What the customer reads — the page behind his link and the PDF — can be in
+   Spanish. The tool itself stays in English. Three layers, from the inside:
+     1. The catalogue's own words (names, descriptions, types). Each item can
+        carry a Spanish version, i18n:{es:{name:"…", text:"…"}}; while a
+        document is being written those are laid over the English ones and
+        taken away again afterwards, so nothing in the catalogue changes.
+     2. The fixed labels the tool writes itself (headings, totals, buttons),
+        looked up in a list of phrases, with a few patterns for the lines
+        that carry a number.
+     3. What the salesperson typed on the quotation (the note, the terms)
+        is written in the language he chooses to write it in.
+   Whatever has no Spanish version stays as it is, in English, rather than
+   disappearing or being guessed at.
+   ============================================================ */
+const DOC_LANGS=[{id:"en", label:"English"},{id:"es", label:"Espa\u00f1ol"}];
+const docLanguage = () => (CONFIG.quoteLang==="es") ? "es" : "en";
+const I18N_ES={
+  /* cover and letterhead */
+  "Quotation":"Cotizaci\u00f3n", "For":"Para", "Attention of":"A la atenci\u00f3n de",
+  "Quotation number":"N\u00famero de cotizaci\u00f3n", "Date":"Fecha", "Date:":"Fecha:", "Validity":"Vigencia",
+  "Quotation for":"Cotizaci\u00f3n para", "Our contact details":"Nuestros datos de contacto",
+  "The partner for tight solutions":"Su socio para soluciones a la medida",
+  "Strong on the inside. Built to perform on the outside.":"Fuerte por dentro. Hecha para rendir por fuera.",
+  "Operational machines":"M\u00e1quinas en operaci\u00f3n", "Countries":"Pa\u00edses", "Years of experience":"A\u00f1os de experiencia",
+  "Generations, our family business":"Generaciones, nuestra empresa familiar",
+  "Investment summary":"Resumen de la inversi\u00f3n", "Installation & services":"Instalaci\u00f3n y servicios",
+  "Total investment":"Inversi\u00f3n total", "This proposal is valid for":"Esta propuesta es v\u00e1lida por",
+  "Guaranteed \u2265 98% efficiency":"Eficiencia garantizada \u2265 98%", "Worldwide supply of spare parts":"Suministro mundial de refacciones",
+  "Excellent service and support":"Excelente servicio y soporte", "Machines built entirely in-house":"M\u00e1quinas fabricadas totalmente en casa",
+  "Questions?":"\u00bfPreguntas?", "We are here to help.":"Estamos para ayudarle.",
+  /* the chapters */
+  "Cover":"Portada", "Note":"Nota",
+  "Scope of supply":"Alcance del suministro", "Product and sleeve specifications":"Especificaciones del producto y de la manga",
+  "Machine specifications":"Especificaciones de la m\u00e1quina", "Investment proposal":"Propuesta de inversi\u00f3n",
+  "Optional items":"Art\u00edculos opcionales", "Alternatives":"Alternativas",
+  "Commercial terms and conditions":"T\u00e9rminos y condiciones comerciales",
+  "Description of the supplied items":"Descripci\u00f3n de los art\u00edculos suministrados",
+  "Packing dimensions":"Dimensiones de embalaje", "*provisional dimensions":"*dimensiones provisionales",
+  "This quotation is based on the following information:":"Esta cotizaci\u00f3n se basa en la siguiente informaci\u00f3n:",
+  "Product properties":"Propiedades del producto", "Sleeve properties":"Propiedades de la manga",
+  "General":"General", "Production speed":"Velocidad de producci\u00f3n", "Configuration":"Configuraci\u00f3n",
+  "offered with this quotation \u2014 not included in the scope above":"ofrecidos con esta cotizaci\u00f3n \u2014 no incluidos en el alcance anterior",
+  /* the investment */
+  "Detailed breakdown":"Desglose detallado",
+  "Every item in the scope of this quotation, with its price.":"Cada art\u00edculo del alcance de esta cotizaci\u00f3n, con su precio.",
+  "Guaranteed \u226598% efficiency":"Eficiencia garantizada \u226598%",
+  "\u2014 see Optional items":"\u2014 ver Art\u00edculos opcionales",
+  "incl. sub-items":"incl. subart\u00edculos", "included":"incluido", "Subtotal":"Subtotal", "\u2014 equipment":"\u2014 equipo",
+  "not discounted":"sin descuento", "Format parts":"Partes de formato", "General format parts":"Partes de formato generales",
+  "Services":"Servicios", "Custom lines":"L\u00edneas personalizadas",
+  "Show all levels":"Mostrar todos los niveles", "Only show top price":"Mostrar solo el precio total",
+  "Show all items":"Mostrar todos los art\u00edculos", "Hide price":"Ocultar precio", "Show price":"Mostrar precio",
+  "Packaging":"Embalaje", "Transport":"Transporte",
+  /* the optional items and the types */
+  "Add upgrade +":"Agregar opci\u00f3n +", "Add upgrade \u00a0+":"Agregar opci\u00f3n +",
+  "Added to your quotation":"Agregado a su cotizaci\u00f3n", "In your quote \u2014 remove":"En su cotizaci\u00f3n \u2014 quitar",
+  "Take this option":"Tomar esta opci\u00f3n", "In the machine \u2014 undo":"En la m\u00e1quina \u2014 deshacer",
+  "Optional types":"Tipos opcionales",
+  "Feet, counters and access doors are fitted throughout the line. Choose once for every machine, or set a machine on its own.":"Los pies, contadores y puertas de acceso se instalan en toda la l\u00ednea. Elija una vez para todas las m\u00e1quinas, o defina una m\u00e1quina por separado.",
+  "Show every machine":"Mostrar cada m\u00e1quina", "Hide the machines":"Ocultar las m\u00e1quinas",
+  "All machines":"Todas las m\u00e1quinas", "no extra cost":"sin costo adicional",
+  "Choose this machine":"Elegir esta m\u00e1quina", "Choose this instead":"Elegir esta en su lugar", "Current selection":"Selecci\u00f3n actual",
+  /* terms */
+  "Delivery time":"Tiempo de entrega", "Incoterm":"Incoterm", "Payment terms":"Condiciones de pago",
+  "Quotation valid for":"Cotizaci\u00f3n v\u00e1lida por", "General terms and conditions":"T\u00e9rminos y condiciones generales",
+  /* the page behind the link */
+  "Download proposal (PDF)":"Descargar propuesta (PDF)", "Undo my changes":"Deshacer mis cambios",
+  "\u2190 Previous":"\u2190 Anterior", "Next \u2192":"Siguiente \u2192", "Previous":"Anterior", "Next":"Siguiente",
+  "Cylindrical":"Cilíndrico", "3D printed":"Impreso en 3D", "Other":"Otros", "yes":"sí", "cup":"vaso",
+  "As an OEM partner of Sleeve Technology the following discount applies:":"Como socio OEM de Sleeve Technology, se aplica el siguiente descuento:",
+  "Additional items for this quote":"Artículos adicionales para esta cotización",
+  "on top of":"adicionalmente a", "instead of":"en lugar de",
+  "Each of these is quoted":"Cada uno de estos se cotiza",
+  "Each one is offered":"Cada una se ofrece",
+  "*The delivery time will be applicable after written purchase order and receipt of the down payment. The order will be confirmed prior to order acceptance.":"*El tiempo de entrega aplicará después de la orden de compra por escrito y la recepción del anticipo. El pedido se confirmará antes de su aceptación.",
+  /* the days */
+  "work":"trabajo", "travel":"viaje"
+};
+/* the lines that carry a number or a name: [what to find, what to put] */
+const I18N_ES_RULES=[
+  [/^Generated (\S+) \u00b7 (\d+) configured items? \u00b7 (\d+) offered separately$/, "Generado el $1 \u00b7 $2 art\u00edculos configurados \u00b7 $3 ofrecidos por separado"],
+  [/^Generated (\S+)$/, "Generado el $1"],
+  [/^(\d+)\. (.+)$/, (m,n,rest)=>n+". "+trEs(rest)],
+  [/^(\d+(?:\.\d+)+) (.+)$/, (m,n,rest)=>n+" "+trEs(rest)],
+  [/^(.+) \u2014 investment$/, (m,a)=>a+" \u2014 inversi\u00f3n"],
+  [/^(\d+) optional items? for this module$/, (m,n)=>n+(+n===1?" art\u00edculo opcional":" art\u00edculos opcionales")+" para este m\u00f3dulo"],
+  [/^Discount (.+)$/, "Descuento $1"], [/^Discount$/, "Descuento"],
+  [/^(.+) each$/, "$1 c/u"], [/^\((.+) each\)$/, "($1 c/u)"],
+  [/^(\d+) pcs$/, "$1 pzas"],
+  [/^Total investment \(price in (.+)\)$/, (m,c)=>"Inversi\u00f3n total (precio en "+(ES_CURRENCY_WORDS[c]||c)+")"],
+  [/^after the discount of (.+)$/, "despu\u00e9s del descuento de $1"],
+  [/^Excl\. VAT \u00b7 price in (.+)$/, (m,c)=>"Sin IVA \u00b7 precio en "+(ES_CURRENCY_WORDS[c]||c)],
+  [/^\u2212(.+)% discount$/, "\u2212$1% de descuento"],
+  [/^(\d+) \u00d7 (.+)$/, (m,n,rest)=>n+" \u00d7 "+rest],
+  [/^\u2713 included(?: \u2013 (.+))?$/, (m,a)=>"\u2713 incluido"+(a?" \u2013 "+a:"")],
+  [/^\u25b8 per machine \((\d+)\)$/, "\u25b8 por m\u00e1quina ($1)"],
+  [/^on (\d+) of (\d+)$/, "en $1 de $2"],
+  [/^(\d+) days?$/, (m,n)=>n+(+n===1?" d\u00eda":" d\u00edas")],
+  [/: (\d+) days? \((\d+(?:\.\d+)?) work \+ (\d+(?:\.\d+)?) travel\)/, ": $1 d\u00edas ($2 trabajo + $3 viaje)"],
+  [/: (\d+) days? on site plus (\d+) travel, (\d+) engineers?/, ": $1 d\u00edas en sitio m\u00e1s $2 de viaje, $3 ingenieros"],
+  [/\u00b7 (\d+) engineers?, (\d+(?:\.\d+)?) on site/, "\u00b7 $1 ingenieros, $2 en sitio"],
+  [/^Packaging: (.+)$/, (m,a)=>"Embalaje: "+a], [/^Transport: (.+)$/, (m,a)=>"Transporte: "+a],
+  [/Based on real costs \+ (\d+)% administration fee/, "Seg\u00fan costos reales + $1% de cargo administrativo"],
+  [/^\u2014 (\d+(?:\.\d+)?)% of the machine, excl\. services$/, "\u2014 $1% de la m\u00e1quina, sin servicios"],
+  [/(\d+(?:\.\d+)?)% of the machine, excl\. services/, "$1% de la m\u00e1quina, sin servicios"],
+  [/^— needed for (.+)$/, "— necesario para $1"],
+  [/^— shared with (.+)$/, "— compartido con $1"],
+  [/ — from (?=.+$)/, " — desde "],
+  [/^(\d+)\s*-\s*(\d+) weeks$/, "$1 - $2 semanas"],
+  [/^of the total order amount \u2014 (.+)$/, (m,rest)=>"del importe total del pedido \u2014 "+trEs(rest)],
+  [/, The Netherlands$/, ", Pa\u00edses Bajos"],
+  /* sentences — found anywhere in a text */
+  [/Offered instead of an item in the scope above, not on top of it\. Only one of each pair is bought, so these are excluded from the total investment\./, "Ofrecidas en lugar de un artículo del alcance anterior, no adicionalmente. Solo se compra una de cada par, por lo que quedan excluidas de la inversión total."],
+  [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
+  [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
+  [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/Service & support is not discounted\./, "Los servicios y el soporte no tienen descuento."],
+  [/the investment on the previous page, and none of them is counted in it\./, "la inversión de la página anterior, y ninguno está incluido en ella."],
+  [/Take one and it joins the quotation and its total\./, "Si elige uno, pasa a formar parte de la cotización y de su total."],
+  [/The prices shown already have your ([\d.]+)% discount taken off\./, "Los precios mostrados ya tienen aplicado su descuento de $1%."],
+  [/the item it stands against, never on top of it — so none of them is counted in the investment on the previous page\./, "del artículo al que sustituye, nunca adicionalmente — por lo que ninguna está incluida en la inversión de la página anterior."],
+  [/Choosing one puts it in the quotation and takes the other out\./, "Al elegir una, entra en la cotización y sale la otra."]
+];
+/* A quotation holds some catalogue texts as copies it made when they were chosen:
+   the validity, a payment schedule's wording. They are English strings that no
+   longer sit on a catalogue item, so they are found by their text instead. */
+let _catEs=null;
+function buildCatEs(){
+  const m=new Map();
+  const walk=v=>{
+    if(Array.isArray(v)){ v.forEach(walk); return; }
+    if(!v || typeof v!=="object") return;
+    const es=v.i18n && v.i18n.es;
+    if(es) for(const k of Object.keys(es)) if(typeof v[k]==="string" && typeof es[k]==="string" && es[k].trim() && v[k].trim()) m.set(v[k].trim(), es[k]);
+    for(const k of Object.keys(v)) if(k!=="i18n" && k!=="image" && typeof v[k]==="object") walk(v[k]);
+  };
+  for(const k of CATALOGUE_KEYS) walk(CONFIG[k]);
+  return m;
+}
+function catEsLookup(t){
+  if(!_catEs) _catEs=buildCatEs();
+  if(!_catEs.size) return undefined;
+  if(_catEs.has(t)) return _catEs.get(t);
+  /* as it is printed: capital first, full stop at the end */
+  const dot=/\.$/.test(t), bare=t.replace(/\.$/,"");
+  const low=bare.charAt(0).toLowerCase()+bare.slice(1);
+  const hit=_catEs.get(bare) || _catEs.get(low);
+  if(hit===undefined) return undefined;
+  let out=hit;
+  if(/^[A-Z]/.test(bare) && !/^[A-Z]/.test(out)) out=out.charAt(0).toUpperCase()+out.slice(1);
+  return out+(dot && !/\.$/.test(out) ? "." : "");
+}
+const ES_CURRENCY_WORDS={"Dollar":"d\u00f3lares estadounidenses","Euro":"euros","Dollars":"d\u00f3lares estadounidenses","Euros":"euros"};
+function trEs(text){
+  const raw=String(text); const t=raw.trim();
+  if(!t) return raw;
+  let out=I18N_ES[t];
+  if(out===undefined) out=catEsLookup(t);
+  if(out===undefined){
+    out=t;
+    for(const [re,to] of I18N_ES_RULES){
+      if(re.test(out)){ out=out.replace(re,to); if(re.source.startsWith("^")) break; }
+      else re.lastIndex=0;
+    }
+  }
+  return out===t ? raw : raw.replace(t,()=>out);
+}
+const DOC_TR_SKIP=new Set(["SCRIPT","STYLE","TEXTAREA","INPUT","SELECT","OPTION","CODE"]);
+function translateNode(root){
+  if(!root) return;
+  const walker=document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT, {
+    acceptNode(n){
+      if(n.nodeType===1 && (DOC_TR_SKIP.has(n.tagName) || (n.classList && n.classList.contains("no-print")))) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }});
+  let n;
+  while((n=walker.nextNode())){
+    if(n.nodeType===3){ const v=trEs(n.nodeValue); if(v!==n.nodeValue) n.nodeValue=v; }
+    else for(const a of ["title","alt","aria-label"]){ const v=n.getAttribute(a); if(v){ const t=trEs(v); if(t!==v) n.setAttribute(a,t); } }
+  }
+}
+function translateHtml(html){
+  const t=document.createElement("template");
+  t.innerHTML=html;
+  translateNode(t.content);
+  return t.innerHTML;
+}
+/* The catalogue's own words, in the language asked for: the Spanish versions
+   laid over the English ones, and a function that takes them away again. */
+function applyCatalogueLanguage(lang){
+  const undo=[];
+  _catEs=null; if(lang && lang!=="en") _catEs=buildCatEs();
+  if(!lang || lang==="en") return ()=>{};
+  const walk=v=>{
+    if(Array.isArray(v)){ v.forEach(walk); return; }
+    if(!v || typeof v!=="object") return;
+    const tr=v.i18n && v.i18n[lang];
+    if(tr) for(const k of Object.keys(tr)){
+      if(typeof tr[k]==="string" && tr[k].trim() && v[k]!==undefined){ const was=v[k]; undo.push(()=>{ v[k]=was; }); v[k]=tr[k]; }
+    }
+    for(const k of Object.keys(v)) if(k!=="i18n" && k!=="image" && typeof v[k]==="object") walk(v[k]);
+  };
+  for(const k of CATALOGUE_KEYS) walk(CONFIG[k]);
+  return ()=>{ for(let i=undo.length-1;i>=0;i--) undo[i](); };
+}
+/* run something with the document language on: the catalogue overlay while it
+   runs, then the labels over what it wrote */
+function inDocLanguage(fn, lang){
+  const l=lang||docLanguage();
+  if(l!=="es") return fn();
+  const undo=applyCatalogueLanguage(l);
+  try{ return fn(); } finally { undo(); }
+}
+/* The terms are written per template, and may have a Spanish version beside the
+   English one, kept under "<code>~es". A Spanish quotation uses it when there
+   is one, and otherwise falls back to the English text rather than to nothing. */
+function termsKey(){
+  if(docLanguage()==="es"){
+    const k=docLang+"~es";
+    if(String((CONFIG.docs&&CONFIG.docs.terms&&CONFIG.docs.terms[k])||"").trim()
+       || String((CONFIG.termsDefaults||{})[k]||"").trim()) return k;
+  }
+  return docLang;
+}
+/* ============================================================
+   THE SPANISH TEXTS, TO READ AND CORRECT
+   Every text the customer reads that comes from the catalogue, with its
+   Spanish version beside it. The Spanish is stored on the item itself
+   (i18n.es), so it travels with the catalogue and its versions. An empty
+   Spanish field means "no Spanish version": the English text is used.
+   ============================================================ */
+const TR_FIELDS={
+  step:["title","desc"], option:["name","text","tag"], feature:["label","value"],
+  prop:["label","plural","unit"], variant:["name","note"], part:["desc","cat"],
+  format:["label"], spec:["label"], service:["label","note","transportCostNote"], schedule:["label","when","terms"]
+};
+function translatableItems(){
+  const out=[];
+  const add=(kind,obj,where)=>{
+    if(!obj) return;
+    for(const field of TR_FIELDS[kind]){
+      const en=obj[field];
+      if(typeof en!=="string" || !en.trim() || /^data:/.test(en) || /^[\d\s.,\-\/{}]+$/.test(en)) continue;
+      out.push({obj, field, en, where:where+" \u00b7 "+field});
+    }
+  };
+  (function steps(list, trail){
+    for(const m of (list||[])){
+      add("step", m, "Step "+(m.title||m.id));
+      for(const o of (m.options||[])){
+        add("option", o, (m.title||"")+" \u203a "+(o.name||o.id));
+        for(const ft of (o.features||[])) add("feature", ft, (o.name||o.id)+" \u203a feature");
+        for(const sp of (o.specs||[])) add("feature", sp, (o.name||o.id)+" \u203a specification");
+        steps(o.children, trail);
+      }
+    }
+  })(CONFIG.modules, []);
+  for(const p of (CONFIG.props||[])){
+    add("prop", p, "Property "+(p.label||p.id));
+    for(const v of (p.variants||[])) add("variant", v, (p.label||p.id)+" \u203a type");
+  }
+  for(const x of (CONFIG.parts||[])) add("part", x, "Format part");
+  for(const q of (CONFIG.formatQs||[])) add("format", q, "Format question");
+  for(const k of ["product","sleeve"]) for(const sf of ((CONFIG.specFields||{})[k]||[])) add("spec", sf, "Specification line");
+  const sv=CONFIG.service||{};
+  for(const l of (sv.lines||[])) add("service", l, "Service line");
+  for(const t of (sv.packTypes||[])) add("service", t, "Packaging type");
+  add("service", sv, "Service note");
+  for(const sch of ((CONFIG.commercial||{}).schedules||[])){
+    add("schedule", sch, "Payment schedule");
+    for(const st of (sch.steps||[])) add("schedule", st, (sch.label||"Payment schedule")+" \u203a step");
+  }
+  return out;
+}
+let trFilter="", trOnlyMissing=false, trLimit=150;
+function renderTranslationsAdmin(){
+  const ed=document.getElementById("editor");
+  const all=translatableItems();
+  const has=it=>!!((it.obj.i18n&&it.obj.i18n.es&&it.obj.i18n.es[it.field])||"").trim();
+  const done=all.filter(has).length;
+  const f=trFilter.trim().toLowerCase();
+  let rows=all.filter(it=>(!trOnlyMissing||!has(it)) && (!f || (it.en+" "+it.where+" "+((it.obj.i18n&&it.obj.i18n.es&&it.obj.i18n.es[it.field])||"")).toLowerCase().includes(f)));
+  const shown=rows.slice(0,trLimit);
+  ed.innerHTML=`
+    <div class="ed-head"><h2 style="margin:0;font-size:21px;font-weight:600">Translations (Spanish)</h2></div>
+    <div class="sublbl" style="margin:2px 0 14px">The Spanish version of every text the customer reads that comes from the catalogue. A quotation set to Spanish uses these; where a field is empty the English text is used. The fixed labels (headings, totals, buttons) and the terms are handled elsewhere.</div>
+    <div class="pricebar">
+      <input class="in" id="trSearch" value="${esc(trFilter)}" placeholder="Filter by English text, Spanish text or where it is used\u2026">
+      <label class="chk"><input type="checkbox" id="trMissing" ${trOnlyMissing?"checked":""}> only the ones without Spanish</label>
+      <span class="spacer"></span>
+      <span class="meta"><b>${done}</b> of ${all.length} translated</span>
+    </div>
+    ${shown.length?`<div class="tablewrap"><table class="partstable trtable">
+      <colgroup><col style="width:18%"><col style="width:41%"><col style="width:41%"></colgroup>
+      <tr><th>Where</th><th>English</th><th>Espa\u00f1ol</th></tr>
+      ${shown.map((it,i)=>`<tr data-tri="${i}">
+        <td class="pathcell">${esc(it.where)}</td>
+        <td class="trEn">${esc(it.en)}</td>
+        <td><textarea class="in trEs" rows="${Math.min(8,Math.max(1,Math.ceil(it.en.length/70)))}">${esc((it.obj.i18n&&it.obj.i18n.es&&it.obj.i18n.es[it.field])||"")}</textarea></td>
+      </tr>`).join("")}
+    </table></div>
+    ${rows.length>shown.length?`<div class="meta" style="margin:8px 0">Showing ${shown.length} of ${rows.length}. <button class="btn sm" id="trMore">Show 150 more</button></div>`:""}`
+    :'<div class="meta">Nothing matches that.</div>'}`;
+  const search=document.getElementById("trSearch");
+  search.oninput=()=>{ trFilter=search.value; trLimit=150; renderTranslationsAdmin();
+    const e2=document.getElementById("trSearch"); if(e2){ e2.focus(); e2.setSelectionRange(e2.value.length,e2.value.length); } };
+  document.getElementById("trMissing").onchange=e=>{ trOnlyMissing=e.target.checked; trLimit=150; renderTranslationsAdmin(); };
+  const more=document.getElementById("trMore"); if(more) more.onclick=()=>{ trLimit+=150; renderTranslationsAdmin(); };
+  ed.querySelectorAll("tr[data-tri] textarea.trEs").forEach(ta=>{
+    const it=shown[+ta.closest("tr").dataset.tri];
+    ta.oninput=()=>{
+      const v=ta.value;
+      it.obj.i18n=it.obj.i18n||{}; it.obj.i18n.es=it.obj.i18n.es||{};
+      if(v.trim()) it.obj.i18n.es[it.field]=v; else delete it.obj.i18n.es[it.field];
+      if(!Object.keys(it.obj.i18n.es).length){ delete it.obj.i18n.es; if(!Object.keys(it.obj.i18n).length) delete it.obj.i18n; }
+      _catEs=null; saveSoon();
+    };
+  });
+}
 function customerFormHtml(){
   const c=ensureCustomer();
   return `<h2>Customer</h2>
@@ -11601,6 +11928,10 @@ function customerFormHtml(){
       ${/* Ours, beside theirs. It is handed out when the quote is made and
            rarely touched, but it has to be somewhere you can reach it, and
            this is where the other facts about the document live. */""}
+      <label>Language of this quotation<select class="in" id="qLang" title="The language the customer reads: the page behind his link and the PDF">
+          ${DOC_LANGS.map(l=>`<option value="${l.id}" ${docLanguage()===l.id?"selected":""}>${l.label}</option>`).join("")}
+        </select>
+        <span class="cfnote">Texts without a Spanish version stay in English. The note and the terms are written in the language you choose to write them in.</span></label>
       <label>Our quotation number<input class="in" id="qNumDoc" value="${esc(CONFIG.quoteNumber||"")}" placeholder="202837">
         <span class="cfnote">Shown on the cover page and in the header</span></label>
       <label>OEM discount<input class="in" data-cf="oemDiscount" value="${esc(c.oemDiscount||"")}" placeholder="% — leave empty for none">
@@ -11630,6 +11961,8 @@ function renderCustomer(el){
   const c=ensureCustomer();
   const qn=el.querySelector("#qNumDoc");
   if(qn) qn.oninput=()=>{ CONFIG.quoteNumber=qn.value; renderQuoteBar(); saveSoon(); };
+  const ql=el.querySelector("#qLang");
+  if(ql) ql.onchange=()=>{ CONFIG.quoteLang=(ql.value==="es")?"es":"en"; if(CONFIG.quoteLang==="en") delete CONFIG.quoteLang; saveSoon(); renderDocs(); };
   el.querySelectorAll("[data-cf]").forEach(inp=>{
     inp.oninput=()=>{ c[inp.dataset.cf]=inp.value; if(inp.dataset.cf==="company") CONFIG.customer=inp.value; };
     if(inp.dataset.cf==="oemDiscount") inp.onchange=()=>{ applyOemDiscount(); renderDocs(); };
@@ -12497,6 +12830,14 @@ function wireDiscount(el){
   if(val)  val.onchange = ()=>{ d.value=Math.max(0,+val.value||0); renderDocs(); };
 }
 function renderDocs(){
+  if(docLanguage()==="es" && docsTab!=="customer"){
+    const undo=applyCatalogueLanguage("es");
+    try{ renderDocsCore(); translateNode(document.getElementById("docBody")); } finally { undo(); }
+    return;
+  }
+  renderDocsCore();
+}
+function renderDocsCore(){
   invalidateQtyCache();
   ensureLanguages();
   const el=document.getElementById("docBody");
@@ -12536,14 +12877,14 @@ function renderDocs(){
    text — it never touches the Admin default. */
 function termsHtml(){
   const curLabel=activeTemplate().label||docLang;
-  const hasDefault=!!(CONFIG.termsDefaults[docLang]||"").trim();
+  const hasDefault=!!(CONFIG.termsDefaults[termsKey()]||"").trim();
   return `<h2>Terms &amp; conditions</h2>
     <div class="docsub">Showing the <b>${esc(curLabel)}</b> terms, because that's the quote template selected in Configure — switch templates there to change this. Baseline text per template is managed in Admin; edits here only affect this quote.</div>
     <div class="actions no-print" style="margin:10px 0 6px">
       <button class="btn sm" id="resetTermsDefault" ${hasDefault?"":"disabled"} title="${hasDefault?"":"No Admin default set for this template yet"}">Reset to default text</button>
     </div>
     ${richToolbarHtml()}
-    <div class="freetext termstext" contenteditable="true" data-key="terms">${CONFIG.docs.terms[docLang]||`<p class="ph">Nothing here yet for ${esc(curLabel)} — click to add terms…</p>`}</div>`;
+    <div class="freetext termstext" contenteditable="true" data-key="terms">${CONFIG.docs.terms[termsKey()]||`<p class="ph">Nothing here yet for ${esc(curLabel)} — click to add terms…</p>`}</div>`;
 }
 function renderTerms(el){
   el.innerHTML=termsHtml();
@@ -12551,15 +12892,15 @@ function renderTerms(el){
   if(resetBtn) resetBtn.onclick=()=>{
     const curLabel=activeTemplate().label||docLang;
     if(!confirm(`Replace this quote's ${curLabel} text with the Admin default? Your edits for this language will be lost.`)) return;
-    CONFIG.docs.terms[docLang]=CONFIG.termsDefaults[docLang]||"";
+    CONFIG.docs.terms[termsKey()]=CONFIG.termsDefaults[termsKey()]||"";
     renderDocs();
   };
 
   const ft=el.querySelector(".freetext");
   wireRichText(ft, el.querySelector(".rtbar"));
   ft.addEventListener("focus",()=>{ if(ft.querySelector(".ph")) ft.innerHTML=""; });
-  ft.addEventListener("input",()=>{ CONFIG.docs.terms[docLang]=ft.innerHTML; });
-  ft.addEventListener("blur",()=>{ if(!ft.textContent.trim()){ CONFIG.docs.terms[docLang]=""; renderDocs(); } });
+  ft.addEventListener("input",()=>{ CONFIG.docs.terms[termsKey()]=ft.innerHTML; });
+  ft.addEventListener("blur",()=>{ if(!ft.textContent.trim()){ CONFIG.docs.terms[termsKey()]=""; renderDocs(); } });
 }
 
 /* Products & sleeve specifications — two structured tables (rows from
@@ -12983,7 +13324,7 @@ function deliverySectionHtml(){
    the ORIGINAL numbering, so a clause that happens to take a number another
    clause used to have cannot be renumbered twice. */
 function renumberedTerms(prefix){
-  const raw=(CONFIG.docs&&CONFIG.docs.terms&&CONFIG.docs.terms[docLang])||"";
+  const raw=(CONFIG.docs&&CONFIG.docs.terms&&CONFIG.docs.terms[termsKey()])||"";
   if(!String(raw).trim()) return "";
   const box=document.createElement("div");
   box.innerHTML=raw;
@@ -13070,12 +13411,13 @@ function stripOwnHeading(html){
 /* the general terms, numbered from the chapter they sit in — 7.1, 7.2 on
    paper; in the link, where no chapter carries a number, 1, 2, 3 */
 function termsChapterHtml(no){
-  const txt=((CONFIG.docs&&CONFIG.docs.terms&&CONFIG.docs.terms[docLang])||"").trim();
+  const txt=((CONFIG.docs&&CONFIG.docs.terms&&CONFIG.docs.terms[termsKey()])||"").trim();
   if(!txt) return "";
   return `<h3 class="termshead">General terms and conditions</h3>
     <div class="freetext termstext">${renumberedTerms(no?no+".":"")}</div>`;
 }
-function buildAllDocsHtml(){
+function buildAllDocsHtml(){ return docLanguage()==="es" ? inDocLanguage(()=>translateHtml(buildAllDocsHtmlCore())) : buildAllDocsHtmlCore(); }
+function buildAllDocsHtmlCore(){
   ensureLanguages();
   ensureSpecs();
   const memo=(CONFIG.docs&&CONFIG.docs.memo||"").trim();
@@ -13347,7 +13689,7 @@ function importJsonFile(file){
    a reload — got prices pointing at classes that were not there, and every
    part quietly fell back to the type's own price. */
 const CATALOGUE_KEYS=["modules","templates","languages","props","parts","partClasses","formatQs","specFields","termsDefaults","folderPaths","service","electrical","commercial"];
-const QUOTE_KEYS=["model","currency","quoteNumber","customer","customerInfo","validity","docs","specColumns","specValues","sharedBase","discount"];
+const QUOTE_KEYS=["model","currency","quoteNumber","customer","customerInfo","validity","docs","specColumns","specValues","sharedBase","discount","quoteLang"];
 function pickKeys(src, keys){
   const out={};
   for(const k of keys) if(src && src[k]!==undefined) out[k]=clone(src[k]);
@@ -18862,7 +19204,8 @@ function shareLetterheadHtml(inner, pageTitle){
    the rest reads the same as the PDF.
    Order follows the printed quotation: what you get, what it was based on,
    what the machine does, what it costs, how it is delivered, the terms. */
-function shareDocSections(){
+function shareDocSections(){ return docLanguage()==="es" ? inDocLanguage(()=>shareDocSectionsCore().map(x=>Object.assign({}, x, {html:translateHtml(x.html), nav:trEs(x.nav)}))) : shareDocSectionsCore(); }
+function shareDocSectionsCore(){
   ensureLanguages(); ensureSpecs();
   const memo=(CONFIG.docs&&CONFIG.docs.memo||"").trim();
   return [
@@ -18970,6 +19313,7 @@ function renderShareMode(){
   </div>`;
 
   el.innerHTML=nav+page+pager;
+  if(docLanguage()==="es"){ if(!_catEs) _catEs=buildCatEs(); translateNode(el); }
   shareMeasureNav();
   wirePriceToggles(el);
   const pdfBtn=document.getElementById("sharePdfBtn");
