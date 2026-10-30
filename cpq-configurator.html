@@ -119,6 +119,8 @@
   .odoorow span{color:var(--txt-faint);font-size:12px}
   .odoolimit{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--txt-dim);margin-top:4px}
   .odoomsg{font-size:12px;color:var(--txt-dim);padding:2px 0;display:flex;gap:10px;align-items:center}
+  .cstmode{width:auto;max-width:150px;font-size:12px}
+  .cstpctamt{font-size:12px;color:var(--txt-dim);white-space:nowrap}
   .qdash{display:inline-block;padding:0 10px;color:var(--txt-faint)}
   .okind{width:auto;flex:0 0 auto}
   .kindwarn{display:block;margin-top:4px;font-size:11px;color:var(--warn)}
@@ -4694,6 +4696,30 @@ function formatStep(){
    they travel with the quote and never touch the shared price list. */
 const CUSTOM_KEY="__custom";
 function customItems(){ const l=state[CUSTOM_KEY]; return Array.isArray(l)?l:[]; }
+/* ============================================================
+   A LINE AS A PERCENTAGE OF THE MACHINE
+   A spare parts kit is not priced by what is in it but as a share of the
+   machine: so many percent of what is in scope, services left out, before
+   the discount. The line itself is then part of the equipment the discount
+   is taken off, like any other item.
+   The machine total is worked out with the percentage lines held at zero —
+   they are not part of what they are a percentage of, and that is also
+   what stops the sum from asking itself.
+   ============================================================ */
+let _pctGuard=false;
+function pctBase(){
+  if(_pctGuard) return 0;
+  _pctGuard=true;
+  try{
+    const rows=buildPriceRows(false);
+    return Math.max(0, priceRowsTotal(rows)-serviceRowsTotal(rows));
+  } finally { _pctGuard=false; }
+}
+const customIsPct = c => !!c && c.mode==="pct";
+/* the price of one such line, in euro like every other amount */
+function customLinePrice(c){
+  return customIsPct(c) ? Math.round((+c.pct||0)/100*pctBase()*100)/100 : (+c.price||0);
+}
 function setCustomItems(l){ if(l.length) state[CUSTOM_KEY]=l; else delete state[CUSTOM_KEY]; }
 /* Catalogue prices are held in euro and converted per template. A custom
    line is typed straight into the quote, so the number entered is in the
@@ -4702,8 +4728,8 @@ function setCustomItems(l){ if(l.length) state[CUSTOM_KEY]=l; else delete state[
 const liveFx = () => (+activeTemplate().fxFromEur||1);
 const toEur   = shown => (+shown||0)/liveFx();
 const toShown = eur   => (+eur||0)*liveFx();
-function addCustomItem(){
-  const l=customItems().concat([{id:"cst"+Date.now(), name:"", text:"", price:0, cost:0, qty:1, scope:"in"}]);
+function addCustomItem(extra){
+  const l=customItems().concat([Object.assign({id:"cst"+Date.now(), name:"", text:"", price:0, cost:0, qty:1, scope:"in"}, extra||{})]);
   setCustomItems(l);
   return l[l.length-1];
 }
@@ -6172,12 +6198,14 @@ function buildItemRows(forceTop, wantOptional){
     if(cs && want!=="alt") for(const c of customItems()){
       const isOpt = c.scope==="opt";
       if(isOpt!==!!wantOptional) continue;
-      const q=Math.max(1,+c.qty||1);
+      const pct=customIsPct(c);
+      const q=pct ? 1 : Math.max(1,+c.qty||1);
       raw.push(at({
-        isPropLine:true, price:(+c.price||0)*q, rolled:false, hide:false, canHide:false,
+        isPropLine:true, price:customLinePrice(c)*q, rolled:false, hide:false, canHide:false,
         node:{ m:cs, root:cs, depth:0, trail:[],
-               o:{ id:"__cst_"+c.id, name:c.name||"Custom line", qty:q>1?q:0,
-                   unitPrice:+c.price||0, isPropLine:true, optional:isOpt } }
+               o:{ id:"__cst_"+c.id, name:c.name||(pct?"Spare parts kit":"Custom line"), qty:q>1?q:0,
+                   fmtFor:pct?`${+c.pct||0}% of the machine, excl. services`:"",
+                   unitPrice:pct?0:(+c.price||0), isPropLine:true, optional:isOpt } }
       }));
     }
   }
@@ -11186,23 +11214,39 @@ function customScreenHtml(){
           <input class="in cstname" value="${esc(c.name||"")}" data-cf="name" placeholder="What it is, e.g. Return of the old machine">
           <label class="pricebox" title="Our cost in ${esc(cur)} — never shown to a customer"><span>cost ${esc(cur)}</span>
             <input class="in ocost" type="number" step="100" value="${Math.round(toShown(c.cost)*100)/100}" data-cf="cost"></label>
-          <label class="pricebox" title="Selling price each, in ${esc(cur)} — the currency this quote is in"><span>price ${esc(cur)}</span>
-            <input class="in oprice" type="number" step="100" value="${Math.round(toShown(c.price)*100)/100}" data-cf="price"></label>
+          <select class="in cstmode" data-cf="mode" title="A fixed price, or a share of the machine">
+            <option value="fixed" ${customIsPct(c)?"":"selected"}>fixed price</option>
+            <option value="pct" ${customIsPct(c)?"selected":""}>% of the machine</option>
+          </select>
+          ${customIsPct(c)
+            ? `<label class="pricebox" title="Percentage of what is in scope, services left out, before the discount"><span>% of machine</span>
+                <input class="in oprice" type="number" min="0" step="0.5" value="${+c.pct||0}" data-cf="pct"></label>
+               <span class="cstpctamt" title="What that comes to now">= ${fmt(customLinePrice(c))}</span>`
+            : `<label class="pricebox" title="Selling price each, in ${esc(cur)} — the currency this quote is in"><span>price ${esc(cur)}</span>
+                <input class="in oprice" type="number" step="100" value="${Math.round(toShown(c.price)*100)/100}" data-cf="price"></label>`}
           <button class="x" data-cact="del" title="Remove this line">&times;</button>
         </div>
         <textarea class="in" rows="2" data-cf="text" placeholder="Description printed under this item in the scope of supply">${esc(c.text||"")}</textarea>
       </div>
     </div>`).join("") || '<div class="meta">No custom lines yet.</div>'}
-    <button class="btn sm" id="cstAdd" style="margin-top:10px">+ Add a line</button>`;
+    <button class="btn sm" id="cstAdd" style="margin-top:10px">+ Add a line</button>
+    <button class="btn sm" id="cstAddKit" style="margin-top:10px" title="A line priced as a percentage of the machine, services left out">+ Add a spare parts kit</button>`;
 }
 function wireCustomScreen(){
   const list=customItems();
   const add=document.getElementById("cstAdd");
   if(add) add.onclick=()=>{ addCustomItem(); renderConfigure(); };
+  const addKit=document.getElementById("cstAddKit");
+  if(addKit) addKit.onclick=()=>{ addCustomItem({name:"Spare parts kit", mode:"pct", pct:5, qty:1}); renderConfigure(); };
   document.querySelectorAll("#main [data-cf]").forEach(inp=>{
     const c=list[+inp.closest("[data-ci]").dataset.ci]; if(!c) return;
     const f=inp.dataset.cf;
-    if(f==="price"||f==="cost"||f==="qty"){
+    if(f==="mode"){ inp.onchange=()=>{ c.mode=inp.value; if(c.mode==="pct" && !(+c.pct>0)) c.pct=5; renderConfigure(); }; }
+    else if(f==="pct"){
+      inp.oninput=()=>{ c.pct=Math.max(0,+inp.value||0); };
+      inp.onchange=()=>renderConfigure();
+    }
+    else if(f==="price"||f==="cost"||f==="qty"){
       inp.oninput=()=>{ c[f]= f==="qty" ? Math.max(1,Math.floor(+inp.value||1)) : toEur(inp.value); };
       inp.onchange=()=>renderConfigure();
     } else inp.oninput=()=>{ c[f]=inp.value; };
