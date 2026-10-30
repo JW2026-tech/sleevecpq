@@ -283,6 +283,9 @@
   .asidetotals .meta{margin-top:3px;font-size:10.5px}
   aside h3{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--txt-faint);margin:0}
   .aside-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .detail-pick{display:flex;gap:12px;align-items:center;font-size:12px;color:var(--txt-dim)}
+  .detail-pick label{display:flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap}
+  .detail-pick .dplabel{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-faint)}
   .detail-toggle{display:flex;background:var(--track);border:1px solid var(--line);border-radius:7px;padding:2px}
   .detail-toggle button{background:none;border:0;color:var(--txt-dim);padding:4px 9px;border-radius:5px;cursor:pointer;font-size:11px;white-space:nowrap}
   .detail-toggle button.on{background:var(--track-on);color:var(--txt)}
@@ -2952,9 +2955,12 @@
   <div class="docs-bar">
     <div class="doctabs" id="doctabs"></div>
     <span class="spacer"></span>
-    <div class="detail-toggle" id="detailToggleDoc">
-      <button data-v="full" class="on">Full</button>
-      <button data-v="top">Top-level only</button>
+    <div class="detail-pick" id="detailToggleDoc" title="What to write out under the top level. Rows you have opened or folded by hand stay as you left them.">
+      <span class="dplabel">Show</span>
+      <label><input type="checkbox" checked disabled> Top level</label>
+      <label><input type="checkbox" data-lv="items"> Items</label>
+      <label><input type="checkbox" data-lv="props"> Properties</label>
+      <label><input type="checkbox" data-lv="parts"> Format parts</label>
     </div>
     <!-- Sharing, PDF and email used to sit here as well as in the quote bar
          — the same three actions twice on one screen. They now live only in
@@ -6063,7 +6069,19 @@ const isDone = m => state[m.id]!==undefined;
    that treats every top-level module as rolled up without touching the
    persisted .rollup flags. Mirrors buildOptionalRows below, which does the
    same fold-to-parent trick for the separate Optional items list. */
-let priceDetail = "full"; // "full" | "top" — shared default for both views
+/* How much of the price list is written out on the salesperson's screen.
+   Top level is always shown; the rest is ticked on when wanted. Only the top
+   level by default. A row the salesperson opened or folded by hand keeps what
+   he chose; the ticks decide the rows he has not touched.
+   The customer's page and the PDF made on the server do not read these: they
+   always show every level, as they did when the switch was on "Full". */
+const detailLevels={items:false, props:false, parts:false};
+let renderModeOn=false;
+function docDetail(){
+  if(inShareMode() || renderModeOn) return false;
+  return {top:!detailLevels.items, fmt:!!detailLevels.parts};
+}
+const rollDefault=(flag, def)=>(flag===undefined||flag===null) ? !!def : !!flag;
 
 /* One row per SUPPLIED ITEM (a chosen option), not per step — the steps
    are the questions and don't belong in a customer-facing price list, the
@@ -6156,6 +6174,9 @@ function toggleRoll(m, key){
   else m[key]=!m[key];
 }
 function buildItemRows(forceTop, wantOptional){
+  const dd=(forceTop && typeof forceTop==="object") ? forceTop : null;   // the salesperson's ticks
+  const topForce=dd ? false : !!forceTop;                                  // a plain true forces everything
+  const withTicks=(flag, def)=>dd ? rollDefault(flag, def) : !!flag;
   const want = wantKind(wantOptional);
   const HIDE = want==="alt"?"altHidePrice" : want==="opt"?"optHidePrice":"hidePrice";
   const ROLL = want==="alt"?"altRollup"    : want==="opt"?"optRollup"   :"rollup";
@@ -6176,7 +6197,7 @@ function buildItemRows(forceTop, wantOptional){
          up as if they applied to whichever option is actually chosen */
       const skip = underAlt && want!=="alt";
       const nodeIsAlt = scopeKind(nd.o)==="alt";
-      const rolled = nd.depth===0 && (forceTop || !!nd.o[ROLL]);
+      const rolled = nd.depth===0 && (topForce || withTicks(nd.o[ROLL], dd&&dd.top));
       if(rolled){
         if(branchHas(nd, wantOptional))
           raw.push(at({node:nd, price:branchSum(nd,wantOptional), rolled:true, hide:false, canHide:false,
@@ -6232,7 +6253,7 @@ function buildItemRows(forceTop, wantOptional){
       /* "only show top price" on a format: one line carrying the sum of
          its parts, the parts themselves folded away */
       const rollKey = want==="alt"?"altRollup" : wantOptional?"optRollup":"rollup";
-      const prRolled = forceTop || !!pr[rollKey];
+      const prRolled = topForce || withTicks(pr[rollKey], dd&&!dd.fmt);
       const prSum = parts.reduce((t,x)=>t+(+x.price||0),0)*q;
       raw.push(at({
         isPropLine:false, own:0, price:prRolled?prSum:0, rolled:prRolled,
@@ -6240,7 +6261,7 @@ function buildItemRows(forceTop, wantOptional){
         node:{ m:fstep, root:fstep, depth:0, trail:[],
                o:{ id:"__prd_"+pr.id, name:productName(pr), qty:q>1?q:0,
                    isFormatLine:true, optional:want==="alt"?true:!!pr.optional, alt:want==="alt",
-                   rollup:!!pr.rollup, optRollup:!!pr.optRollup } }
+                   rollup:withTicks(pr.rollup, dd&&!dd.fmt), optRollup:withTicks(pr.optRollup, dd&&!dd.fmt) } }
       }));
       if(prRolled) continue;
       for(const x of parts){
@@ -6261,7 +6282,7 @@ function buildItemRows(forceTop, wantOptional){
     const chosen=generalChosen(want==="alt" ? "alt" : !!wantOptional);
     if(fstep && chosen.length){
       const gf=rollFlags("__genhdr"), gk=want==="alt"?"altRollup":wantOptional?"optRollup":"rollup";
-      const gRolled = forceTop || !!gf[gk];
+      const gRolled = topForce || withTicks(gf[gk], dd&&!dd.fmt);
       const gSum = chosen.reduce((t,g)=>t+(+g.part.price||0)*g.qty,0);
       raw.push(at({
         isPropLine:false, own:0, price:gRolled?gSum:0, rolled:gRolled,
@@ -6269,7 +6290,7 @@ function buildItemRows(forceTop, wantOptional){
         node:{ m:fstep, root:fstep, depth:0, trail:[],
                o:{ id:"__genhdr", name:"General format parts", isFormatLine:true,
                    optional:want!=="in", alt:want==="alt",
-                   rollup:!!gf.rollup, optRollup:!!gf.optRollup } }
+                   rollup:withTicks(gf.rollup, dd&&!dd.fmt), optRollup:withTicks(gf.optRollup, dd&&!dd.fmt) } }
       }));
       if(gRolled) chosen.length=0;
       for(const g of chosen){
@@ -6610,7 +6631,7 @@ let shareAddBefore=null;
 function shareBlockPrices(){
   const m={};
   try{
-    const rows=buildPriceRows(priceDetail==="top");
+    const rows=buildPriceRows(docDetail());
     const frac=discountFraction(priceRowsTotal(rows)-serviceRowsTotal(rows));
     shareStepBlocks(frac).forEach(b=>{ if(b.step&&b.step.id) m[b.step.id]=+b.price||0; });
   }catch(err){}
@@ -6885,7 +6906,7 @@ function priceRowHtml(r, actPrefix){
     : o.isDiff ? `<span class="${(+r.price||0)<0?"down":"up"}">${diffAmount(r.price)}</span>`
     : (r.price ? fmt(r.price) : (o.isFormatLine ? "" : "—"));
   const altTxt = hasAltCur() ? `<div class="pval alt">${(r.hide||o.priceText)?"":(r.price?fmtAlt(r.price):"—")}</div>` : "";
-  const rollupOn = actPrefix==="opt" ? !!o.optRollup : !!o.rollup;
+  const rollupOn = !!r.rolled;      // what the row is showing now, whether a hand or a tick decided it
   const toggles = (!o.isPropLine && (canHide || top)) ? `<div class="ptoggles${(r.hide||rollupOn)?" sticky":""}">
       ${canHide?`<button class="pbtn ${r.hide?"active":""}" data-oid="${esc(o.id)}" data-act="${actPrefix}hideprice">${r.hide?"Show price":"Hide price"}</button>`:""}
       ${top?`<button class="pbtn ${rollupOn?"active":""}" data-oid="${esc(o.id)}" data-act="${actPrefix}rollup">${rollupOn?"Show all levels":"Only show top price"}</button>`:""}
@@ -6917,6 +6938,7 @@ function priceRowHtml(r, actPrefix){
       /* the screen the salesperson works on: the link and the PDF have their
          own property tables and a list of lines under every row would say it twice */
       if(shareMode || document.body.classList.contains("print-all")) return "";
+      if(!detailLevels.props) return "";
       if(o.isPropLine || r.rolled || r.hide) return "";
       const k=r.disc?1-r.disc:1;
       const lines=propPricedLines(o);
@@ -7536,8 +7558,9 @@ function wirePriceToggles(container){
       const oid=btn.dataset.oid||"";
       if(oid.startsWith("__prd_")||oid==="__genhdr"){
         const key = act.startsWith("opt")?"optRollup":"rollup";
-        if(oid==="__genhdr"){ const f=rollFlags("__genhdr"); f[key]=!f[key]; }
-        else { const pr=formatProducts().find(x=>("__prd_"+x.id)===oid); if(pr) pr[key]=!pr[key]; }
+        const dd=docDetail(), def=dd?!dd.fmt:false;
+        if(oid==="__genhdr"){ const f=rollFlags("__genhdr"); f[key]=!rollDefault(f[key], def); }
+        else { const pr=formatProducts().find(x=>("__prd_"+x.id)===oid); if(pr) pr[key]=!rollDefault(pr[key], def); }
         refreshView();
         return;
       }
@@ -7545,21 +7568,18 @@ function wirePriceToggles(container){
       if(!o) return;
       switch(act){
         case "hideprice": o.hidePrice=!o.hidePrice; break;
-        case "rollup": o.rollup=!o.rollup; break;
+        case "rollup": o.rollup=!rollDefault(o.rollup, docDetail()&&docDetail().top); break;
         case "opthideprice": o.optHidePrice=!o.optHidePrice; break;
-        case "optrollup": o.optRollup=!o.optRollup; break;
+        case "optrollup": o.optRollup=!rollDefault(o.optRollup, docDetail()&&docDetail().top); break;
       }
       refreshView();
     };
   });
 }
 function wireDetailToggle(el, onChange){
-  el.querySelectorAll("button").forEach(b=>{
-    b.onclick=()=>{
-      priceDetail=b.dataset.v;
-      document.querySelectorAll(".detail-toggle button").forEach(x=>x.classList.toggle("on",x.dataset.v===priceDetail));
-      onChange();
-    };
+  el.querySelectorAll("input[data-lv]").forEach(c=>{
+    c.checked=!!detailLevels[c.dataset.lv];
+    c.onchange=()=>{ detailLevels[c.dataset.lv]=c.checked; onChange(); };
   });
 }
 
@@ -12636,7 +12656,7 @@ function scaleRows(rows, f){
    pulled out so the customer link's sticky total card can show it without
    re-rendering the whole proposal just to read one number back out */
 function investmentGrandTotal(){
-  const inScopeRows=buildPriceRows(priceDetail==="top");
+  const inScopeRows=buildPriceRows(docDetail());
   const subtotal=priceRowsTotal(inScopeRows);
   const svcTotal=serviceRowsTotal(inScopeRows);
   const disc=discountAmount(subtotal-svcTotal);
@@ -12652,8 +12672,8 @@ function proposalHtml(opts){
      the in-scope items or the optional ones — so no post-filtering here.
      Optional items never touch this total; their own Hide price folds a
      figure into the optional row above it, never into the grand total. */
-  const inScopeRows=buildPriceRows(priceDetail==="top");
-  const optRowsAll=buildOptionalRows(priceDetail==="top");
+  const inScopeRows=buildPriceRows(docDetail());
+  const optRowsAll=buildOptionalRows(docDetail());
   if(!inScopeRows.length && !optRowsAll.length)
     return '<h2>Investment proposal</h2><div class="docempty">Nothing configured yet — go to Configure and make some selections first.</div>';
   const subtotal = priceRowsTotal(inScopeRows);
@@ -18836,7 +18856,7 @@ function shareSummaryCardHtml(frac){
   const blocks=shareStepBlocks(frac);
   const grand=investmentGrandTotal();
   const t=activeTemplate();
-  const svcTotal=serviceRowsTotal(buildPriceRows(priceDetail==="top"));
+  const svcTotal=serviceRowsTotal(buildPriceRows(docDetail()));
   /* What the customer added himself, on a line of its own. It was folded
      into the machine it bolts onto — "Applicator HSSA2000 $117,064.43,
      incl. Sleeve ejector" — so the one figure he had just changed was the
@@ -18983,12 +19003,12 @@ function shareWithSummaryHtml(main, frac){
    body; the sticky summary is furniture the link puts next to it, and paper
    has no use for a column that follows you down the page. */
 function shareOptionalBody(){
-  const rows=buildPriceRows(priceDetail==="top");
+  const rows=buildPriceRows(docDetail());
   const frac=discountFraction(priceRowsTotal(rows)-serviceRowsTotal(rows));
   return shareUpgradeCardsHtml(frac, shareStepBlocks(frac)) + sharePropTablesHtml(frac);
 }
 function shareAlternativesBody(){
-  const rows=buildPriceRows(priceDetail==="top");
+  const rows=buildPriceRows(docDetail());
   const frac=discountFraction(priceRowsTotal(rows)-serviceRowsTotal(rows));
   return shareAltCardsHtml(frac, shareStepBlocks(frac));
 }
@@ -19095,14 +19115,14 @@ function shareAltGroupHtml(c, frac){
 /* the discount everything on these pages is priced at, worked out the same
    way wherever it is needed */
 function shareFracNow(){
-  const rows=buildPriceRows(priceDetail==="top");
+  const rows=buildPriceRows(docDetail());
   return discountFraction(priceRowsTotal(rows)-serviceRowsTotal(rows));
 }
 /* the page, and the page without the column that follows the reader down it:
    the chapter is the body, the summary is furniture the link puts beside it */
 function shareProposalBody(){
-  const inScopeRows=buildPriceRows(priceDetail==="top");
-  const optRowsAll=buildOptionalRows(priceDetail==="top");
+  const inScopeRows=buildPriceRows(docDetail());
+  const optRowsAll=buildOptionalRows(docDetail());
   if(!inScopeRows.length && !optRowsAll.length)
     return '<div class="docempty">Nothing configured yet.</div>';
   const subtotal=priceRowsTotal(inScopeRows);
@@ -19758,6 +19778,7 @@ async function boot(){
      screen — it only exposes a hook the renderer calls once with the
      quote+catalogue to draw, then flags itself ready for page.pdf() */
   if(params.get("render")==="1"){
+    renderModeOn=true;
     window.__cpqRenderReady=false;
     window.__cpqRenderQuote=async function(payload){
       quoteDocOverride=payload.versionAt||null;
