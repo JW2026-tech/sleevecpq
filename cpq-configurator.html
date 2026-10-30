@@ -283,7 +283,7 @@
   .asidetotals .meta{margin-top:3px;font-size:10.5px}
   aside h3{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--txt-faint);margin:0}
   .aside-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
-  .detail-pick{display:flex;gap:12px;align-items:center;font-size:12px;color:var(--txt-dim)}
+  .detail-pick{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:8px 0 12px;font-size:12px;color:var(--txt-dim)}
   .detail-pick label{display:flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap}
   .detail-pick .dplabel{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-faint)}
   .detail-toggle{display:flex;background:var(--track);border:1px solid var(--line);border-radius:7px;padding:2px}
@@ -2955,13 +2955,6 @@
   <div class="docs-bar">
     <div class="doctabs" id="doctabs"></div>
     <span class="spacer"></span>
-    <div class="detail-pick" id="detailToggleDoc" title="What to write out under the top level. Rows you have opened or folded by hand stay as you left them.">
-      <span class="dplabel">Show</span>
-      <label><input type="checkbox" checked disabled> Top level</label>
-      <label><input type="checkbox" data-lv="items"> Items</label>
-      <label><input type="checkbox" data-lv="props"> Properties</label>
-      <label><input type="checkbox" data-lv="parts"> Format parts</label>
-    </div>
     <!-- Sharing, PDF and email used to sit here as well as in the quote bar
          — the same three actions twice on one screen. They now live only in
          the header, where they are reachable from every tab. These two stay
@@ -12666,6 +12659,15 @@ function investmentGrandTotal(){
    alternatives sections — used by the customer link, which shows those two
    as card grids of their own above the itemised list (see
    shareProposalBody()) and would otherwise say everything twice. */
+function detailPickHtml(){
+  return `<div class="detail-pick no-print" id="detailToggleDoc" title="What to write out under the top level. Rows you have opened or folded by hand stay as you left them.">
+      <span class="dplabel">Show</span>
+      <label><input type="checkbox" checked disabled> Top level</label>
+      <label><input type="checkbox" data-lv="items"> Items</label>
+      <label><input type="checkbox" data-lv="props"> Properties</label>
+      <label><input type="checkbox" data-lv="parts"> Format parts</label>
+    </div>`;
+}
 function proposalHtml(opts){
   const o_=opts||{};
   /* the two lists are now split at source — buildItemRows() emits either
@@ -12713,7 +12715,8 @@ function proposalHtml(opts){
     ? `<div class="fxnote">${esc(t.altCur.note)}</div>` : "";
   return `${openStepsHtml()}${o_.skipHeader?"":`<h2>Investment proposal</h2>
     <div class="docsub">${esc(CONFIG.model||"")}</div>
-    <div class="docmeta">Generated ${new Date().toLocaleDateString()}</div>`}
+    <div class="docmeta">Generated ${new Date().toLocaleDateString()}</div>
+    ${detailPickHtml()}`}
     ${colHead}
     ${equipRows.length
       ? proposalItemsHtml(equipRows, [], frac)
@@ -12870,12 +12873,12 @@ function renderDocsCore(){
   tabsEl.innerHTML=DOC_TABS.map(t=>
     `<button class="doctab ${t.id===docsTab?"on":""}" data-tab="${t.id}">${esc(t.label)}</button>`).join("");
   tabsEl.querySelectorAll(".doctab").forEach(b=>b.onclick=()=>{ docsTab=b.dataset.tab; saveSoon(); renderDocs(); });
-  document.getElementById("detailToggleDoc").classList.toggle("hidden",docsTab!=="proposal");
 
   const meta=DOC_TABS.find(t=>t.id===docsTab);
   if(docsTab==="customer"){ renderCustomer(el); return; }
   if(docsTab==="scope"){ el.innerHTML=scopeHtml(); wireOpenWarn(el); return; }
-  if(docsTab==="proposal"){ el.innerHTML=proposalHtml(); wirePriceToggles(el); wireOpenWarn(el); wireDiscount(el); return; }
+  if(docsTab==="proposal"){ el.innerHTML=proposalHtml(); wirePriceToggles(el); wireOpenWarn(el); wireDiscount(el);
+    const dp=el.querySelector("#detailToggleDoc"); if(dp) wireDetailToggle(dp, renderDocs); return; }
   if(docsTab==="commercial"){ seedCommercial(); el.innerHTML=commercialPageHtml(); wireCommercialTerms(el); return; }
   if(docsTab==="terms"){ renderTerms(el); return; }
   if(docsTab==="products"){ renderProductSpecs(el); return; }
@@ -13472,7 +13475,6 @@ window.addEventListener("afterprint",()=>{
   document.getElementById("allDocsBody").innerHTML="";
 });
 document.getElementById("btnPrint").onclick=()=>window.print();
-wireDetailToggle(document.getElementById("detailToggleDoc"), renderDocs);
 
 /* Light / dark. Everything is driven by the CSS custom properties on
    <html data-theme>, so flipping the attribute is the whole switch — no
