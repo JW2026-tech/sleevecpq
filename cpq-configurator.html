@@ -303,6 +303,8 @@
   .hdrtpl select{background:var(--panel-2);border:1px solid var(--line-strong);color:var(--txt);
     border-radius:8px;padding:6px 12px;font-size:15px;font-weight:600;outline:0;cursor:pointer;
     max-width:260px}
+  .hdrtplrow{display:flex;gap:6px;align-items:center}
+  .hdrtpl select#docLangSelect{max-width:110px}
   .hdrtpl select:hover{border-color:var(--accent)}
   .hdrtpl select:focus{border-color:var(--accent)}
   .hdrtpl .tplnote{font-size:10.5px;color:var(--txt-faint);margin:0;padding-left:2px;
@@ -2813,7 +2815,10 @@
        something nobody has to see. It belongs at the top, where it is
        true on every screen and visible while you work. -->
   <span class="hdrtpl" id="hdrTpl">
-    <select id="langSelect" title="Switches the whole quote: letterhead, currency, number format, delivery terms and terms &amp; conditions"></select>
+    <span class="hdrtplrow">
+      <select id="langSelect" title="Switches the whole quote: letterhead, currency, number format, delivery terms and terms &amp; conditions"></select>
+      <select id="docLangSelect" title="The language the customer reads: the page behind his link and the PDF"></select>
+    </span>
     <span class="tplnote" id="tplNote"></span>
   </span>
   <span class="sub" id="modelName"></span>
@@ -11962,7 +11967,7 @@ function renderCustomer(el){
   const qn=el.querySelector("#qNumDoc");
   if(qn) qn.oninput=()=>{ CONFIG.quoteNumber=qn.value; renderQuoteBar(); saveSoon(); };
   const ql=el.querySelector("#qLang");
-  if(ql) ql.onchange=()=>{ CONFIG.quoteLang=(ql.value==="es")?"es":"en"; if(CONFIG.quoteLang==="en") delete CONFIG.quoteLang; saveSoon(); renderDocs(); };
+  if(ql) ql.onchange=()=>{ CONFIG.quoteLang=(ql.value==="es")?"es":"en"; if(CONFIG.quoteLang==="en") delete CONFIG.quoteLang; saveSoon(); renderTemplatePicker(); renderDocs(); };
   el.querySelectorAll("[data-cf]").forEach(inp=>{
     inp.oninput=()=>{ c[inp.dataset.cf]=inp.value; if(inp.dataset.cf==="company") CONFIG.customer=inp.value; };
     if(inp.dataset.cf==="oemDiscount") inp.onchange=()=>{ applyOemDiscount(); renderDocs(); };
@@ -15700,6 +15705,17 @@ function renderTemplatePicker(){
   /* a full re-render: the template drives every price on the screen */
   sel.onchange=()=>{ docLang=sel.value; renderTemplatePicker(); refreshView();
                      if(mode==="configure") renderConfigure(); saveSoon(); };
+  /* the language the customer reads, beside the template that sets the rest */
+  const ls=document.getElementById("docLangSelect");
+  if(ls){
+    ls.innerHTML=DOC_LANGS.map(l=>`<option value="${l.id}" ${docLanguage()===l.id?"selected":""}>${l.label}</option>`).join("");
+    ls.onchange=()=>{
+      CONFIG.quoteLang=(ls.value==="es")?"es":"en"; if(CONFIG.quoteLang==="en") delete CONFIG.quoteLang;
+      saveSoon(); refreshView();
+      if(mode==="configure") renderConfigure();
+      if(mode==="docs") renderDocs();
+    };
+  }
   const tpl=activeTemplate(), note=document.getElementById("tplNote");
   if(note) note.innerHTML=`${esc(tpl.entity||"")} &middot; ${esc(tpl.currency||"")}${
     tpl.altCur?" + "+esc(tpl.altCur.currency):""} &middot; ${tpl.numFmt==="us"?"1,234.56":"1.234,56"}`;
