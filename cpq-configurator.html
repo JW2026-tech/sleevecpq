@@ -11970,6 +11970,7 @@ function applyCatalogueLanguage(lang){
     }
     /* a text this item has no Spanish for, but the newest catalogue has: the pair is found by the English text */
     if(pairs) for(const k of Object.keys(v)){
+      if(!esTextField(k)) continue;              // only words the reader sees, never an id or a key
       if(typeof v[k]!=="string" || (tr && typeof tr[k]==="string" && tr[k].trim())) continue;
       const hit=pairs[v[k].trim()];
       if(typeof hit==="string" && hit.trim()){ const was=v[k]; undo.push(()=>{ v[k]=was; }); v[k]=hit; }
@@ -11986,6 +11987,8 @@ function applyCatalogueLanguage(lang){
    the English text and its Spanish, for the texts this quote's catalogue actually holds. It is kept
    in the quote, so the link and the PDF have it too. Prices and everything else stay on the quote's version. */
 let esPairsFor=null;
+let _esTextFields=null;
+const esTextField=k=>(_esTextFields||(_esTextFields=new Set(Object.values(TR_FIELDS).flat()))).has(k);   // TR_FIELDS is defined further down
 async function refreshEsPairs(){
   if(!supa || docLanguage()!=="es") return;
   try{
@@ -12005,7 +12008,7 @@ async function refreshEsPairs(){
       if(!v || typeof v!=="object") return;
       const es=v.i18n && v.i18n.es;
       for(const k of Object.keys(v)){
-        if(typeof v[k]==="string" && !(es && typeof es[k]==="string" && es[k].trim())){ const t=v[k].trim(); if(latest[t]) mine[t]=latest[t]; }
+        if(esTextField(k) && typeof v[k]==="string" && !(es && typeof es[k]==="string" && es[k].trim())){ const t=v[k].trim(); if(latest[t]) mine[t]=latest[t]; }
       }
       for(const k of Object.keys(v)) if(k!=="i18n" && k!=="image" && typeof v[k]==="object") walk(v[k]);
     })(CATALOGUE_KEYS.map(k=>CONFIG[k]));
