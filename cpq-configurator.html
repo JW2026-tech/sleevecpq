@@ -11810,6 +11810,7 @@ const I18N_ES={
   "Packaging":"Embalaje", "Transport":"Transporte",
   /* the optional items and the types */
   "Add upgrade +":"Agregar opci\u00f3n +", "Add upgrade \u00a0+":"Agregar opci\u00f3n +",
+  "Add to quotation +":"A\u00f1adir a la cotizaci\u00f3n +", "Add to quotation \u00a0+":"A\u00f1adir a la cotizaci\u00f3n +",
   "Added to your quotation":"Agregado a su cotizaci\u00f3n", "In your quote \u2014 remove":"En su cotizaci\u00f3n \u2014 quitar",
   "Take this option":"Tomar esta opci\u00f3n", "In the machine \u2014 undo":"En la m\u00e1quina \u2014 deshacer",
   "Optional types":"Tipos opcionales",
@@ -19181,7 +19182,7 @@ function shareUpgradeCardHtml(r, frac){
     ${r.taken?`<div class="sharetaken">${shareCheckIconSvg()}<span>Added to your quotation</span></div>`:""}
     ${r.taken
       ? `<button class="btn sm pbtn takeopt taken no-print" data-untake="${esc(id)}">In your quote — remove</button>`
-      : `<button class="btn sm pbtn takeopt no-print" data-take="${esc(id)}">Add upgrade &nbsp;+</button>`}
+      : `<button class="btn sm pbtn takeopt no-print" data-take="${esc(id)}">Add to quotation &nbsp;+</button>`}
   </div>`;
 }
 /* Only the upgrades that found no home in a product card — normally none.
