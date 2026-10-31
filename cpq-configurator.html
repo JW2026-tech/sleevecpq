@@ -7045,7 +7045,7 @@ function priceRowHtml(r, actPrefix){
   const shareMode=document.body.classList.contains("share-mode");
   const movePriceDown = shareMode && takeBtn;
   /* an optional price already has the discount off it: say so on the line, with what it was */
-  const wasLine = (r.disc && r.disc<1 && r.price && !r.hide && !o.priceText && !o.isDiff && !r.taken && actPrefix==="opt")
+  const wasLine = (r.disc && r.disc<1 && r.price && !r.hide && !o.priceText && !o.isDiff && !r.taken && (actPrefix==="opt" || (nd.depth===0 && !o.isPropLine)))
     ? `<div class="pwas"><s>${fmt(r.price/(1-r.disc))}</s> <span class="pdisc">&minus;${(r.disc*100).toFixed(1)}% discount</span></div>` : "";
   const pvalBlock=`<div class="pval">${priceTxt}${wasLine}</div>${altTxt}`;
   /* folded out, the properties are listed with their prices, so the blue summary of them is not needed */
@@ -11864,6 +11864,8 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^Equipment at list price$/, "Equipos a precio de lista"],
+  [/^— already taken off the prices above$/, "— ya descontado de los precios de arriba"],
   [/^Option properties — already included in the module prices above$/, "Propiedades de opción — ya incluidas en los precios de los módulos de arriba"],
   [/^included in module price$/, "incluido en el precio del módulo"],
   [/^Total option properties — already included in the modules above, not added$/, "Total de propiedades de opción — ya incluidas en los módulos de arriba, no se suman"],
@@ -12859,20 +12861,25 @@ function proposalHtml(opts){
     <div class="docmeta">Generated ${new Date().toLocaleDateString()}</div>`}
     ${colHead}
     ${equipRows.length
-      ? proposalItemsHtml(equipRows, [], frac)
+      ? proposalItemsHtml(scaleRows(equipRows, frac), [], frac)
       : '<div class="docempty">Nothing in scope yet — everything selected so far is optional.</div>'}
     ${propSummaryHtml("in",true)}
     ${discountControlHtml(subtotal, svcTotal)}
     ${(disc && discountSpec().intro.trim())?`<div class="discintro">${esc(discountSpec().intro)}</div>`:""}
-    ${disc?`<div class="pline subtotalrow"><div class="pmain">
-        <div class="ptitle">Subtotal${svcTotal?` <span class="snote">— equipment</span>`:""}</div>
-        <div class="pval">${fmt(base)}</div>
-        ${hasAltCur()?`<div class="pval alt">${fmtAlt(base)}</div>`:""}
+    ${disc?`<div class="pline listrow"><div class="pmain">
+        <div class="ptitle"><span class="snote">Equipment at list price</span></div>
+        <div class="pval"><span class="snote">${fmt(base)}</span></div>
+        ${hasAltCur()?`<div class="pval alt"><span class="snote">${fmtAlt(base)}</span></div>`:""}
       </div></div>
       <div class="pline discountrow"><div class="pmain">
-        <div class="ptitle">${discountLabel(base)}</div>
+        <div class="ptitle">${discountLabel(base)} <span class="snote">— already taken off the prices above</span></div>
         <div class="pval">− ${fmt(disc)}</div>
         ${hasAltCur()?`<div class="pval alt">− ${fmtAlt(disc)}</div>`:""}
+      </div></div>
+      <div class="pline subtotalrow"><div class="pmain">
+        <div class="ptitle">Subtotal${svcTotal?` <span class="snote">— equipment</span>`:""}</div>
+        <div class="pval">${fmt(base-disc)}</div>
+        ${hasAltCur()?`<div class="pval alt">${fmtAlt(base-disc)}</div>`:""}
       </div></div>`:""}
     ${svcRows.length?`${priceRowsHtml(svcRows,true)}
       ${serviceNote().trim()?`<div class="fineprint svcnote">${esc(serviceNote())}</div>`:""}
