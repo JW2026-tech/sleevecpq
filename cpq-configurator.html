@@ -7127,7 +7127,11 @@ function proposalItemsHtml(inRows, optRows, frac){
   return roots.map(root=>{
     const ins=inBy.get(root)||[], opts=optBy.get(root)||[];
     const tops=ins.filter(r=>!r.isGroup && (r.node.depth||0)===0).length;
-    const head=ins.length ? groupHeadHtml(root, "", false, 0, null, {rows:ins})
+    /* one item in the step: its own line already carries the tick, and when it
+       has the step's name the heading would only say it twice */
+    const top1=tops===1 ? ins.find(r=>!r.isGroup && (r.node.depth||0)===0) : null;
+    const same=top1 && String(top1.node.o.name||"").trim().toLowerCase()===String(root.title||"").trim().toLowerCase();
+    const head=ins.length ? (same ? "" : groupHeadHtml(root, "", false, 0, null, top1 ? {} : {rows:ins}))
              : (!ins.length ? groupHeadHtml(root, "opt", false) : "");
     return `<div class="pcard ${ins.length?cardKind(root,""):"pc-opt"}">
       ${head}
