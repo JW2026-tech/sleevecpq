@@ -11891,6 +11891,7 @@ function buildCatEs(){
     for(const k of Object.keys(v)) if(k!=="i18n" && k!=="image" && typeof v[k]==="object") walk(v[k]);
   };
   for(const k of CATALOGUE_KEYS) walk(CONFIG[k]);
+  if(CONFIG.esPairs && typeof CONFIG.esPairs==="object") for(const [en,es] of Object.entries(CONFIG.esPairs)) if(!m.has(en) && typeof es==="string" && es.trim()) m.set(en, es);
   return m;
 }
 function catEsLookup(t){
@@ -11926,7 +11927,8 @@ function translateNode(root){
   if(!root) return;
   const walker=document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT, {
     acceptNode(n){
-      if(n.nodeType===1 && (DOC_TR_SKIP.has(n.tagName) || (n.classList && n.classList.contains("no-print")))) return NodeFilter.FILTER_REJECT;
+      /* controls on the salesperson's own screen stay as they are; on the customer's link they are his */
+      if(n.nodeType===1 && (DOC_TR_SKIP.has(n.tagName) || (n.classList && n.classList.contains("no-print") && !inShareMode()))) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     }});
   let n;
@@ -11947,12 +11949,19 @@ function applyCatalogueLanguage(lang){
   const undo=[];
   _catEs=null; if(lang && lang!=="en") _catEs=buildCatEs();
   if(!lang || lang==="en") return ()=>{};
+  const pairs=(lang==="es" && CONFIG.esPairs && typeof CONFIG.esPairs==="object") ? CONFIG.esPairs : null;
   const walk=v=>{
     if(Array.isArray(v)){ v.forEach(walk); return; }
     if(!v || typeof v!=="object") return;
     const tr=v.i18n && v.i18n[lang];
     if(tr) for(const k of Object.keys(tr)){
       if(typeof tr[k]==="string" && tr[k].trim() && v[k]!==undefined){ const was=v[k]; undo.push(()=>{ v[k]=was; }); v[k]=tr[k]; }
+    }
+    /* a text this item has no Spanish for, but the newest catalogue has: the pair is found by the English text */
+    if(pairs) for(const k of Object.keys(v)){
+      if(typeof v[k]!=="string" || (tr && typeof tr[k]==="string" && tr[k].trim())) continue;
+      const hit=pairs[v[k].trim()];
+      if(typeof hit==="string" && hit.trim()){ const was=v[k]; undo.push(()=>{ v[k]=was; }); v[k]=hit; }
     }
     for(const k of Object.keys(v)) if(k!=="i18n" && k!=="image" && typeof v[k]==="object") walk(v[k]);
   };
@@ -11961,6 +11970,41 @@ function applyCatalogueLanguage(lang){
 }
 /* run something with the document language on: the catalogue overlay while it
    runs, then the labels over what it wrote */
+/* A quote stays on the catalogue version it was written on, and a version made before the Spanish
+   texts existed has none. So the Spanish is taken from the newest published version, as pairs of
+   the English text and its Spanish, for the texts this quote's catalogue actually holds. It is kept
+   in the quote, so the link and the PDF have it too. Prices and everything else stay on the quote's version. */
+let esPairsFor=null;
+async function refreshEsPairs(){
+  if(!supa || docLanguage()!=="es") return;
+  try{
+    const {data}=await supa.from("catalogue_versions").select("data,version").order("version",{ascending:false}).limit(1).single();
+    if(!data || !data.data || esPairsFor===data.version+"|"+(CONFIG.quoteNumber||"")) return;
+    const latest={};                                                       // English text -> Spanish, newest version
+    (function walk(v){
+      if(Array.isArray(v)){ v.forEach(walk); return; }
+      if(!v || typeof v!=="object") return;
+      const es=v.i18n && v.i18n.es;
+      if(es) for(const k of Object.keys(es)) if(typeof v[k]==="string" && typeof es[k]==="string" && v[k].trim() && es[k].trim()) latest[v[k].trim()]=es[k];
+      for(const k of Object.keys(v)) if(k!=="i18n" && k!=="image" && typeof v[k]==="object") walk(v[k]);
+    })(CATALOGUE_KEYS.map(k=>data.data[k]));
+    const mine={};                                                         // only the texts this quote's own catalogue lacks Spanish for
+    (function walk(v){
+      if(Array.isArray(v)){ v.forEach(walk); return; }
+      if(!v || typeof v!=="object") return;
+      const es=v.i18n && v.i18n.es;
+      for(const k of Object.keys(v)){
+        if(typeof v[k]==="string" && !(es && typeof es[k]==="string" && es[k].trim())){ const t=v[k].trim(); if(latest[t]) mine[t]=latest[t]; }
+      }
+      for(const k of Object.keys(v)) if(k!=="i18n" && k!=="image" && typeof v[k]==="object") walk(v[k]);
+    })(CATALOGUE_KEYS.map(k=>CONFIG[k]));
+    esPairsFor=data.version+"|"+(CONFIG.quoteNumber||"");
+    if(JSON.stringify(mine)===JSON.stringify(CONFIG.esPairs||{})) return;
+    if(Object.keys(mine).length) CONFIG.esPairs=mine; else delete CONFIG.esPairs;
+    _catEs=null; saveSoon();
+    if(mode==="docs") renderDocs();
+  }catch(err){ /* offline: the quote keeps what it had */ }
+}
 function inDocLanguage(fn, lang){
   const l=lang||docLanguage();
   if(l!=="es") return fn();
@@ -12132,7 +12176,7 @@ function renderCustomer(el){
   const qn=el.querySelector("#qNumDoc");
   if(qn) qn.oninput=()=>{ CONFIG.quoteNumber=qn.value; renderQuoteBar(); saveSoon(); };
   const ql=el.querySelector("#qLang");
-  if(ql) ql.onchange=()=>{ CONFIG.quoteLang=(ql.value==="es")?"es":"en"; if(CONFIG.quoteLang==="en") delete CONFIG.quoteLang; saveSoon(); renderTemplatePicker(); renderDocs(); };
+  if(ql) ql.onchange=()=>{ CONFIG.quoteLang=(ql.value==="es")?"es":"en"; if(CONFIG.quoteLang==="en") delete CONFIG.quoteLang; saveSoon(); renderTemplatePicker(); renderDocs(); refreshEsPairs(); };
   el.querySelectorAll("[data-cf]").forEach(inp=>{
     inp.oninput=()=>{ c[inp.dataset.cf]=inp.value; if(inp.dataset.cf==="company") CONFIG.customer=inp.value; };
     if(inp.dataset.cf==="oemDiscount") inp.onchange=()=>{ applyOemDiscount(); renderDocs(); };
@@ -13030,18 +13074,20 @@ function renderDocsCore(){
   if(docsTab==="products"){ renderProductSpecs(el); return; }
   if(docsTab==="machine"){ renderMachineSpecs(el); return; }
 
-  /* free-text tab: a contenteditable panel backed by CONFIG.docs[id] */
+  /* free-text tab: a contenteditable panel backed by CONFIG.docs[id]; the memo of a Spanish quotation is its own text, under "memo~es" */
   CONFIG.docs=CONFIG.docs||{};
-  const val=CONFIG.docs[docsTab]||"";
-  el.innerHTML=`<h2>${esc(meta.label)}</h2>
-    <div class="docsub">Type or paste text, tables, images — format it like a Word document with the toolbar below. Saved with the configuration.</div>
+  const memoEs=(docsTab==="memo" && docLanguage()==="es");
+  const key=memoEs?"memo~es":docsTab;
+  const val=CONFIG.docs[key]||"";
+  el.innerHTML=`<h2>${esc(meta.label)}${memoEs?" (Spanish)":""}</h2>
+    <div class="docsub">${memoEs?"This quotation is in Spanish, so the customer reads this text. Left empty, he reads the English memo.":"Type or paste text, tables, images — format it like a Word document with the toolbar below. Saved with the configuration."}</div>
     ${richToolbarHtml()}
     <div class="freetext" contenteditable="true" data-key="${docsTab}">${val||`<p class="ph">Nothing here yet — click to add ${esc(meta.label.toLowerCase())}…</p>`}</div>`;
   const ft=el.querySelector(".freetext");
   wireRichText(ft, el.querySelector(".rtbar"));
   ft.addEventListener("focus",()=>{ if(ft.querySelector(".ph")) ft.innerHTML=""; });
-  ft.addEventListener("input",()=>{ CONFIG.docs[docsTab]=ft.innerHTML; });
-  ft.addEventListener("blur",()=>{ if(!ft.textContent.trim()){ CONFIG.docs[docsTab]=""; renderDocs(); } });
+  ft.addEventListener("input",()=>{ CONFIG.docs[key]=ft.innerHTML; });
+  ft.addEventListener("blur",()=>{ if(!ft.textContent.trim()){ CONFIG.docs[key]=""; renderDocs(); } });
 }
 
 /* Terms & Conditions shows one text block per language/country. Which
@@ -13590,6 +13636,12 @@ function termsChapterHtml(no){
   return `<h3 class="termshead">General terms and conditions</h3>
     <div class="freetext termstext">${renumberedTerms(no?no+".":"")}</div>`;
 }
+/* the header memo: the Spanish text when the quotation is in Spanish and has one, otherwise the English */
+function memoText(){
+  const d=CONFIG.docs||{};
+  if(docLanguage()==="es" && String(d["memo~es"]||"").replace(/<[^>]*>/g,"").trim()) return String(d["memo~es"]).trim();
+  return String(d.memo||"").trim();
+}
 function buildAllDocsHtml(){
   allDocsBuilding=true;                  // the printed documents: what the customer gets
   try{ return docLanguage()==="es" ? inDocLanguage(()=>translateHtml(buildAllDocsHtmlCore())) : buildAllDocsHtmlCore(); }
@@ -13598,7 +13650,7 @@ function buildAllDocsHtml(){
 function buildAllDocsHtmlCore(){
   ensureLanguages();
   ensureSpecs();
-  const memo=(CONFIG.docs&&CONFIG.docs.memo||"").trim();
+  const memo=memoText();
   /* front matter — who it is for, who we are, anything written for this one
      quotation — and then the chapters, numbered by their place in the list */
   const bodies=[
@@ -13866,7 +13918,7 @@ function importJsonFile(file){
    a reload — got prices pointing at classes that were not there, and every
    part quietly fell back to the type's own price. */
 const CATALOGUE_KEYS=["modules","templates","languages","props","parts","partClasses","formatQs","specFields","termsDefaults","folderPaths","service","electrical","commercial"];
-const QUOTE_KEYS=["model","currency","quoteNumber","customer","customerInfo","validity","docs","specColumns","specValues","sharedBase","discount","quoteLang"];
+const QUOTE_KEYS=["esPairs","model","currency","quoteNumber","customer","customerInfo","validity","docs","specColumns","specValues","sharedBase","discount","quoteLang"];
 function pickKeys(src, keys){
   const out={};
   for(const k of keys) if(src && src[k]!==undefined) out[k]=clone(src[k]);
@@ -15883,7 +15935,7 @@ function renderTemplatePicker(){
     ls.innerHTML=DOC_LANGS.map(l=>`<option value="${l.id}" ${docLanguage()===l.id?"selected":""}>${l.label}</option>`).join("");
     ls.onchange=()=>{
       CONFIG.quoteLang=(ls.value==="es")?"es":"en"; if(CONFIG.quoteLang==="en") delete CONFIG.quoteLang;
-      saveSoon(); refreshView();
+      saveSoon(); refreshView(); refreshEsPairs();
       if(mode==="configure") renderConfigure();
       if(mode==="docs") renderDocs();
     };
@@ -16209,6 +16261,7 @@ function applyScopeFlags(map){
 function applyQuote(d){
   if(!d || !d.quote) return false;
   quoteOwnCat=d.ownCatalogue||null;
+  delete CONFIG.quoteLang; delete CONFIG.esPairs;     // what the previous quote left behind is not this quote's
   for(const k of QUOTE_KEYS) if(d.quote[k]!==undefined) CONFIG[k]=clone(d.quote[k]);
   state=d.state||{};
   docLang=d.docLang||null;
@@ -16797,6 +16850,7 @@ async function cloudOpenQuoteNow(id){
      that, the row knows when it was created. */
   quoteCreatedAt=(data.data&&data.data.createdAt)||data.created_at||null;
   if(!applyAnyFile(data.data)) return false;
+  setTimeout(refreshEsPairs, 0);        // Spanish quotes on an older catalogue: take the Spanish from the newest
   /* after the quote, not before: applying it normalises the catalogue
      (ensureParts, ensureProps, seeded defaults), and taking the baseline
      first made the bar report unpublished edits nobody had made */
@@ -16912,6 +16966,7 @@ function clearQuoteSide(){
   /* discount has no entry in DEFAULT_CONFIG — discountSpec() builds it on
      first use, so dropping it is how you get a clean one */
   delete CONFIG.discount;
+  delete CONFIG.quoteLang; delete CONFIG.esPairs;
   delete CONFIG.customerInfo;
   delete CONFIG.specColumns; delete CONFIG.specValues;
   ensureCustomer(); ensureSpecs();
@@ -18968,7 +19023,7 @@ function shareHeroCardHtml(block, first, frac){
           <div class="sharebaselbl">${esc(o.name||"")} — investment</div>
           <div class="sharebaseprice">${blockBase?fmt(blockBase):"—"}</div>
           ${(block.also||[]).length?`<div class="sharebaseincl">${
-            block.also.map(o=>esc(o.name||"")).join(" &middot; ")}</div>`:""}
+            block.also.map(o=>esc(docLanguage()==="es" ? trEs(o.name||"") : (o.name||""))).join(" &middot; ")}</div>`:""}
           ${/* the amount, not the list: which options he chose is the whole
                of the Optional items page, and repeating them here under every
                machine put the same grey sentence on three cards */""}
@@ -19395,7 +19450,7 @@ function shareLetterheadHtml(inner, pageTitle){
 function shareDocSections(){ return docLanguage()==="es" ? inDocLanguage(()=>shareDocSectionsCore().map(x=>Object.assign({}, x, {html:translateHtml(x.html), nav:trEs(x.nav)}))) : shareDocSectionsCore(); }
 function shareDocSectionsCore(){
   ensureLanguages(); ensureSpecs();
-  const memo=(CONFIG.docs&&CONFIG.docs.memo||"").trim();
+  const memo=memoText();
   return [
     {id:"cover", nav:"Cover", html: shareCoverHtml(), bare:true},
     memo && {id:"memo", nav:"Note", html: memo, ownTitle:false},
