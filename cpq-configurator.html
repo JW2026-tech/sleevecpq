@@ -290,6 +290,8 @@
   .pline.is-gone .ptitle,.pline.is-gone .pval{opacity:.45}
   .pline.is-gone .pval{text-decoration:line-through}
   @media print{ .pline.is-gone{display:none} }
+  .lcheck.vast{opacity:.55;cursor:default}
+  .pbtn.alles{margin-left:8px;font-weight:400;font-size:10.5px;text-transform:none;letter-spacing:0;vertical-align:middle}
   .gonenote{font-size:10.5px;font-weight:400;color:var(--txt-faint);font-style:italic;margin-left:6px}
   .detail-pick{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:8px 0 12px;font-size:12px;color:var(--txt-dim)}
   .detail-pick label{display:flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap}
@@ -6986,6 +6988,12 @@ function propLineProp(o, i){
   }
   return null;
 }
+const VAST_VINK='<input type="checkbox" class="lcheck vast no-print" checked disabled title="Always in the detailed breakdown of the link and the PDF">';
+function allesKnop(ids, nOn){
+  if(!ids.length) return "";
+  const aan = nOn<ids.length;                  // anything still off: the button turns all on
+  return ` <button type="button" class="pbtn alles no-print" data-lids="${esc(ids.join("|"))}" data-to="${aan?1:0}" title="Every line under this one in or out of the detailed breakdown, at once">${aan?"All below on":"All below off"} <span class="snote">${nOn}/${ids.length}</span></button>`;
+}
 function priceRowHtml(r, actPrefix){
   const nd=r.node, o=nd.o, top=nd.depth===0;
   const canHide = r.canHide===undefined ? true : r.canHide;
@@ -7045,8 +7053,9 @@ function priceRowHtml(r, actPrefix){
   const arrow = onScreen ? (canFold
       ? `<button class="pfold no-print" data-fold="${esc(foldKey(actPrefix,o.id))}" data-open="${open?1:0}" title="Fold open or shut on this screen only — the link and the PDF are not affected">${open?"&#9662;":"&#9656;"}</button>`
       : '<span class="pfold none"></span>') : "";
-  const tick = (onScreen && !r.tickable && nd.depth===0 && (r.subIds||[]).length)
-    ? `<input type="checkbox" class="scheck no-print" data-lids="${esc(r.subIds.join("|"))}" ${r.subOn===r.subIds.length?"checked":""} ${(r.subOn && r.subOn<r.subIds.length)?'data-mixed="1"':""} title="Every line under this one in or out of the detailed breakdown, at once">`
+  const topLine = onScreen && !r.tickable && nd.depth===0 && !r.isPropLine && !o.isPropLine;
+  const allBtn = topLine ? allesKnop(r.subIds||[], r.subOn||0) : "";
+  const tick = topLine ? VAST_VINK
     : (onScreen && r.tickable)
     ? `<input type="checkbox" class="lcheck no-print" data-lid="${esc(o.id)}" ${r.gone?"":"checked"} title="Show this line in the detailed breakdown of the link and the PDF. Left out, its price goes onto the line above.">` : "";
   return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""} ${r.gone?"is-gone":""}" style="padding-left:${nd.depth*18}px">
@@ -7054,7 +7063,7 @@ function priceRowHtml(r, actPrefix){
       <div class="ptitle">${arrow}${tick}<span class="bullet"></span>${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${
         r.taken?' <span class="takenpill">in the quotation</span>':""}${(o.unitPrice && o.qty>1)?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
         :((!o.isPropLine && optQty(o)>1 && +o.price) ? ` <span class="snote">(${fmt(+o.price)} each)</span>`:"")}${o.fmtFor?` <span class="snote">— ${esc(o.fmtFor)}</span>`:""}${
-        shareMode?"":takeBtn}${(!propListHtml && !o.isPropLine && propsMapLabel(r.propsAgg))?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${(r.rolled||r.inclSub)?'<span class="tag rollup">incl. sub-items</span>':""}${r.gone?'<span class="gonenote">not in the breakdown</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
+        shareMode?"":takeBtn}${(!propListHtml && !o.isPropLine && propsMapLabel(r.propsAgg))?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${(r.rolled||r.inclSub)?'<span class="tag rollup">incl. sub-items</span>':""}${r.gone?'<span class="gonenote">not in the breakdown</span>':""}${allBtn}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
       ${movePriceDown?"":pvalBlock}
     </div>
     ${movePriceDown?`<div class="takerow">${pvalBlock}${takeBtn}</div>`:""}
@@ -7079,8 +7088,8 @@ function groupHeadHtml(m, actPrefix, collapsed, price, propsAgg, opts){
   /* the tick on the step turns every line under it on or off at once */
   const lines=(opts && opts.rows && docDetail()) ? opts.rows.filter(r=>!r.isGroup && r.tickable) : [];
   const nOn=lines.filter(r=>!r.gone).length;
-  const stepTick = lines.length
-    ? `<input type="checkbox" class="scheck no-print" data-lids="${esc(lines.map(r=>r.node.o.id).join("|"))}" ${nOn===lines.length?"checked":""} ${(nOn && nOn<lines.length)?"data-mixed=\"1\"":""} title="Every line under this step in or out of the detailed breakdown, at once">` : "";
+  const stepTick = lines.length ? VAST_VINK : "";
+  const stepBtn = lines.length ? allesKnop(lines.map(r=>r.node.o.id), nOn) : "";
   /* a collapsed group stands in for its items, so it carries their
      property counts — otherwise collapsing would quietly drop them */
   const props = collapsed && propsMapLabel(propsAgg)
@@ -7095,7 +7104,7 @@ function groupHeadHtml(m, actPrefix, collapsed, price, propsAgg, opts){
       <div class="ghtitle">${stepTick}${esc((()=>{
         const names=collapsed?groupItemNames(m, actPrefix):[];
         return (names.length && names.length<=3) ? names.join(", ") : (m.title||"");
-      })())}${props}</div>
+      })())}${props}${stepBtn}</div>
       <div class="pval">${collapsed?(price?fmt(price):"—"):""}</div>
       ${collapsed&&hasAltCur()?`<div class="pval alt">${price?fmtAlt(price):"—"}</div>`:""}
     </div>
@@ -7652,6 +7661,13 @@ function wirePriceToggles(container){
       saveSoon(); refreshView();
     };
   });
+  container.querySelectorAll("button.alles[data-lids]").forEach(b=>{
+    b.onclick=()=>{
+      const on=b.dataset.to==="1";
+      for(const id of String(b.dataset.lids||"").split("|")) if(id) setLineShown(id, on);
+      saveSoon(); refreshView();
+    };
+  });
   /* the arrow: this screen only */
   container.querySelectorAll("button.pfold[data-fold]").forEach(b=>{
     b.onclick=()=>{ uiFold.set(b.dataset.fold, b.dataset.open!=="1"); refreshView(); };
@@ -7662,7 +7678,7 @@ function wirePriceToggles(container){
        looks for data-oid/data-mid, finds neither, and silently does nothing
        — which is exactly what happened to the type table's "Set all". */
     if(btn.dataset.cmpswap||btn.dataset.take||btn.dataset.untake
-       ||btn.dataset.cmpopttake||btn.dataset.propall) return;
+       ||btn.dataset.cmpopttake||btn.dataset.propall||btn.dataset.lids) return;
     btn.onclick=()=>{
       /* item-level buttons carry data-oid, the step-group heading data-mid */
       const act=btn.dataset.act;
