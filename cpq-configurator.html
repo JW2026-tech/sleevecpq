@@ -6449,6 +6449,13 @@ function buildItemRows(forceTop, wantOptional){
   }
   /* the line that carries what was left out says so */
   for(const r of raw) if(!r.isPropLine && goneIds.has("^"+r.node.o.id)) r.inclSub=true;
+  /* a top-level line's tick: every line under it, to turn on or off at once */
+  { let top=null;
+    for(const r of raw){
+      const d=(r.node&&r.node.depth)||0;
+      if(d===0){ top=r; r.subIds=[]; r.subOn=0; continue; }
+      if(top && r.tickable){ top.subIds.push(r.node.o.id); if(!r.gone) top.subOn++; }
+    } }
   /* which lines have lines under them, for the arrow */
   const parents=new Set(raw.filter(r=>r.parentOid!=null).map(r=>r.parentOid));
   const realParents=new Set(raw.filter(r=>r.parentOid!=null && !r.propLine).map(r=>r.parentOid));
@@ -7038,7 +7045,9 @@ function priceRowHtml(r, actPrefix){
   const arrow = onScreen ? (canFold
       ? `<button class="pfold no-print" data-fold="${esc(foldKey(actPrefix,o.id))}" data-open="${open?1:0}" title="Fold open or shut on this screen only — the link and the PDF are not affected">${open?"&#9662;":"&#9656;"}</button>`
       : '<span class="pfold none"></span>') : "";
-  const tick = (onScreen && r.tickable)
+  const tick = (onScreen && !r.tickable && nd.depth===0 && (r.subIds||[]).length)
+    ? `<input type="checkbox" class="scheck no-print" data-lids="${esc(r.subIds.join("|"))}" ${r.subOn===r.subIds.length?"checked":""} ${(r.subOn && r.subOn<r.subIds.length)?'data-mixed="1"':""} title="Every line under this one in or out of the detailed breakdown, at once">`
+    : (onScreen && r.tickable)
     ? `<input type="checkbox" class="lcheck no-print" data-lid="${esc(o.id)}" ${r.gone?"":"checked"} title="Show this line in the detailed breakdown of the link and the PDF. Left out, its price goes onto the line above.">` : "";
   return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""} ${r.gone?"is-gone":""}" style="padding-left:${nd.depth*18}px">
     <div class="pmain">
