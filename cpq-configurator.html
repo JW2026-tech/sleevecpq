@@ -290,7 +290,6 @@
   .pline.is-gone .ptitle,.pline.is-gone .pval{opacity:.45}
   .pline.is-gone .pval{text-decoration:line-through}
   @media print{ .pline.is-gone{display:none} }
-  .grouphead.is-gone .ghtitle{opacity:.45;text-decoration:line-through}
   .gonenote{font-size:10.5px;font-weight:400;color:var(--txt-faint);font-style:italic;margin-left:6px}
   .detail-pick{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:8px 0 12px;font-size:12px;color:var(--txt-dim)}
   .detail-pick label{display:flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap}
@@ -7068,9 +7067,11 @@ function groupItemNames(m, actPrefix){
       (actPrefix==="opt" ? !!o.optional : (!o.optional && !o.alt))).map(o=>o.name).filter(Boolean);
 }
 function groupHeadHtml(m, actPrefix, collapsed, price, propsAgg, opts){
-  /* the step's name over its card: ticked, it is in the breakdown of the link and the PDF */
-  const tickable=!!(opts && opts.tick) && !!docDetail();
-  const shown=(state.__show||{})["__step_"+m.id]!==false;     // named unless ticked off
+  /* the tick on the step turns every line under it on or off at once */
+  const lines=(opts && opts.rows && docDetail()) ? opts.rows.filter(r=>!r.isGroup && r.tickable) : [];
+  const nOn=lines.filter(r=>!r.gone).length;
+  const stepTick = lines.length
+    ? `<input type="checkbox" class="scheck no-print" data-lids="${esc(lines.map(r=>r.node.o.id).join("|"))}" ${nOn===lines.length?"checked":""} ${(nOn && nOn<lines.length)?"data-mixed=\"1\"":""} title="Every line under this step in or out of the detailed breakdown, at once">` : "";
   /* a collapsed group stands in for its items, so it carries their
      property counts — otherwise collapsing would quietly drop them */
   const props = collapsed && propsMapLabel(propsAgg)
@@ -7080,9 +7081,9 @@ function groupHeadHtml(m, actPrefix, collapsed, price, propsAgg, opts){
      the machines appeared. They have a card of their own at the head of the
      chapter now, with the photograph and the specifications on it, and the
      list underneath is for what things cost. */
-  return `<div class="grouphead ${collapsed?"collapsed":""} ${(tickable&&!shown)?"is-gone":""}">
+  return `<div class="grouphead ${collapsed?"collapsed":""}">
     <div class="ghmain">
-      <div class="ghtitle">${tickable?`<input type="checkbox" class="lcheck no-print" data-lid="__step_${esc(m.id)}" ${shown?"checked":""} title="Show the name of this step in the detailed breakdown of the link and the PDF">`:""}${esc((()=>{
+      <div class="ghtitle">${stepTick}${esc((()=>{
         const names=collapsed?groupItemNames(m, actPrefix):[];
         return (names.length && names.length<=3) ? names.join(", ") : (m.title||"");
       })())}${props}</div>
@@ -7117,8 +7118,7 @@ function proposalItemsHtml(inRows, optRows, frac){
   return roots.map(root=>{
     const ins=inBy.get(root)||[], opts=optBy.get(root)||[];
     const tops=ins.filter(r=>!r.isGroup && (r.node.depth||0)===0).length;
-    const stepShown=(state.__show||{})["__step_"+root.id]!==false;
-    const head=ins.length ? ((stepShown || docDetail()) ? groupHeadHtml(root, "", false, 0, null, {tick:true}) : "")
+    const head=ins.length ? groupHeadHtml(root, "", false, 0, null, {rows:ins})
              : (!ins.length ? groupHeadHtml(root, "opt", false) : "");
     return `<div class="pcard ${ins.length?cardKind(root,""):"pc-opt"}">
       ${head}
@@ -7631,6 +7631,13 @@ function wirePriceToggles(container){
   /* the tick on a line: in the customer's breakdown or not */
   container.querySelectorAll("input.lcheck").forEach(c=>{
     c.onchange=()=>{ setLineShown(c.dataset.lid||"", c.checked); saveSoon(); refreshView(); };
+  });
+  container.querySelectorAll("input.scheck").forEach(c=>{
+    if(c.dataset.mixed) c.indeterminate=true;     // some lines on, some off
+    c.onchange=()=>{
+      for(const id of String(c.dataset.lids||"").split("|")) if(id) setLineShown(id, c.checked);
+      saveSoon(); refreshView();
+    };
   });
   /* the arrow: this screen only */
   container.querySelectorAll("button.pfold[data-fold]").forEach(b=>{
