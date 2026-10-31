@@ -1241,6 +1241,11 @@
   .sharespecval{font-size:13.5px;font-weight:600;color:#222}
   .sharebasebar{display:flex;align-items:center;justify-content:space-between;gap:16px;
     border-top:1px solid #e8e8ee;padding-top:16px;flex-wrap:wrap}
+  .sharebasenet{font-size:11px;color:#1d7a3e;font-weight:600;margin-top:2px}
+  .sharebreakdown{margin-top:48px;padding:6px 22px 22px;background:#f5f6fa;border:1px solid #e3e6f0;border-top:4px solid #1c2563;border-radius:14px}
+  .sharebreakdown .sharebreakhead{margin:14px 0 14px;padding-bottom:10px;border-bottom:1px solid #e3e6f0}
+  .sharebreakdown .sharebreakhead h3{font-size:16px;color:#1c2563}
+  .sharebreakdown .pcard{background:#fff}
   .sharebaselbl{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#888}
   .sharebaseprice{font-size:25px;font-weight:700;color:#EF7B0B}
   .sharebaseincl{font-size:11px;color:#888;margin-top:2px}
@@ -2769,6 +2774,7 @@
     body.print-all .propsum{break-inside:avoid}
     /* and a section title never stands at the foot of a page on its own */
     body.print-all .sharesectionhead{break-after:avoid;break-inside:avoid}
+    body.print-all .sharebreakdown{margin-top:6mm;padding:1mm 4mm 4mm;break-before:page}
     .pxtext{font-size:9pt;color:#28338A;font-style:italic}
     body.print-all .pline.discountrow .ptitle,body.print-all .pline.discountrow .pval{color:#EF7B0B}
     /* The discount used to be a thin line between two others, in the same
@@ -11865,6 +11871,7 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^Net price \u2014 your ([\d.]+)% discount is included$/, "Precio neto \u2014 su descuento del $1% est\u00e1 incluido"],
   [/^All prices are net \u2014 your ([\d.]+)% discount is already included\.$/, "Todos los precios son netos \u2014 su descuento del $1% ya est\u00e1 incluido."],
   [/^Incl\. ([\d.]+)% discount$/, "Incl. descuento del $1%"],
   [/^Equipment at list price$/, "Equipos a precio de lista"],
@@ -19026,6 +19033,7 @@ function shareHeroCardHtml(block, first, frac){
                why. Now both say 118,688.04 and both name the 5,000. */""}
           <div class="sharebaselbl">${esc(o.name||"")} — investment</div>
           <div class="sharebaseprice">${blockBase?fmt(blockBase):"—"}</div>
+          ${(frac && blockBase)?`<div class="sharebasenet">Net price &mdash; your ${(frac*100).toFixed(1)}% discount is included</div>`:""}
           ${(block.also||[]).length?`<div class="sharebaseincl">${
             block.also.map(o=>esc(docLanguage()==="es" ? trEs(o.name||"") : (o.name||""))).join(" &middot; ")}</div>`:""}
           ${/* the amount, not the list: which options he chose is the whole
@@ -19353,11 +19361,13 @@ function shareProposalBody(){
   return `
         <div class="shareheroes">${beforeFmt.map(card).join("")}</div>
         ${fromFmt.length?`<div class="shareheroes shareheroes-after">${fromFmt.map(card).join("")}</div>`:""}
-        <div class="sharesectionhead">
-          <h3>Detailed breakdown</h3>
-          <div class="sharesectionsub">Every item in the scope of this quotation, with its price.</div>
-        </div>
-        ${proposalHtml({skipHeader:true, skipOptional:true, skipAlts:true})}`;
+        <div class="sharebreakdown">
+          <div class="sharesectionhead sharebreakhead">
+            <h3>Detailed breakdown</h3>
+            <div class="sharesectionsub">Every item in the scope of this quotation, with its price.</div>
+          </div>
+          ${proposalHtml({skipHeader:true, skipOptional:true, skipAlts:true})}
+        </div>`;
 }
 /* Which revision of the quotation this link holds. A customer who has had
    two or three versions of the same quote has three documents carrying the
