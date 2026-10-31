@@ -2358,6 +2358,11 @@
   .ps-row.haspic{align-items:center;padding:4px 0}
   .ps-qty{flex:0 0 46px;text-align:right;color:var(--txt-dim);font-variant-numeric:tabular-nums}
   .ps-lbl{flex:1 1 auto;min-width:0}
+  .propsum.incl .ps-inclhead{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;font-weight:600;color:var(--txt-dim);margin-bottom:6px}
+  .propsum.incl .ps-inclcol{font-weight:400;font-style:italic;color:var(--txt-faint);white-space:nowrap}
+  .propsum.incl .ps-amt{color:var(--txt-faint);font-style:italic}
+  .propsum.incl .ps-incltotal{border-top:1px solid var(--line);margin-top:4px;padding-top:6px}
+  .propsum.incl .ps-incltotal .ps-lbl{font-weight:600;color:var(--txt-dim)}
   .ps-amt{flex:0 0 auto;color:var(--txt-dim);font-variant-numeric:tabular-nums}
   .asg-todo{color:var(--warn);font-style:italic;font-size:11.5px}
   .offeredsum{font-size:11.5px;color:var(--warn);margin-right:10px}
@@ -2567,6 +2572,7 @@
     .proplbl{background:none;color:#555;padding:0}
     .propsum{border-top-color:#ddd}
     .propsum .ps-qty,.propsum .ps-lbl,.propsum .ps-amt{color:#111}
+    .propsum.incl .ps-amt,.propsum.incl .ps-inclcol{color:#777}
     .grouphead{border-top-color:#ddd}
     .grouphead .ghtitle{color:#111}
     .grouphead.collapsed{border-bottom-color:#ddd}
@@ -5453,7 +5459,12 @@ function propSummaryHtml(kind, withPrice){
   if(!groups.length) return "";
   const rows=[];
   for(const g of groups) for(const r of g.rows) rows.push({g, r});
-  return `<div class="propsum ${kind}">
+  /* the in-scope types are already inside the prices of the modules above, so the amounts here are
+     for reference: say so above them, grey them, and add a total that is marked as not added */
+  const incl = kind==="in" && withPrice;
+  const inclTotal = incl ? rows.reduce((t,x)=>t+(+x.r.price||0),0) : 0;
+  return `<div class="propsum ${kind}${incl?" incl":""}">
+    ${incl?`<div class="ps-inclhead"><span>Option properties &mdash; already included in the module prices above</span><span class="ps-inclcol">included in module price</span></div>`:""}
     ${rows.map(({g,r})=>`<div class="ps-row ${r.image?"haspic":""}">
       <span class="ps-qty">${r.qty}${g.p.unit?` ${esc(g.p.unit)}`:"&times;"}</span>
       ${r.image?`<img class="ps-pic" src="${r.image}" alt="">`:""}
@@ -5461,6 +5472,7 @@ function propSummaryHtml(kind, withPrice){
         ${r.note?`<span class="ps-note">${esc(r.note)}</span>`:""}</span>
       ${withPrice?`<span class="ps-amt">${r.price?fmt(r.price):"included"}</span>`:""}
     </div>`).join("")}
+    ${(incl && inclTotal)?`<div class="ps-row ps-incltotal"><span class="ps-lbl">Total option properties &mdash; already included in the modules above, not added</span><span class="ps-amt">${fmt(inclTotal)}</span></div>`:""}
   </div>`;
 }
 
@@ -11852,6 +11864,9 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^Option properties — already included in the module prices above$/, "Propiedades de opción — ya incluidas en los precios de los módulos de arriba"],
+  [/^included in module price$/, "incluido en el precio del módulo"],
+  [/^Total option properties — already included in the modules above, not added$/, "Total de propiedades de opción — ya incluidas en los módulos de arriba, no se suman"],
   [/^The prices below already have the ([d.]+)% discount taken off.$/, "Los precios siguientes ya tienen aplicado el descuento de $1%."],
   [/Service & support is not discounted\./, "Los servicios y el soporte no tienen descuento."],
   [/the investment on the previous page, and none of them is counted in it\./, "la inversión de la página anterior, y ninguno está incluido en ella."],
