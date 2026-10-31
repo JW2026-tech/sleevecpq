@@ -283,6 +283,8 @@
   .asidetotals .meta{margin-top:3px;font-size:10.5px}
   aside h3{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--txt-faint);margin:0}
   .aside-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .dpick{display:inline-flex;gap:10px;align-items:center;font-size:11px;color:var(--txt-dim)}
+  .dpick label{display:flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap}
   .detail-pick{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:8px 0 12px;font-size:12px;color:var(--txt-dim)}
   .detail-pick label{display:flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap}
   .detail-pick .dplabel{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-faint)}
@@ -6068,11 +6070,11 @@ const isDone = m => state[m.id]!==undefined;
    he chose; the ticks decide the rows he has not touched.
    The customer's page and the PDF made on the server do not read these: they
    always show every level, as they did when the switch was on "Full". */
-const detailLevels={items:false, props:false, parts:false};
+/* (the global ticks are gone: the choice is made on each card) */
 let renderModeOn=false;
 function docDetail(){
   if(inShareMode() || renderModeOn) return false;
-  return {top:!detailLevels.items, fmt:!!detailLevels.parts};
+  return {top:true, fmt:false};            // an untouched card shows its top level only
 }
 const rollDefault=(flag, def)=>(flag===undefined||flag===null) ? !!def : !!flag;
 
@@ -6900,9 +6902,12 @@ function priceRowHtml(r, actPrefix){
     : (r.price ? fmt(r.price) : (o.isFormatLine ? "" : "—"));
   const altTxt = hasAltCur() ? `<div class="pval alt">${(r.hide||o.priceText)?"":(r.price?fmtAlt(r.price):"—")}</div>` : "";
   const rollupOn = !!r.rolled;      // what the row is showing now, whether a hand or a tick decided it
-  const toggles = (!o.isPropLine && (canHide || top)) ? `<div class="ptoggles${(r.hide||rollupOn)?" sticky":""}">
+  const toggles = (!o.isPropLine && (canHide || top)) ? `<div class="ptoggles${(r.hide||top)?" sticky":""}">
       ${canHide?`<button class="pbtn ${r.hide?"active":""}" data-oid="${esc(o.id)}" data-act="${actPrefix}hideprice">${r.hide?"Show price":"Hide price"}</button>`:""}
-      ${top?`<button class="pbtn ${rollupOn?"active":""}" data-oid="${esc(o.id)}" data-act="${actPrefix}rollup">${rollupOn?"Show all levels":"Only show top price"}</button>`:""}
+      ${top?`<span class="dpick">
+        <label title="Write out the items under this one"><input type="checkbox" class="dcheck" data-oid="${esc(o.id)}" data-act="${actPrefix}rollup" ${rollupOn?"":"checked"}> ${o.isFormatLine?"Parts":"Items"}</label>
+        ${(!o.isFormatLine && !rollupOn)?`<label title="Write out the option properties of each item, with their prices"><input type="checkbox" class="dcheck" data-oid="${esc(o.id)}" data-act="${actPrefix}props" ${(actPrefix==="opt"?o.optShowProps:o.showProps)?"checked":""}> Properties</label>`:""}
+      </span>`:""}
     </div>` : "";
   const breakdown = "";
   /* No photograph and no specification lines here. A top item used to be set
@@ -6931,7 +6936,9 @@ function priceRowHtml(r, actPrefix){
       /* the screen the salesperson works on: the link and the PDF have their
          own property tables and a list of lines under every row would say it twice */
       if(shareMode || document.body.classList.contains("print-all")) return "";
-      if(!detailLevels.props) return "";
+      /* the tick sits on the top row of the card; the rows under it follow it */
+      const topO = nd.depth===0 ? o : (((nd.root&&nd.root.options)||[]).find(x=>x.name===(nd.trail||[])[0]) || o);
+      if(!(actPrefix==="opt" ? topO.optShowProps : topO.showProps)) return "";
       if(o.isPropLine || r.rolled || r.hide) return "";
       const k=r.disc?1-r.disc:1;
       const lines=propPricedLines(o);
@@ -6987,8 +6994,8 @@ function groupHeadHtml(m, actPrefix, collapsed, price, propsAgg){
       <div class="pval">${collapsed?(price?fmt(price):"—"):""}</div>
       ${collapsed&&hasAltCur()?`<div class="pval alt">${price?fmtAlt(price):"—"}</div>`:""}
     </div>
-    <div class="ptoggles${collapsed?" sticky":""}">
-      <button class="pbtn ${collapsed?"active":""}" data-mid="${esc(m.id)}" data-act="${act}">${collapsed?"Show all items":"Only show top price"}</button>
+    <div class="ptoggles sticky">
+      <span class="dpick"><label title="Write out the items of this step"><input type="checkbox" class="dcheck" data-mid="${esc(m.id)}" data-act="${act}" ${collapsed?"":"checked"}> Items</label></span>
     </div>
   </div>`;
 }
@@ -7528,6 +7535,31 @@ function wirePriceToggles(container){
       takeOptional(itemId);
     };
   });
+  /* the ticks on a card: what to write out under it */
+  container.querySelectorAll("input.dcheck").forEach(c=>{
+    c.onchange=()=>{
+      const act=c.dataset.act||"", oid=c.dataset.oid||"", on=c.checked;
+      if(act==="grouprollup"||act==="optgrouprollup"){
+        const m = allModules().concat(activeModules()).find(x=>x.id===c.dataset.mid);
+        if(m){ toggleRoll(m, act==="grouprollup"?"rollup":"optRollup"); refreshView(); }
+        return;
+      }
+      if(act==="props"||act==="optprops"){
+        const o=allOptions().find(x=>x.id===oid);
+        if(o){ if(act==="props") o.showProps=on; else o.optShowProps=on; }
+        refreshView(); return;
+      }
+      const key = act.startsWith("opt")?"optRollup":"rollup";
+      if(oid.startsWith("__prd_")||oid==="__genhdr"){
+        if(oid==="__genhdr") rollFlags("__genhdr")[key]=!on;
+        else { const pr=formatProducts().find(x=>("__prd_"+x.id)===oid); if(pr) pr[key]=!on; }
+        refreshView(); return;
+      }
+      const o=allOptions().find(x=>x.id===oid);
+      if(o){ o[key]=!on; }
+      refreshView();
+    };
+  });
   container.querySelectorAll(".pbtn").forEach(btn=>{
     /* every button wired above has to be listed here: this generic handler
        runs last and would otherwise replace their onclick with one that
@@ -7567,12 +7599,6 @@ function wirePriceToggles(container){
       }
       refreshView();
     };
-  });
-}
-function wireDetailToggle(el, onChange){
-  el.querySelectorAll("input[data-lv]").forEach(c=>{
-    c.checked=!!detailLevels[c.dataset.lv];
-    c.onchange=()=>{ detailLevels[c.dataset.lv]=c.checked; onChange(); };
   });
 }
 
@@ -12659,15 +12685,6 @@ function investmentGrandTotal(){
    alternatives sections — used by the customer link, which shows those two
    as card grids of their own above the itemised list (see
    shareProposalBody()) and would otherwise say everything twice. */
-function detailPickHtml(){
-  return `<div class="detail-pick no-print" id="detailToggleDoc" title="What to write out under the top level. Rows you have opened or folded by hand stay as you left them.">
-      <span class="dplabel">Show</span>
-      <label><input type="checkbox" checked disabled> Top level</label>
-      <label><input type="checkbox" data-lv="items"> Items</label>
-      <label><input type="checkbox" data-lv="props"> Properties</label>
-      <label><input type="checkbox" data-lv="parts"> Format parts</label>
-    </div>`;
-}
 function proposalHtml(opts){
   const o_=opts||{};
   /* the two lists are now split at source — buildItemRows() emits either
@@ -12715,8 +12732,7 @@ function proposalHtml(opts){
     ? `<div class="fxnote">${esc(t.altCur.note)}</div>` : "";
   return `${openStepsHtml()}${o_.skipHeader?"":`<h2>Investment proposal</h2>
     <div class="docsub">${esc(CONFIG.model||"")}</div>
-    <div class="docmeta">Generated ${new Date().toLocaleDateString()}</div>
-    ${detailPickHtml()}`}
+    <div class="docmeta">Generated ${new Date().toLocaleDateString()}</div>`}
     ${colHead}
     ${equipRows.length
       ? proposalItemsHtml(equipRows, [], frac)
@@ -12877,8 +12893,7 @@ function renderDocsCore(){
   const meta=DOC_TABS.find(t=>t.id===docsTab);
   if(docsTab==="customer"){ renderCustomer(el); return; }
   if(docsTab==="scope"){ el.innerHTML=scopeHtml(); wireOpenWarn(el); return; }
-  if(docsTab==="proposal"){ el.innerHTML=proposalHtml(); wirePriceToggles(el); wireOpenWarn(el); wireDiscount(el);
-    const dp=el.querySelector("#detailToggleDoc"); if(dp) wireDetailToggle(dp, renderDocs); return; }
+  if(docsTab==="proposal"){ el.innerHTML=proposalHtml(); wirePriceToggles(el); wireOpenWarn(el); wireDiscount(el); return; }
   if(docsTab==="commercial"){ seedCommercial(); el.innerHTML=commercialPageHtml(); wireCommercialTerms(el); return; }
   if(docsTab==="terms"){ renderTerms(el); return; }
   if(docsTab==="products"){ renderProductSpecs(el); return; }
