@@ -283,8 +283,14 @@
   .asidetotals .meta{margin-top:3px;font-size:10.5px}
   aside h3{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--txt-faint);margin:0}
   .aside-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
-  .dpick{display:inline-flex;gap:10px;align-items:center;font-size:11px;color:var(--txt-dim)}
-  .dpick label{display:flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap}
+  .pfold{background:none;border:0;padding:0;width:14px;flex:0 0 14px;color:var(--txt-faint);cursor:pointer;font-size:11px;line-height:1;margin-right:-8px}
+  .pfold:hover{color:var(--accent)}
+  .pfold.none{display:inline-block;cursor:default}
+  .lcheck{margin:0 -6px 0 0;cursor:pointer;flex:0 0 auto}
+  .pline.is-gone .ptitle,.pline.is-gone .pval{opacity:.45}
+  .pline.is-gone .pval{text-decoration:line-through}
+  @media print{ .pline.is-gone{display:none} }
+  .gonenote{font-size:10.5px;font-weight:400;color:var(--txt-faint);font-style:italic;margin-left:6px}
   .detail-pick{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:8px 0 12px;font-size:12px;color:var(--txt-dim)}
   .detail-pick label{display:flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap}
   .detail-pick .dplabel{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-faint)}
@@ -6070,13 +6076,53 @@ const isDone = m => state[m.id]!==undefined;
    he chose; the ticks decide the rows he has not touched.
    The customer's page and the PDF made on the server do not read these: they
    always show every level, as they did when the switch was on "Full". */
-/* (the global ticks are gone: the choice is made on each card) */
-let renderModeOn=false;
+/* Each line under a top-level item carries a tick: is it written out in the
+   detailed breakdown the customer reads (the link and the PDF)? A line that
+   is not is left out there and its price goes onto the line above it, so
+   the totals never move. The salesperson's screen keeps every line, the
+   unticked ones greyed, so they can be ticked back on.
+   Quotes made before this showed every line unless a branch was rolled up;
+   they keep that as their default. New quotes start with the top level only. */
+let renderModeOn=false, allDocsBuilding=false;
 function docDetail(){
-  if(inShareMode() || renderModeOn) return false;
-  return {top:true, fmt:false};            // an untouched card shows its top level only
+  if(inShareMode() || renderModeOn || allDocsBuilding) return false;
+  return {keepGone:true};
 }
-const rollDefault=(flag, def)=>(flag===undefined||flag===null) ? !!def : !!flag;
+const LINE_TICKS_FROM=new Date("2026-10-31T12:30:00Z");
+function lineTicksNew(){
+  const sm=state.__show;
+  if(sm && sm.__v) return sm.__v===2;
+  /* a saved quote whose date is not known yet (still loading) is not marked */
+  if(cloudQuoteId && !quoteCreatedAt) return false;
+  const legacy = !!quoteCreatedAt && new Date(quoteCreatedAt) < LINE_TICKS_FROM;
+  if(!inShareMode() && !renderModeOn) (state.__show||(state.__show={})).__v = legacy?1:2;
+  return !legacy;
+}
+/* shown in the breakdown? a tick set by hand wins, otherwise the quote's default */
+function lineShown(id, legacyDef){
+  const v=(state.__show||{})[id];
+  if(v===true || v===false) return v;
+  return lineTicksNew() ? false : !!legacyDef;
+}
+function setLineShown(id, on){ (state.__show||(state.__show={}))[id]=!!on; }
+/* folding lines away on the salesperson's own screen: nothing to do with the documents */
+const uiFold=new Map();
+const foldKey=(actPrefix, id)=>(actPrefix||"in")+":"+id;
+function isFoldOpen(actPrefix, id, def){ const v=uiFold.get(foldKey(actPrefix,id)); return v===undefined ? !!def : v; }
+/* the rows to draw: a closed row hides everything under it */
+function foldVisible(rows, actPrefix){
+  if(inShareMode() || renderModeOn || allDocsBuilding) return rows;
+  const out=[]; let skip=null;
+  for(const r of rows){
+    if(r.isGroup){ skip=null; out.push(r); continue; }
+    const d=(r.node&&r.node.depth)||0;
+    if(skip!==null && d>skip) continue;
+    skip=null;
+    out.push(r);
+    if(r.hasKids && !isFoldOpen(actPrefix, r.node.o.id, true)) skip=d;
+  }
+  return out;
+}
 
 /* One row per SUPPLIED ITEM (a chosen option), not per step — the steps
    are the questions and don't belong in a customer-facing price list, the
@@ -6169,12 +6215,10 @@ function toggleRoll(m, key){
   else m[key]=!m[key];
 }
 function buildItemRows(forceTop, wantOptional){
-  const dd=(forceTop && typeof forceTop==="object") ? forceTop : null;   // the salesperson's ticks
-  const topForce=dd ? false : !!forceTop;                                  // a plain true forces everything
-  const withTicks=(flag, def)=>dd ? rollDefault(flag, def) : !!flag;
+  const keepGone=!!(forceTop && typeof forceTop==="object" && forceTop.keepGone);
   const want = wantKind(wantOptional);
+  const ticks = want==="in";              // only the in-scope list has lines to leave out
   const HIDE = want==="alt"?"altHidePrice" : want==="opt"?"optHidePrice":"hidePrice";
-  const ROLL = want==="alt"?"altRollup"    : want==="opt"?"optRollup"   :"rollup";
   const raw=[];
   /* A running number over the walk itself, not over the rows it keeps. The
      three passes visit the tree in the same order, so a row from one pass
@@ -6182,9 +6226,12 @@ function buildItemRows(forceTop, wantOptional){
      about. */
   let ord=0;
   const at=r=>{ r.ord=ord; return r; };
-  (function walk(nodes, parentOid, underAlt){
+  (function walk(nodes, parentOid, underAlt, wasRolled){
     for(const nd of nodes){
       ord++;
+      /* what a quote from before the ticks showed: everything, unless its
+         branch or its step had been rolled up */
+      const rolledBefore = nd.depth===0 ? (!!nd.o.rollup || rollOf(nd.root,"rollup")) : wasRolled;
       /* an alternative's own children (e.g. HSS6000's add-ons, offered
          instead of the in-scope HSS3000) only make sense inside that
          alternative's own Compare card — without this check they'd also
@@ -6192,13 +6239,6 @@ function buildItemRows(forceTop, wantOptional){
          up as if they applied to whichever option is actually chosen */
       const skip = underAlt && want!=="alt";
       const nodeIsAlt = scopeKind(nd.o)==="alt";
-      const rolled = nd.depth===0 && nd.kids.length>0 && (topForce || withTicks(nd.o[ROLL], dd&&dd.top));
-      if(rolled){
-        if(branchHas(nd, wantOptional))
-          raw.push(at({node:nd, price:branchSum(nd,wantOptional), rolled:true, hide:false, canHide:false,
-                    propsAgg:branchProps(nd, wantOptional)}));
-        continue;                       // descendants are folded into that line
-      }
       let mine=parentOid;
       if(!skip && scopeKind(nd.o)===want){
         /* The types this item carries — its adjustments, its feet, its
@@ -6209,12 +6249,12 @@ function buildItemRows(forceTop, wantOptional){
            The money does not move: the item is priced at what it comes to
            with them, which is what the totals always were. */
         raw.push(at({node:nd, own:optionPrice(nd.o)+propsSurcharge(nd.o), rolled:false, parentOid,
-                  propsAgg:branchProps({o:nd.o, kids:[]}, wantOptional)}));
+                  legacyShow:!rolledBefore, propsAgg:branchProps({o:nd.o, kids:[]}, wantOptional)}));
         mine=nd.o.id;
       }
-      if(nd.kids.length) walk(nd.kids, mine, underAlt||nodeIsAlt);
+      if(nd.kids.length) walk(nd.kids, mine, underAlt||nodeIsAlt, rolledBefore);
     }
-  })(optionTree(), null, false);
+  })(optionTree(), null, false, false);
   ord=100000;                       // the blocks below always follow the options
   /* the quote's own custom lines */
   {
@@ -6245,23 +6285,23 @@ function buildItemRows(forceTop, wantOptional){
       else               parts = partsForProduct(pr, !!wantOptional);
       if(!parts.length) continue;
       const q=Math.max(1,+pr.qty||1);
-      /* "only show top price" on a format: one line carrying the sum of
-         its parts, the parts themselves folded away */
-      const rollKey = want==="alt"?"altRollup" : wantOptional?"optRollup":"rollup";
-      const prRolled = topForce || withTicks(pr[rollKey], dd&&!dd.fmt);
-      const prSum = parts.reduce((t,x)=>t+(+x.price||0),0)*q;
+      /* a part left out of the breakdown is priced on its product's line */
+      const pid="__prd_"+pr.id;
+      const goneOf=x=>ticks && !lineShown("__prdp_"+pr.id+"_"+x.id, !pr.rollup);
+      const prSum = parts.filter(goneOf).reduce((t,x)=>t+(+x.price||0),0)*q;
       raw.push(at({
-        isPropLine:false, own:0, price:prRolled?prSum:0, rolled:prRolled,
-        parentOid:null, propsAgg:{}, isFormat:true, hide:false, canHide:false,
+        isPropLine:false, own:prSum, price:prSum, rolled:false, inclSub:prSum>0,
+        parentOid:null, propsAgg:{}, isFormat:true, hide:false, canHide:false, hasKids:true,
         node:{ m:fstep, root:fstep, depth:0, trail:[],
-               o:{ id:"__prd_"+pr.id, name:productName(pr), qty:q>1?q:0,
-                   isFormatLine:true, optional:want==="alt"?true:!!pr.optional, alt:want==="alt",
-                   rollup:withTicks(pr.rollup, dd&&!dd.fmt), optRollup:withTicks(pr.optRollup, dd&&!dd.fmt) } }
+               o:{ id:pid, name:productName(pr), qty:q>1?q:0,
+                   isFormatLine:true, optional:want==="alt"?true:!!pr.optional, alt:want==="alt" } }
       }));
-      if(prRolled) continue;
       for(const x of parts){
+        const gone=goneOf(x);
+        if(gone && !keepGone) continue;
         raw.push(at({
           isPropLine:true, price:(+x.price||0)*q, rolled:false, hide:false, canHide:false,
+          gone, tickable:ticks, parentOid:pid,
           node:{ m:fstep, root:fstep, depth:1, trail:[],
                  o:{ id:"__prdp_"+pr.id+"_"+x.id, name:x.desc,
                      fmtFor:partNeededFor(x)?"needed for "+partNeededFor(x):"",
@@ -6276,21 +6316,22 @@ function buildItemRows(forceTop, wantOptional){
     const fstep=formatStep();
     const chosen=generalChosen(want==="alt" ? "alt" : !!wantOptional);
     if(fstep && chosen.length){
-      const gf=rollFlags("__genhdr"), gk=want==="alt"?"altRollup":wantOptional?"optRollup":"rollup";
-      const gRolled = topForce || withTicks(gf[gk], dd&&!dd.fmt);
-      const gSum = chosen.reduce((t,g)=>t+(+g.part.price||0)*g.qty,0);
+      const gf=rollFlags("__genhdr");
+      const goneOf=g=>ticks && !lineShown("__genp_"+g.part.id, !gf.rollup);
+      const gSum = chosen.filter(goneOf).reduce((t,g)=>t+(+g.part.price||0)*g.qty,0);
       raw.push(at({
-        isPropLine:false, own:0, price:gRolled?gSum:0, rolled:gRolled,
-        parentOid:null, propsAgg:{}, isFormat:true, hide:false, canHide:false,
+        isPropLine:false, own:gSum, price:gSum, rolled:false, inclSub:gSum>0,
+        parentOid:null, propsAgg:{}, isFormat:true, hide:false, canHide:false, hasKids:true,
         node:{ m:fstep, root:fstep, depth:0, trail:[],
                o:{ id:"__genhdr", name:"General format parts", isFormatLine:true,
-                   optional:want!=="in", alt:want==="alt",
-                   rollup:withTicks(gf.rollup, dd&&!dd.fmt), optRollup:withTicks(gf.optRollup, dd&&!dd.fmt) } }
+                   optional:want!=="in", alt:want==="alt" } }
       }));
-      if(gRolled) chosen.length=0;
       for(const g of chosen){
+        const gone=goneOf(g);
+        if(gone && !keepGone) continue;
         raw.push(at({
           isPropLine:true, price:(+g.part.price||0)*g.qty, rolled:false, hide:false, canHide:false,
+          gone, tickable:ticks, parentOid:"__genhdr",
           node:{ m:fstep, root:fstep, depth:1, trail:[],
                  o:{ id:"__genp_"+g.part.id, name:g.part.desc, qty:g.qty>1?g.qty:0,
                      fmtFor:partNeededFor(g.part)?"needed for "+partNeededFor(g.part):"",
@@ -6366,6 +6407,14 @@ function buildItemRows(forceTop, wantOptional){
   }
   /* fold bottom-up so a descendant is always resolved before its parent */
   const present=new Set(raw.filter(r=>!r.rolled&&!r.isPropLine).map(r=>r.node.o.id));
+  const goneIds=new Set();
+  for(const r of raw){                      // top down: a parent left out takes its lines with it
+    if(r.rolled || r.isPropLine) continue;
+    const canHide = !r.isFormat && r.parentOid!=null && present.has(r.parentOid);
+    r.tickable = ticks && canHide;
+    r.gone = r.tickable && (goneIds.has(r.parentOid) || !lineShown(r.node.o.id, r.legacyShow));
+    if(r.gone) goneIds.add(r.node.o.id);
+  }
   const folded={}, foldedProps={};
   for(let i=raw.length-1;i>=0;i--){
     const r=raw[i];
@@ -6375,35 +6424,42 @@ function buildItemRows(forceTop, wantOptional){
     const total = r.own + (folded[o.id]||0);
     if(foldedProps[o.id]) r.propsAgg=addProps(Object.assign({},r.propsAgg), foldedProps[o.id]);
     const hidden = canHide && !!o[HIDE];
-    if(hidden){
+    if(hidden || r.gone){
       folded[r.parentOid]=(folded[r.parentOid]||0)+total;
       foldedProps[r.parentOid]=addProps(foldedProps[r.parentOid]||{}, r.propsAgg);
+      if(r.gone && present.has(r.parentOid)) goneIds.add("^"+r.parentOid);
     }
-    r.price=total; r.hide=hidden; r.canHide=canHide;
+    r.price=total; r.hide=hidden && !r.gone; r.canHide=canHide;
   }
+  /* the line that carries what was left out says so */
+  for(const r of raw) if(!r.isPropLine && goneIds.has("^"+r.node.o.id)) r.inclSub=true;
+  /* which lines have lines under them, for the arrow */
+  const parents=new Set(raw.filter(r=>r.parentOid!=null).map(r=>r.parentOid));
+  for(const r of raw) if(r.node && r.node.o && parents.has(r.node.o.id)) r.hasKids=true;
   /* Collapse whole step groups set to "only show top price". Rows for one
      top-level step are always contiguous (optionTree walks steps in
      order), so a group is just a run. Hidden rows are skipped in the sum —
      their figure already sits on the parent row that is being counted. */
   const out=[];
-  for(let i=0;i<raw.length;){
-    const root=raw[i].node.root;
-    if(root && rollOf(root, ROLL)){
+  const rows=keepGone ? raw : raw.filter(r=>!r.gone);
+  for(let i=0;i<rows.length;){
+    const root=rows[i].node.root;
+    if(false){
       let sum=0, j=i; const agg={};
-      while(j<raw.length && raw[j].node.root===root){
+      while(j<rows.length && rows[j].node.root===root){
         /* Skip exactly what priceRowsTotal() skips. A `subtotal` row is a
            reading line ("Together") restating an item plus the types it
            carries, so counting it here added that item's whole value a
            second time — a step rolled up to one price came out nearly
            double as soon as any option carried a property surcharge. */
-        if(!raw[j].hide && !raw[j].subtotal && !raw[j].taken){
-          sum+=raw[j].price; addProps(agg, raw[j].propsAgg);
+        if(!rows[j].hide && !rows[j].subtotal && !rows[j].taken){
+          sum+=rows[j].price; addProps(agg, rows[j].propsAgg);
         }
         j++;
       }
       out.push({group:root, price:sum, isGroup:true, propsAgg:agg});
       i=j;
-    } else { out.push(raw[i]); i++; }
+    } else { out.push(rows[i]); i++; }
   }
   return out;
 }
@@ -6465,7 +6521,7 @@ function sortByCatalogue(rows){
    n, "so putting back returns exactly these"), so the ghost is priced on
    that rather than on the line it landed in. */
 function ghostRow(r){
-  const g=Object.assign({}, r, {taken:true});
+  const g=Object.assign({}, r, {taken:true, gone:false, tickable:false});
   const o=r.node&&r.node.o;
   const unit=+((o&&o.unitPrice)||0);
   const rec=o?takenRec(String(o.id||"")):null;
@@ -6901,13 +6957,8 @@ function priceRowHtml(r, actPrefix){
     : o.isDiff ? `<span class="${(+r.price||0)<0?"down":"up"}">${diffAmount(r.price)}</span>`
     : (r.price ? fmt(r.price) : (o.isFormatLine ? "" : "—"));
   const altTxt = hasAltCur() ? `<div class="pval alt">${(r.hide||o.priceText)?"":(r.price?fmtAlt(r.price):"—")}</div>` : "";
-  const rollupOn = !!r.rolled;      // what the row is showing now, whether a hand or a tick decided it
-  const toggles = (!o.isPropLine && (canHide || top)) ? `<div class="ptoggles${(r.hide||top)?" sticky":""}">
-      ${canHide?`<button class="pbtn ${r.hide?"active":""}" data-oid="${esc(o.id)}" data-act="${actPrefix}hideprice">${r.hide?"Show price":"Hide price"}</button>`:""}
-      ${top?`<span class="dpick">
-        ${(o.isFormatLine || (nd.kids||[]).length)?`<label title="Write out the items under this one"><input type="checkbox" class="dcheck" data-oid="${esc(o.id)}" data-act="${actPrefix}rollup" ${rollupOn?"":"checked"}> ${o.isFormatLine?"Parts":"Items"}</label>`:""}
-        ${(!o.isFormatLine && !rollupOn)?`<label title="Write out the option properties of each item, with their prices"><input type="checkbox" class="dcheck" data-oid="${esc(o.id)}" data-act="${actPrefix}props" ${(actPrefix==="opt"?o.optShowProps:o.showProps)?"checked":""}> Properties</label>`:""}
-      </span>`:""}
+  const toggles = (!o.isPropLine && canHide && !r.gone) ? `<div class="ptoggles${r.hide?" sticky":""}">
+      <button class="pbtn ${r.hide?"active":""}" data-oid="${esc(o.id)}" data-act="${actPrefix}hideprice">${r.hide?"Show price":"Hide price"}</button>
     </div>` : "";
   const breakdown = "";
   /* No photograph and no specification lines here. A top item used to be set
@@ -6936,10 +6987,9 @@ function priceRowHtml(r, actPrefix){
       /* the screen the salesperson works on: the link and the PDF have their
          own property tables and a list of lines under every row would say it twice */
       if(shareMode || document.body.classList.contains("print-all")) return "";
-      /* the tick sits on the top row of the card; the rows under it follow it */
-      const topO = nd.depth===0 ? o : (((nd.root&&nd.root.options)||[]).find(x=>x.name===(nd.trail||[])[0]) || o);
-      if(!(actPrefix==="opt" ? topO.optShowProps : topO.showProps)) return "";
+      /* shown when the row is opened with its arrow */
       if(o.isPropLine || r.rolled || r.hide) return "";
+      if(!isFoldOpen(actPrefix, o.id, false)) return "";
       const k=r.disc?1-r.disc:1;
       const lines=propPricedLines(o);
       if(!lines.length) return "";
@@ -6948,12 +6998,22 @@ function priceRowHtml(r, actPrefix){
           <span class="pn">${esc(l.name)}${l.each?` <span class="snote">(${fmt(l.each*k)} each)</span>`:""}</span>
           <span class="pa">${l.total?fmt(l.total*k):"included"}</span></div>`).join("")}</div>`;
     })();
-  return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""}" style="padding-left:${nd.depth*18}px">
+  /* the salesperson's screen: a tick for the breakdown, an arrow to fold */
+  const onScreen = !shareMode && !document.body.classList.contains("print-all") && !allDocsBuilding;
+  const hasProps = onScreen && !o.isPropLine && !r.hide && propPricedLines(o).length>0;
+  const canFold = onScreen && (r.hasKids || hasProps);
+  const open = canFold && isFoldOpen(actPrefix, o.id, !!r.hasKids);
+  const arrow = onScreen ? (canFold
+      ? `<button class="pfold no-print" data-fold="${esc(foldKey(actPrefix,o.id))}" data-open="${open?1:0}" title="Fold open or shut on this screen only — the link and the PDF are not affected">${open?"&#9662;":"&#9656;"}</button>`
+      : '<span class="pfold none"></span>') : "";
+  const tick = (onScreen && r.tickable)
+    ? `<input type="checkbox" class="lcheck no-print" data-lid="${esc(o.id)}" ${r.gone?"":"checked"} title="Show this line in the detailed breakdown of the link and the PDF. Left out, its price goes onto the line above.">` : "";
+  return `<div class="pline lvl${Math.min(nd.depth,3)} ${o.isPropLine?"propline":""} ${r.taken?"is-taken":""} ${r.subtotal?"is-subtotal":""} ${r.gone?"is-gone":""}" style="padding-left:${nd.depth*18}px">
     <div class="pmain">
-      <div class="ptitle"><span class="bullet"></span>${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${
+      <div class="ptitle">${arrow}${tick}<span class="bullet"></span>${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${
         r.taken?' <span class="takenpill">in the quotation</span>':""}${(o.unitPrice && o.qty>1)?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
         :((!o.isPropLine && optQty(o)>1 && +o.price) ? ` <span class="snote">(${fmt(+o.price)} each)</span>`:"")}${o.fmtFor?` <span class="snote">— ${esc(o.fmtFor)}</span>`:""}${
-        shareMode?"":takeBtn}${(!propListHtml && propsMapLabel(r.propsAgg))?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${r.rolled?'<span class="tag rollup">incl. sub-items</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
+        shareMode?"":takeBtn}${(!propListHtml && propsMapLabel(r.propsAgg))?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${(r.rolled||r.inclSub)?'<span class="tag rollup">incl. sub-items</span>':""}${r.gone?'<span class="gonenote">not in the breakdown</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
       ${movePriceDown?"":pvalBlock}
     </div>
     ${movePriceDown?`<div class="takerow">${pvalBlock}${takeBtn}</div>`:""}
@@ -6975,7 +7035,6 @@ function groupItemNames(m, actPrefix){
       (actPrefix==="opt" ? !!o.optional : (!o.optional && !o.alt))).map(o=>o.name).filter(Boolean);
 }
 function groupHeadHtml(m, actPrefix, collapsed, price, propsAgg){
-  const act = actPrefix==="opt" ? "optgrouprollup" : "grouprollup";
   /* a collapsed group stands in for its items, so it carries their
      property counts — otherwise collapsing would quietly drop them */
   const props = collapsed && propsMapLabel(propsAgg)
@@ -6993,9 +7052,6 @@ function groupHeadHtml(m, actPrefix, collapsed, price, propsAgg){
       })())}${props}</div>
       <div class="pval">${collapsed?(price?fmt(price):"—"):""}</div>
       ${collapsed&&hasAltCur()?`<div class="pval alt">${price?fmtAlt(price):"—"}</div>`:""}
-    </div>
-    <div class="ptoggles sticky">
-      <span class="dpick"><label title="Write out the items of this step"><input type="checkbox" class="dcheck" data-mid="${esc(m.id)}" data-act="${act}" ${collapsed?"":"checked"}> Items</label></span>
     </div>
   </div>`;
 }
@@ -7029,7 +7085,7 @@ function proposalItemsHtml(inRows, optRows, frac){
              : (!ins.length ? groupHeadHtml(root, "opt", false) : "");
     return `<div class="pcard ${ins.length?cardKind(root,""):"pc-opt"}">
       ${head}
-      ${ins.map(r=>r.isGroup ? groupHeadHtml(r.group, "", true, r.price, r.propsAgg)
+      ${foldVisible(ins, "").map(r=>r.isGroup ? groupHeadHtml(r.group, "", true, r.price, r.propsAgg)
                              : priceRowHtml(r, "")).join("")}
       ${opts.length?`<div class="optblock">
         <div class="optstrip">Optional for this module — not in the total investment</div>
@@ -7422,7 +7478,7 @@ function optionalRowsHtml(rows, opts){
   let printed=new Set();               // names already listed in this block
   const close=()=>{ if(open){ out+="</div>"; open=false; } };
   const closeCard=()=>{ close(); if(card){ out+="</div>"; card=false; } };
-  for(const r of rows){
+  for(const r of foldVisible(rows, "opt")){
     if(r.isGroup){                     // whole step collapsed onto its heading
       closeCard();
       lastRoot=r.group; prevKey=null; first=false;
@@ -7460,7 +7516,7 @@ function optionalRowsHtml(rows, opts){
 /* a hidden row's figure now lives on its parent's line, so counting it
    again here would double it — only surfaced rows carry a number that
    isn't already represented elsewhere in the list */
-function priceRowsTotal(rows){ return rows.reduce((s,r)=>s+((r.hide||r.taken||r.subtotal)?0:r.price),0); }
+function priceRowsTotal(rows){ return rows.reduce((s,r)=>s+((r.hide||r.taken||r.subtotal||r.gone)?0:r.price),0); }
 /* every option in the tree, at any depth — the price-list toggles are now
    per supplied item rather than per step */
 function allOptions(list=activeModules(), acc=[]){
@@ -7535,30 +7591,13 @@ function wirePriceToggles(container){
       takeOptional(itemId);
     };
   });
-  /* the ticks on a card: what to write out under it */
-  container.querySelectorAll("input.dcheck").forEach(c=>{
-    c.onchange=()=>{
-      const act=c.dataset.act||"", oid=c.dataset.oid||"", on=c.checked;
-      if(act==="grouprollup"||act==="optgrouprollup"){
-        const m = allModules().concat(activeModules()).find(x=>x.id===c.dataset.mid);
-        if(m){ toggleRoll(m, act==="grouprollup"?"rollup":"optRollup"); refreshView(); }
-        return;
-      }
-      if(act==="props"||act==="optprops"){
-        const o=allOptions().find(x=>x.id===oid);
-        if(o){ if(act==="props") o.showProps=on; else o.optShowProps=on; }
-        refreshView(); return;
-      }
-      const key = act.startsWith("opt")?"optRollup":"rollup";
-      if(oid.startsWith("__prd_")||oid==="__genhdr"){
-        if(oid==="__genhdr") rollFlags("__genhdr")[key]=!on;
-        else { const pr=formatProducts().find(x=>("__prd_"+x.id)===oid); if(pr) pr[key]=!on; }
-        refreshView(); return;
-      }
-      const o=allOptions().find(x=>x.id===oid);
-      if(o){ o[key]=!on; }
-      refreshView();
-    };
+  /* the tick on a line: in the customer's breakdown or not */
+  container.querySelectorAll("input.lcheck").forEach(c=>{
+    c.onchange=()=>{ setLineShown(c.dataset.lid||"", c.checked); saveSoon(); refreshView(); };
+  });
+  /* the arrow: this screen only */
+  container.querySelectorAll("button.pfold[data-fold]").forEach(b=>{
+    b.onclick=()=>{ uiFold.set(b.dataset.fold, b.dataset.open!=="1"); refreshView(); };
   });
   container.querySelectorAll(".pbtn").forEach(btn=>{
     /* every button wired above has to be listed here: this generic handler
@@ -7580,22 +7619,11 @@ function wirePriceToggles(container){
       }
       /* format lines are synthesised per render — their flag belongs on the
          product (or, for the general block, in state) */
-      const oid=btn.dataset.oid||"";
-      if(oid.startsWith("__prd_")||oid==="__genhdr"){
-        const key = act.startsWith("opt")?"optRollup":"rollup";
-        const dd=docDetail(), def=dd?!dd.fmt:false;
-        if(oid==="__genhdr"){ const f=rollFlags("__genhdr"); f[key]=!rollDefault(f[key], def); }
-        else { const pr=formatProducts().find(x=>("__prd_"+x.id)===oid); if(pr) pr[key]=!rollDefault(pr[key], def); }
-        refreshView();
-        return;
-      }
       const o = allOptions().find(x=>x.id===btn.dataset.oid);
       if(!o) return;
       switch(act){
         case "hideprice": o.hidePrice=!o.hidePrice; break;
-        case "rollup": o.rollup=!rollDefault(o.rollup, docDetail()&&docDetail().top); break;
         case "opthideprice": o.optHidePrice=!o.optHidePrice; break;
-        case "optrollup": o.optRollup=!rollDefault(o.optRollup, docDetail()&&docDetail().top); break;
       }
       refreshView();
     };
@@ -12664,7 +12692,7 @@ function isServiceRow(r){
   if(r.isGroup) return !!(r.group && r.group.service);
   return !!(r.node && ((r.node.m && r.node.m.service) || String(r.node.o.id||"").startsWith("__svc_")));
 }
-const serviceRowsTotal = rows => rows.filter(r=>!r.hide && isServiceRow(r)).reduce((t,r)=>t+(+r.price||0),0);
+const serviceRowsTotal = rows => rows.filter(r=>!r.hide && !r.gone && isServiceRow(r)).reduce((t,r)=>t+(+r.price||0),0);
 /* the same cut applied to the optional lines, so their prices match —
    service lines are left at their full rate */
 function scaleRows(rows, f){
@@ -13459,7 +13487,11 @@ function termsChapterHtml(no){
   return `<h3 class="termshead">General terms and conditions</h3>
     <div class="freetext termstext">${renumberedTerms(no?no+".":"")}</div>`;
 }
-function buildAllDocsHtml(){ return docLanguage()==="es" ? inDocLanguage(()=>translateHtml(buildAllDocsHtmlCore())) : buildAllDocsHtmlCore(); }
+function buildAllDocsHtml(){
+  allDocsBuilding=true;                  // the printed documents: what the customer gets
+  try{ return docLanguage()==="es" ? inDocLanguage(()=>translateHtml(buildAllDocsHtmlCore())) : buildAllDocsHtmlCore(); }
+  finally{ allDocsBuilding=false; }
+}
 function buildAllDocsHtmlCore(){
   ensureLanguages();
   ensureSpecs();
@@ -14230,7 +14262,7 @@ function renderNotices(){
     try{
       const seen=new Set();
       for(const opt of [false,true]){
-        for(const r of buildItemRows(false,opt)){
+        for(const r of buildItemRows({keepGone:true},opt)){
           const o=r.node&&r.node.o;
           if(!o || r.isGroup || r.subtotal || r.isPropLine || r.hide || r.price) continue;
           if(o.kind==="question" || o.generated || /^(__|svc)/.test(String(o.id||""))) continue;
