@@ -469,6 +469,7 @@
   #allDocsBody .pg-proposal .optsection-title{font-size:.9em;margin:.8em 0 .15em;padding-top:.5em}
   #allDocsBody .pg-proposal .altgrouphead{padding:.35em 0 .3em}
   #allDocsBody .pg-proposal .propsum{margin-top:.7em;padding-top:.4em}
+  #allDocsBody .pg-proposal .propsum.incl{margin-top:1em;padding:.5em .9em}
   #allDocsBody .pg-proposal .ps-row{padding:.08em 0}
   #allDocsBody .pg-proposal .grandtotal{padding:1.8mm 3mm;margin-top:2mm}
   #allDocsBody .pg-proposal .grandtotal .lbl{font-size:.9em}
@@ -2364,10 +2365,15 @@
   .ps-row.haspic{align-items:center;padding:4px 0}
   .ps-qty{flex:0 0 46px;text-align:right;color:var(--txt-dim);font-variant-numeric:tabular-nums}
   .ps-lbl{flex:1 1 auto;min-width:0}
-  .propsum.incl .ps-inclhead{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;font-weight:600;color:var(--txt-dim);margin-bottom:6px}
+  /* set apart from the priced lines above: a tinted, dashed box that reads as "for reference" */
+  .propsum.incl{margin-top:18px;padding:10px 14px 10px;border:1.5px dashed #b9c3dd;border-radius:10px;background:#f3f6fc}
+  .propsum.incl .ps-inclhead{display:flex;align-items:center;gap:10px;font-size:11.5px;font-weight:600;color:#1c2563;margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed #c9d1e6}
+  .propsum.incl .ps-incltitle{flex:1 1 auto}
+  .propsum.incl .ps-inclbadge{flex:0 0 auto;padding:2px 9px;border-radius:10px;background:#1c2563;color:#fff;font-size:10.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
+  .propsum.incl .ps-row{opacity:.85}
   .propsum.incl .ps-inclcol{font-weight:400;font-style:italic;color:var(--txt-faint);white-space:nowrap}
   .propsum.incl .ps-amt{color:var(--txt-faint);font-style:italic}
-  .propsum.incl .ps-incltotal{border-top:1px solid var(--line);margin-top:4px;padding-top:6px}
+  .propsum.incl .ps-incltotal{border-top:1px dashed #c9d1e6;margin-top:6px;padding-top:8px;opacity:1}
   .propsum.incl .ps-incltotal .ps-lbl{font-weight:600;color:var(--txt-dim)}
   .ps-amt{flex:0 0 auto;color:var(--txt-dim);font-variant-numeric:tabular-nums}
   .asg-todo{color:var(--warn);font-style:italic;font-size:11.5px}
@@ -2579,6 +2585,7 @@
     .propsum{border-top-color:#ddd}
     .propsum .ps-qty,.propsum .ps-lbl,.propsum .ps-amt{color:#111}
     .propsum.incl .ps-amt,.propsum.incl .ps-inclcol{color:#777}
+    .propsum.incl{border-color:#b9c3dd!important;background:#f3f6fc!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     .grouphead{border-top-color:#ddd}
     .grouphead .ghtitle{color:#111}
     .grouphead.collapsed{border-bottom-color:#ddd}
@@ -5472,7 +5479,7 @@ function propSummaryHtml(kind, withPrice, frac){
   const incl = kind==="in" && withPrice;
   const inclTotal = incl ? rows.reduce((t,x)=>t+(+x.r.price||0),0)*k : 0;
   return `<div class="propsum ${kind}${incl?" incl":""}">
-    ${incl?`<div class="ps-inclhead"><span>Option properties &mdash; already included in the module prices above</span><span class="ps-inclcol">included in module price</span></div>`:""}
+    ${incl?`<div class="ps-inclhead"><span class="ps-inclbadge">&#9432; Included</span><span class="ps-incltitle">Option properties &mdash; already included in the module prices above</span><span class="ps-inclcol">included in module price</span></div>`:""}
     ${rows.map(({g,r})=>`<div class="ps-row ${r.image?"haspic":""}">
       <span class="ps-qty">${r.qty}${g.p.unit?` ${esc(g.p.unit)}`:"&times;"}</span>
       ${r.image?`<img class="ps-pic" src="${r.image}" alt="">`:""}
@@ -11872,6 +11879,7 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^ⓘ Included$/, "ⓘ Incluido"],
   [/^Net price \u2014 your ([\d.]+)% discount is included$/, "Precio neto \u2014 su descuento del $1% est\u00e1 incluido"],
   [/^All prices are net \u2014 your ([\d.]+)% discount is already included\.$/, "Todos los precios son netos \u2014 su descuento del $1% ya est\u00e1 incluido."],
   [/^Incl\. ([\d.]+)% discount$/, "Incl. descuento del $1%"],
