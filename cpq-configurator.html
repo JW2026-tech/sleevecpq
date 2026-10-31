@@ -5589,7 +5589,7 @@ function reconcile(){
          answers, so they have no module id to match — skip them or they'd
          be pruned on every render and every pick would snap back to the
          default type */
-      if(key.startsWith("__assign_") || key.startsWith("__sample_") || key===QTY_KEY || key===PRODUCTS_KEY || key===GENERAL_KEY || key===ROLLS_KEY || key===NA_KEY || key===SEED_KEY || key===CUSTOM_KEY || key===SERVICE_KEY || key===SPECOVR_KEY || key===TAKEN_KEY || key===PROPSKIP_KEY) continue;
+      if(key.startsWith("__assign_") || key.startsWith("__sample_") || key===QTY_KEY || key===PRODUCTS_KEY || key===GENERAL_KEY || key===ROLLS_KEY || key==="__show" || key===NA_KEY || key===SEED_KEY || key===CUSTOM_KEY || key===SERVICE_KEY || key===SPECOVR_KEY || key===TAKEN_KEY || key===PROPSKIP_KEY) continue;
       /* out of the quote: forget the answer AND that it was ever seeded, so
          adding the step back starts from the Admin defaults again */
       if(!flatIds.has(key)){ delete state[key]; delete seeded()[key]; changed=true; }
