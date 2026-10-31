@@ -6119,7 +6119,7 @@ function foldVisible(rows, actPrefix){
     if(skip!==null && d>skip) continue;
     skip=null;
     out.push(r);
-    if(r.hasKids && !isFoldOpen(actPrefix, r.node.o.id, true)) skip=d;
+    if(r.hasKids && !isFoldOpen(actPrefix, r.node.o.id, !!r.openDefault)) skip=d;
   }
   return out;
 }
@@ -6248,8 +6248,24 @@ function buildItemRows(forceTop, wantOptional){
            twenty lines saying what the reader had seen two pages earlier.
            The money does not move: the item is priced at what it comes to
            with them, which is what the totals always were. */
-        raw.push(at({node:nd, own:optionPrice(nd.o)+propsSurcharge(nd.o), rolled:false, parentOid,
-                  legacyShow:!rolledBefore, propsAgg:branchProps({o:nd.o, kids:[]}, wantOptional)}));
+        /* in scope, each option property is a line of its own under the item,
+           so it can be ticked into the breakdown; left out, its price stays
+           on the item as it always did */
+        const pls = ticks ? propPricedLines(nd.o).map((l,i)=>({l, p:propLineProp(nd.o, i)})) : [];
+        const plSum = pls.reduce((t,x)=>t+(+x.l.total||0),0);
+        const ownAgg = branchProps({o:nd.o, kids:[]}, wantOptional);
+        for(const x of pls) if(x.p && ownAgg[x.p.id]) ownAgg[x.p.id]-=x.l.qty;
+        raw.push(at({node:nd, own:optionPrice(nd.o)+propsSurcharge(nd.o)-plSum, rolled:false, parentOid,
+                  legacyShow:!rolledBefore, propsAgg:ownAgg}));
+        for(const x of pls){
+          const l=x.l;
+          raw.push(at({own:+l.total||0, rolled:false, parentOid:nd.o.id, legacyShow:false, propLine:true,
+            propsAgg:x.p?{[x.p.id]:l.qty}:{},
+            node:{ m:nd.m, root:nd.root, depth:nd.depth+1, trail:(nd.trail||[]).concat(nd.o.name),
+                   o:{ id:"__pl_"+nd.o.id+"_"+(x.p?x.p.id:""), name:l.name,
+                       qty:l.qty>1?l.qty:0, unitPrice:l.each||0, isPropLine:true,
+                       priceText:l.total?"":"included" } }}));
+        }
         mine=nd.o.id;
       }
       if(nd.kids.length) walk(nd.kids, mine, underAlt||nodeIsAlt, rolledBefore);
@@ -6427,7 +6443,7 @@ function buildItemRows(forceTop, wantOptional){
     if(hidden || r.gone){
       folded[r.parentOid]=(folded[r.parentOid]||0)+total;
       foldedProps[r.parentOid]=addProps(foldedProps[r.parentOid]||{}, r.propsAgg);
-      if(r.gone && present.has(r.parentOid)) goneIds.add("^"+r.parentOid);
+      if(r.gone && !r.propLine && present.has(r.parentOid)) goneIds.add("^"+r.parentOid);
     }
     r.price=total; r.hide=hidden && !r.gone; r.canHide=canHide;
   }
@@ -6435,7 +6451,11 @@ function buildItemRows(forceTop, wantOptional){
   for(const r of raw) if(!r.isPropLine && goneIds.has("^"+r.node.o.id)) r.inclSub=true;
   /* which lines have lines under them, for the arrow */
   const parents=new Set(raw.filter(r=>r.parentOid!=null).map(r=>r.parentOid));
-  for(const r of raw) if(r.node && r.node.o && parents.has(r.node.o.id)) r.hasKids=true;
+  const realParents=new Set(raw.filter(r=>r.parentOid!=null && !r.propLine).map(r=>r.parentOid));
+  for(const r of raw) if(r.node && r.node.o){
+    if(parents.has(r.node.o.id)) r.hasKids=true;
+    if(realParents.has(r.node.o.id) || r.isFormat) r.openDefault=true;
+  }
   /* Collapse whole step groups set to "only show top price". Rows for one
      top-level step are always contiguous (optionTree walks steps in
      order), so a group is just a run. Hidden rows are skipped in the sum —
@@ -6947,6 +6967,18 @@ function propPricedLines(o){
   }
   return out;
 }
+function propLineProp(o, i){
+  let n=0;
+  for(const p of (CONFIG.props||[])){
+    if(propSkipped(p)) continue;
+    const q=propQtyOf(o, p.id);
+    if(!(q>0)) continue;
+    const v=(p.variants&&p.variants.length)?assignedVariant(p,o.id):null;
+    if(!v && (p.variants||[]).length) continue;
+    if(n++===i) return p;
+  }
+  return null;
+}
 function priceRowHtml(r, actPrefix){
   const nd=r.node, o=nd.o, top=nd.depth===0;
   const canHide = r.canHide===undefined ? true : r.canHide;
@@ -6957,7 +6989,7 @@ function priceRowHtml(r, actPrefix){
     : o.isDiff ? `<span class="${(+r.price||0)<0?"down":"up"}">${diffAmount(r.price)}</span>`
     : (r.price ? fmt(r.price) : (o.isFormatLine ? "" : "—"));
   const altTxt = hasAltCur() ? `<div class="pval alt">${(r.hide||o.priceText)?"":(r.price?fmtAlt(r.price):"—")}</div>` : "";
-  const toggles = (!o.isPropLine && canHide && !r.gone) ? `<div class="ptoggles${r.hide?" sticky":""}">
+  const toggles = (!o.isPropLine && !r.propLine && canHide && !r.gone) ? `<div class="ptoggles${r.hide?" sticky":""}">
       <button class="pbtn ${r.hide?"active":""}" data-oid="${esc(o.id)}" data-act="${actPrefix}hideprice">${r.hide?"Show price":"Hide price"}</button>
     </div>` : "";
   const breakdown = "";
@@ -6988,7 +7020,7 @@ function priceRowHtml(r, actPrefix){
          own property tables and a list of lines under every row would say it twice */
       if(shareMode || document.body.classList.contains("print-all")) return "";
       /* shown when the row is opened with its arrow */
-      if(o.isPropLine || r.rolled || r.hide) return "";
+      if(o.isPropLine || r.rolled || r.hide || actPrefix!=="opt") return "";
       if(!isFoldOpen(actPrefix, o.id, false)) return "";
       const k=r.disc?1-r.disc:1;
       const lines=propPricedLines(o);
@@ -7000,9 +7032,9 @@ function priceRowHtml(r, actPrefix){
     })();
   /* the salesperson's screen: a tick for the breakdown, an arrow to fold */
   const onScreen = !shareMode && !document.body.classList.contains("print-all") && !allDocsBuilding;
-  const hasProps = onScreen && !o.isPropLine && !r.hide && propPricedLines(o).length>0;
+  const hasProps = onScreen && actPrefix==="opt" && !o.isPropLine && !r.hide && propPricedLines(o).length>0;
   const canFold = onScreen && (r.hasKids || hasProps);
-  const open = canFold && isFoldOpen(actPrefix, o.id, !!r.hasKids);
+  const open = canFold && isFoldOpen(actPrefix, o.id, !!r.openDefault);
   const arrow = onScreen ? (canFold
       ? `<button class="pfold no-print" data-fold="${esc(foldKey(actPrefix,o.id))}" data-open="${open?1:0}" title="Fold open or shut on this screen only — the link and the PDF are not affected">${open?"&#9662;":"&#9656;"}</button>`
       : '<span class="pfold none"></span>') : "";
@@ -7013,7 +7045,7 @@ function priceRowHtml(r, actPrefix){
       <div class="ptitle">${arrow}${tick}<span class="bullet"></span>${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${
         r.taken?' <span class="takenpill">in the quotation</span>':""}${(o.unitPrice && o.qty>1)?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
         :((!o.isPropLine && optQty(o)>1 && +o.price) ? ` <span class="snote">(${fmt(+o.price)} each)</span>`:"")}${o.fmtFor?` <span class="snote">— ${esc(o.fmtFor)}</span>`:""}${
-        shareMode?"":takeBtn}${(!propListHtml && propsMapLabel(r.propsAgg))?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${(r.rolled||r.inclSub)?'<span class="tag rollup">incl. sub-items</span>':""}${r.gone?'<span class="gonenote">not in the breakdown</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
+        shareMode?"":takeBtn}${(!propListHtml && !o.isPropLine && propsMapLabel(r.propsAgg))?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${(r.rolled||r.inclSub)?'<span class="tag rollup">incl. sub-items</span>':""}${r.gone?'<span class="gonenote">not in the breakdown</span>':""}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
       ${movePriceDown?"":pvalBlock}
     </div>
     ${movePriceDown?`<div class="takerow">${pvalBlock}${takeBtn}</div>`:""}
@@ -7081,7 +7113,7 @@ function proposalItemsHtml(inRows, optRows, frac){
   return roots.map(root=>{
     const ins=inBy.get(root)||[], opts=optBy.get(root)||[];
     const tops=ins.filter(r=>!r.isGroup && (r.node.depth||0)===0).length;
-    const head=(ins.length && tops!==1) ? groupHeadHtml(root, "", false)
+    const head=ins.length ? groupHeadHtml(root, "", false)
              : (!ins.length ? groupHeadHtml(root, "opt", false) : "");
     return `<div class="pcard ${ins.length?cardKind(root,""):"pc-opt"}">
       ${head}
