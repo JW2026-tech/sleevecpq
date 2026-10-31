@@ -6192,7 +6192,7 @@ function buildItemRows(forceTop, wantOptional){
          up as if they applied to whichever option is actually chosen */
       const skip = underAlt && want!=="alt";
       const nodeIsAlt = scopeKind(nd.o)==="alt";
-      const rolled = nd.depth===0 && (topForce || withTicks(nd.o[ROLL], dd&&dd.top));
+      const rolled = nd.depth===0 && nd.kids.length>0 && (topForce || withTicks(nd.o[ROLL], dd&&dd.top));
       if(rolled){
         if(branchHas(nd, wantOptional))
           raw.push(at({node:nd, price:branchSum(nd,wantOptional), rolled:true, hide:false, canHide:false,
@@ -6905,7 +6905,7 @@ function priceRowHtml(r, actPrefix){
   const toggles = (!o.isPropLine && (canHide || top)) ? `<div class="ptoggles${(r.hide||top)?" sticky":""}">
       ${canHide?`<button class="pbtn ${r.hide?"active":""}" data-oid="${esc(o.id)}" data-act="${actPrefix}hideprice">${r.hide?"Show price":"Hide price"}</button>`:""}
       ${top?`<span class="dpick">
-        <label title="Write out the items under this one"><input type="checkbox" class="dcheck" data-oid="${esc(o.id)}" data-act="${actPrefix}rollup" ${rollupOn?"":"checked"}> ${o.isFormatLine?"Parts":"Items"}</label>
+        ${(o.isFormatLine || (nd.kids||[]).length)?`<label title="Write out the items under this one"><input type="checkbox" class="dcheck" data-oid="${esc(o.id)}" data-act="${actPrefix}rollup" ${rollupOn?"":"checked"}> ${o.isFormatLine?"Parts":"Items"}</label>`:""}
         ${(!o.isFormatLine && !rollupOn)?`<label title="Write out the option properties of each item, with their prices"><input type="checkbox" class="dcheck" data-oid="${esc(o.id)}" data-act="${actPrefix}props" ${(actPrefix==="opt"?o.optShowProps:o.showProps)?"checked":""}> Properties</label>`:""}
       </span>`:""}
     </div>` : "";
