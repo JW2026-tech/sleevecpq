@@ -1972,6 +1972,7 @@
   .pwas{font-size:10.5px;font-weight:400;color:var(--txt-faint);margin-top:1px;white-space:nowrap}
   .pwas s{margin-right:4px}
   .pdisc{display:inline-block;padding:0 6px;border-radius:9px;background:#e7f6ec;color:#1d7a3e;font-weight:600}
+  .sharesummaryrow.is-disc span,.sharesummaryrow.is-disc b{color:#1d7a3e;font-weight:600}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -5454,7 +5455,8 @@ const propSummaryTotal = kind =>
   propSummaryRows(kind).reduce((t,g)=>t+g.rows.reduce((n,r)=>n+r.price,0),0);
 /* The type says what it is — "18× Hygenic feet" needs no FEET above it —
    so the property's own heading is left out and the lines run on. */
-function propSummaryHtml(kind, withPrice){
+function propSummaryHtml(kind, withPrice, frac){
+  const k=(kind==="in" && frac) ? 1-frac : 1;                // net, like the modules above it
   const groups=propSummaryRows(kind);
   if(!groups.length) return "";
   const rows=[];
@@ -5462,7 +5464,7 @@ function propSummaryHtml(kind, withPrice){
   /* the in-scope types are already inside the prices of the modules above, so the amounts here are
      for reference: say so above them, grey them, and add a total that is marked as not added */
   const incl = kind==="in" && withPrice;
-  const inclTotal = incl ? rows.reduce((t,x)=>t+(+x.r.price||0),0) : 0;
+  const inclTotal = incl ? rows.reduce((t,x)=>t+(+x.r.price||0),0)*k : 0;
   return `<div class="propsum ${kind}${incl?" incl":""}">
     ${incl?`<div class="ps-inclhead"><span>Option properties &mdash; already included in the module prices above</span><span class="ps-inclcol">included in module price</span></div>`:""}
     ${rows.map(({g,r})=>`<div class="ps-row ${r.image?"haspic":""}">
@@ -5470,7 +5472,7 @@ function propSummaryHtml(kind, withPrice){
       ${r.image?`<img class="ps-pic" src="${r.image}" alt="">`:""}
       <span class="ps-lbl">${esc(r.name)}${kind==="opt"?' <span class="optpill">optional</span>':""}
         ${r.note?`<span class="ps-note">${esc(r.note)}</span>`:""}</span>
-      ${withPrice?`<span class="ps-amt">${r.price?fmt(r.price):"included"}</span>`:""}
+      ${withPrice?`<span class="ps-amt">${r.price?fmt(r.price*k):"included"}</span>`:""}
     </div>`).join("")}
     ${(incl && inclTotal)?`<div class="ps-row ps-incltotal"><span class="ps-lbl">Total option properties &mdash; already included in the modules above, not added</span><span class="ps-amt">${fmt(inclTotal)}</span></div>`:""}
   </div>`;
@@ -7044,9 +7046,8 @@ function priceRowHtml(r, actPrefix){
      .pval only ever moves out of .pmain here, in this one branch). */
   const shareMode=document.body.classList.contains("share-mode");
   const movePriceDown = shareMode && takeBtn;
-  /* an optional price already has the discount off it: say so on the line, with what it was */
-  const wasLine = (r.disc && r.disc<1 && r.price && !r.hide && !o.priceText && !o.isDiff && !r.taken && (actPrefix==="opt" || (nd.depth===0 && !o.isPropLine)))
-    ? `<div class="pwas"><s>${fmt(r.price/(1-r.disc))}</s> <span class="pdisc">&minus;${(r.disc*100).toFixed(1)}% discount</span></div>` : "";
+  /* every price is net; the discount is explained once, above the list and in the block under it */
+  const wasLine = "";
   const pvalBlock=`<div class="pval">${priceTxt}${wasLine}</div>${altTxt}`;
   /* folded out, the properties are listed with their prices, so the blue summary of them is not needed */
   const propListHtml=(()=>{
@@ -11864,6 +11865,8 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^All prices are net \u2014 your ([\d.]+)% discount is already included\.$/, "Todos los precios son netos \u2014 su descuento del $1% ya est\u00e1 incluido."],
+  [/^Incl\. ([\d.]+)% discount$/, "Incl. descuento del $1%"],
   [/^Equipment at list price$/, "Equipos a precio de lista"],
   [/^— already taken off the prices above$/, "— ya descontado de los precios de arriba"],
   [/^Option properties — already included in the module prices above$/, "Propiedades de opción — ya incluidas en los precios de los módulos de arriba"],
@@ -12903,11 +12906,12 @@ function proposalHtml(opts){
   return `${openStepsHtml()}${o_.skipHeader?"":`<h2>Investment proposal</h2>
     <div class="docsub">${esc(CONFIG.model||"")}</div>
     <div class="docmeta">Generated ${new Date().toLocaleDateString()}</div>`}
+    ${disc?`<div class="discnote">All prices are net — your ${(frac*100).toFixed(1)}% discount is already included.</div>`:""}
     ${colHead}
     ${equipRows.length
       ? proposalItemsHtml(scaleRows(equipRows, frac), [], frac)
       : '<div class="docempty">Nothing in scope yet — everything selected so far is optional.</div>'}
-    ${propSummaryHtml("in",true)}
+    ${propSummaryHtml("in",true,frac)}
     ${discountControlHtml(subtotal, svcTotal)}
     ${(disc && discountSpec().intro.trim())?`<div class="discintro">${esc(discountSpec().intro)}</div>`:""}
     ${disc?`<div class="pline listrow"><div class="pmain">
@@ -12932,7 +12936,7 @@ function proposalHtml(opts){
         <div class="pval">${fmt(svcTotal)}</div>
         ${hasAltCur()?`<div class="pval alt">${fmtAlt(svcTotal)}</div>`:""}
       </div></div>`:""}`:""}
-    <div class="grandtotal"><span class="lbl">Total investment${t.priceLabel?` (${esc(t.priceLabel)})`:""}</span><span class="amt">${grand?fmt(grand):"—"}${hasAltCur()&&grand?`<span class="amtalt">${fmtAlt(grand)}</span>`:""}${disc?`<span class="savednote">after the discount of ${fmt(disc)}</span>`:""}</span></div>
+    <div class="grandtotal"><span class="lbl">Total investment${t.priceLabel?` (${esc(t.priceLabel)})`:""}</span><span class="amt">${grand?fmt(grand):"—"}${hasAltCur()&&grand?`<span class="amtalt">${fmtAlt(grand)}</span>`:""}</span></div>
     ${fxNote}
     ${optSection}
     ${altSection}`;
@@ -19111,6 +19115,8 @@ function shareSummaryCardHtml(frac){
           <b>${takenTotal?fmt(takenTotal):"—"}</b>
         </div>`:""}
         ${svcTotal?`<div class="sharesummaryrow"><span>Installation &amp; services</span><b>${fmt(svcTotal)}</b></div>`:""}
+        ${(()=>{ const rs=buildPriceRows(docDetail()), d=discountAmount(priceRowsTotal(rs)-serviceRowsTotal(rs));
+          return d ? `<div class="sharesummaryrow is-disc"><span>Incl. ${(frac*100).toFixed(1)}% discount</span><b>&minus; ${fmt(d)}</b></div>` : ""; })()}
         </div>
         <div class="sharesummarytotal">
           <div>
@@ -19156,8 +19162,7 @@ function shareUpgradeCardHtml(r, frac){
          quotation, which is why there are two. */""}
     <div class="shareupname">${esc(o.name||"")}</div>
     ${note?`<div class="shareupdesc">${esc(note)}</div>`:""}
-    ${(frac && !r.hide && r.price && !isServiceRow(r))
-      ? `<div class="shareupwas"><s>${fmt(r.price/(1-frac))}</s> <span>&minus;${(frac*100).toFixed(1)}% discount</span></div>` : ""}
+    ${/* net, like every price on the page; the section heading says the discount is in it */""}
     <div class="shareupprice">${r.hide?"price on request":(r.price?fmt(r.price):"included")}
       ${(q>1 && !r.hide && r.price)?`<span class="shareupeach">${q} &times; ${fmt(r.price/q)}</span>`:""}</div>
     ${/* On paper the buttons are gone, and then a card the customer had
