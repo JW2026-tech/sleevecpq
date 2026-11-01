@@ -2119,6 +2119,8 @@
   .altstart .ssinput{height:36px;font-size:13px}
   .altwhy{font-size:11.5px;color:#1d7a3e;margin:4px 0;line-height:1.4}
   .altwhy b{font-weight:600}
+  .svrow.off .svname{font-weight:400}
+  .tariffon{display:flex;align-items:center;gap:6px;cursor:pointer}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -5217,6 +5219,34 @@ function transEntry(){
   e.atCost=!!e.atCost;
   return e;
 }
+/* Import tariffs, for customers in the United States: a share of what the machine
+   costs them, after the discount and without the service lines. Off unless the
+   salesperson switches it on for the quote. It is a cost passed on, not a price
+   of ours, so it is never discounted itself. */
+const TARIFF_KEY="__tariff";
+function tariffEntry(){
+  const m=serviceState();
+  const e=m[TARIFF_KEY] || (m[TARIFF_KEY]={on:false, pct:10, scope:"in"});
+  e.on=!!e.on; if(!(+e.pct>=0)) e.pct=10;
+  if(e.scope!=="opt") e.scope="in";
+  return e;
+}
+let _tariffGuard=false;
+/* the machine price it is worked out on: in scope, after the discount, services left out */
+function tariffBase(){
+  if(_tariffGuard) return 0;
+  _tariffGuard=true;
+  try{
+    const rows=buildPriceRows(false);
+    const base=priceRowsTotal(rows)-serviceRowsTotal(rows);
+    return Math.max(0, base-discountAmount(base));
+  } finally { _tariffGuard=false; }
+}
+function tariffTotal(){
+  const e=tariffEntry();
+  if(!e.on || _tariffGuard) return 0;
+  return Math.round(tariffBase()*(+e.pct||0))/100;
+}
 const NOTE_KEY="__note";
 function serviceNote(){
   ensureService();
@@ -6594,6 +6624,7 @@ function buildItemRows(forceTop, wantOptional){
     };
     add("__svc_pack", `Packaging${packType().label?`: ${packType().label.toLowerCase()}`:""}`,
         packagingTotal(), packEntry().scope);
+    if(tariffEntry().on) add("__svc_tariff", `Tariffs (${+tariffEntry().pct||0}% of the machine price)`, tariffTotal(), tariffEntry().scope);
     if(transportAtCost()){
       if((transEntry().scope==="opt")===!!wantOptional) raw.push(at({
         isPropLine:true, price:0, rolled:false, hide:false, canHide:false,
@@ -11781,6 +11812,19 @@ function serviceScreenHtml(){
     </div>
 
 
+    ${(()=>{ const te=tariffEntry();
+      return `<div class="svrow ${te.scope==="opt"?"is-opt":""} ${te.on?"":"empty off"}" data-sv="${TARIFF_KEY}">
+      ${te.on?scopePillsHtml("sv-tariff", te.scope):'<div class="scope"></div>'}
+      <div class="svbody">
+        <label class="svname tariffon"><input type="checkbox" data-tariffon="1" ${te.on?"checked":""}> Tariffs <span class="meta">— import duties for the United States</span></label>
+        ${te.on?`<div class="svcalc">${+te.pct||0}% of ${fmt(tariffBase())} <span class="meta">machine price after discount, excl. services</span> <b>= ${fmt(tariffTotal())}</b></div>`
+          :'<div class="svcalc meta">Switch on for customers in the US: a percentage of the machine price after discount, excl. services. Not discounted itself.</div>'}
+      </div>
+      ${te.on?`<label class="svadj" title="Percentage of the machine price"><span>percent</span>
+        <input class="in" type="number" min="0" step="0.5" value="${+te.pct||0}" data-tariffpct="1"></label>`:'<div class="svadj"></div>'}
+      <div class="svprice">${te.on?(tariffTotal()?fmt(tariffTotal()):"—"):""}</div>
+    </div>`; })()}
+
     <div class="meta" style="margin-top:16px">Delivery time and payment terms are set on the Investment proposal, with the discount${
       dl.time?` — ${esc(dl.time)}`:""}${dl.payment?` · ${esc(dl.payment)}`:""}.</div>`;
   return `<div class="fmtpickhint">Days on site, packaging and transport — worked out from the configuration where possible, adjustable per job.</div>
@@ -11835,7 +11879,7 @@ function wireServiceScreen(root){
   });
   el.querySelectorAll("[data-svscope]").forEach(r=>{
     const id=r.closest("[data-sv]").dataset.sv;
-    const target = id===PACK_KEY?packEntry() : id===TRANS_KEY?transEntry()
+    const target = id===PACK_KEY?packEntry() : id===TRANS_KEY?transEntry() : id===TARIFF_KEY?tariffEntry()
       : id.startsWith("__x:") ? (extraLines().find(e=>e.id===id.slice(4))||{}) : serviceEntry(id);
     r.onclick=()=>{ target.scope=r.dataset.svscope; renderCurrent(); };
   });
@@ -11879,6 +11923,10 @@ function wireServiceScreen(root){
       });
     });
   })();
+  const ton=el.querySelector("[data-tariffon]");
+  if(ton) ton.onchange=()=>{ tariffEntry().on=ton.checked; renderCurrent(); };
+  const tpct=el.querySelector("[data-tariffpct]");
+  if(tpct) tpct.onchange=()=>{ tariffEntry().pct=Math.max(0,+tpct.value||0); renderCurrent(); };
   const xa=el.querySelector("#svAddExtra");
   if(xa) xa.onclick=()=>{ extraLines(); serviceState()[EXTRA_KEY].push({id:"x"+Date.now().toString(36), label:"", mode:"days", days:1, amount:0, rate:0, engineers:1, travel:0, scope:"opt"}); renderCurrent(); };
   const pe=el.querySelector("[data-packextra]");
@@ -12410,6 +12458,7 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^Tariffs \(([\d.]+)% of the machine price\)$/, "Aranceles ($1% del precio de la m\u00e1quina)"],
   [/^Service — no discount applies$/, "Servicio — sin descuento"],
   [/^Reference price$/, "Precio de referencia"],
   [/^Same price as the original scope$/, "Mismo precio que el alcance original"],
