@@ -2125,6 +2125,7 @@
   .fpadd{color:#b8560a;line-height:1.45}
   .fpsame{color:#888}
   .fpamt{white-space:nowrap}
+  .totnote{font-size:10px;font-weight:400;text-transform:none;letter-spacing:0;opacity:.75}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -3093,7 +3094,7 @@
          of the panel. -->
     <div class="asidetotals">
       <div id="summary"></div>
-      <div class="total"><span class="lbl">Total list price</span><span class="amt" id="total">—</span></div>
+      <div class="total"><span class="lbl">Total investment <span class="totnote">after discount</span></span><span class="amt" id="total">—</span></div>
       <div class="meta" id="meta"></div>
     </div>
     <div id="ctree"></div>
@@ -8671,7 +8672,7 @@ function renderConfigure(){
   /* The full item-by-item breakdown lives on the Investment proposal; here
      only the figures that matter while configuring. */
   const rows=buildPriceRows(false);
-  const grand=priceRowsTotal(rows);
+  const grand=rows.length ? investmentGrandTotal() : 0;     // what the customer pays: after the discount, services included
   const optTotal=priceRowsTotal(buildOptionalRows(false));
   const ct=document.getElementById("ctree");
   if(ct){
@@ -16806,7 +16807,7 @@ function quotePayload(name){
           state:clone(state), scope:collectScopeFlags(),
           /* what this quote comes to, so the list can show it without
              rebuilding every quote against the catalogue to find out */
-          total:(()=>{ try{ return priceRowsTotal(buildPriceRows(false)); }catch(e){ return null; } })(),
+          total:(()=>{ try{ return investmentGrandTotal(); }catch(e){ return null; } })(),
           /* which catalogue this quote's prices belong to, so reopening it
              later brings that catalogue back instead of quietly repricing
              it against whatever has been published since. On a pinned
@@ -17965,7 +17966,7 @@ function quoteMeta(){
     customer: CONFIG.customer||"",
     model: CONFIG.model||"",
     template: docLang||"",
-    total: priceRowsTotal(buildPriceRows(false))
+    total: investmentGrandTotal()
   };
 }
 function defaultQuoteName(){
