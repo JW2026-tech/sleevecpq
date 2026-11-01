@@ -1373,6 +1373,22 @@
      card made the alternatives taller than the machines they were comparing
      and repeated the same feet and doors on every one of them. */
   .sharealtupg{font-size:11px;color:#666;margin:8px 0 10px;line-height:1.45}
+  /* the comparison under the cards: the same rows as the Alternatives tab */
+  .sharecmp{margin-top:16px}
+  .sharecmphead{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#777;margin-bottom:6px}
+  .sharecmpscroll{overflow-x:auto;border:1px solid #e3e6f0;border-radius:12px;background:#fff}
+  .sharecmpgrid{display:grid;font-size:12.5px;color:#222}
+  .sharecmpgrid .scl, .sharecmpgrid .scc{padding:7px 12px;border-bottom:1px solid #eef0f6;min-width:0;overflow-wrap:anywhere}
+  .sharecmpgrid .scl{color:#777}
+  .sharecmpgrid .scc.base{background:#fff7ee}
+  .sharecmpgrid .scsec{grid-column:1 / -1;background:#f4f5f9;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#777;padding:6px 12px}
+  .sharecmpgrid .schead{font-size:13px}
+  .sharecmpgrid .scbadge{display:block;color:#EF7B0B;font-size:10.5px;font-weight:700;margin-bottom:2px}
+  .sharecmpgrid .scdiff{display:block;margin:-7px -12px;padding:7px 12px;background:#fff4e2;font-weight:700}
+  .sharecmpgrid .scmuted{color:#888}
+  .sharecmpgrid .scmiss{color:#b3261e;margin-top:2px}
+  .sharecmplegend{font-size:11px;color:#777;margin-top:6px;display:flex;align-items:center;gap:6px}
+  .scswatch{width:12px;height:12px;background:#fff4e2;border:1px solid #f0d9ae;border-radius:3px;display:inline-block}
   .sharealtupg b{color:#EF7B0B;white-space:nowrap}
   /* the same positions on the machines this step could hold instead */
   .sharepropmach{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
@@ -2129,6 +2145,9 @@
   .cmpswap{padding:3px 10px;border-color:#8b5cf6;color:#8b5cf6;white-space:nowrap}
   .cmpswap:hover{background:rgba(139,92,246,.1);color:#8b5cf6}
   .cmpgrid .yes{color:#0a7245;font-weight:600}
+  .cmpgrid .gdiff{display:block;margin:-6px -12px;padding:6px 12px;background:#fff4e2;font-weight:700}
+  .cmpgrid .gmuted{color:var(--txt-dim);font-size:.92em}
+  .cmpgrid .gmiss{color:#b3261e;font-size:.92em;margin-top:2px}
   /* always in view — a button nobody can find is no button at all */
   .takeopt{margin-left:10px;padding:2px 9px;font-size:10.5px;border-color:var(--warn);color:var(--warn);
     background:var(--warn-softer);white-space:nowrap;vertical-align:1px}
@@ -2801,6 +2820,7 @@
     .gcell{padding:1mm 2mm;border-bottom:.25pt solid #dfe3ef}
     .gcell.base{background:#eef1f8}
     .gcell.alt{background:#f6f4fd}
+    .cmpgrid .gdiff{margin:-1mm -2mm;padding:1mm 2mm;background:#fff4e2}
     .gcell.ghead{padding:1.6mm 2mm;gap:1.2mm}
     .ghbody{gap:2mm}
     .ghbody .cmppic{flex-basis:46%;max-height:22mm;padding:.6mm}
@@ -7627,39 +7647,23 @@ function altCompareHtml(frac){
     const heads=[{name:c.target, opt:c.targetOpt, base:true, total:c.targetPrice, delta:0,
         extras:c.targetExtras||[], optionals:c.targetOptionals||[]}]
       .concat(c.cols.map(x=>Object.assign({}, x, {total:c.targetPrice+(+x.delta||0)})));
-    const labels=[];
-    for(const h of heads) for(const f of featuresOf(h.opt||{}))
-      if(f.label && !labels.includes(f.label)) labels.push(f.label);
-    const valueOf=(h,label)=>{
-      const f=featuresOf(h.opt||{}).find(x=>x.label===label);
-      return f ? (f.value||"yes") : "—";
-    };
+    /* the same specifications, option properties (with what they cost, at this quotation's discount) and
+       included upgrades as the comparison grid on the Alternatives tab */
+    const G=altGridData(heads, 0, frac);
+    const ups=c.targetOpt?altUpgradesInScope(c.targetOpt.id):[];
+    const dcell=(v,d)=>d?`<span class="gdiff">${esc(v)}</span>`:esc(v);
     const base=heads[0];
-    /* what each choice adds to the machine, named by the type it gets */
-    const propRows=[];
-    for(const pp of (CONFIG.props||[])){
-      if(propSkipped(pp)) continue;          // left out of this quote entirely
-      const cells=heads.map(h=>{
-        const o=h.opt||{};
-        const q=propQtyOf(o, pp.id);
-        const v=q ? assignedVariant(pp, o.id) : null;
-        return {q, vid:v?v.id:"", name:v?v.name:(pp.plural||pp.label||"")};
-      });
-      if(!cells.some(x=>x.q>0)) continue;
-      const kinds=[];
-      for(const x of cells) if(x.q>0 && !kinds.some(k=>k.vid===x.vid)) kinds.push({vid:x.vid, name:x.name});
-      for(const k of kinds){
-        propRows.push({name:k.name, vals:cells.map(x=>(x.q>0 && x.vid===k.vid) ? x.q : null)});
-      }
-    }
     const extras=[];
     for(const h of heads) for(const e of (h.extras||[]))
       if(!e.isProp && !extras.includes(e.name)) extras.push(e.name);
-    const rows=labels;
     const cell=(h,inner,extra)=>`<div class="gcell ${h.base?"base":"alt"} ${extra||""}">${inner}</div>`;
     const line=(label, vals, cls)=>`<div class="gcell rl ${cls||""}">${label}</div>`+
       heads.map((h,i)=>cell(h, vals[i], cls)).join("");
     const sec=t=>`<div class="gsec">${esc(t)}</div>`;
+    /* the upgrades in scope under this item, and per alternative what carries over */
+    const upgRow=ups.length ? line("Included upgrades", heads.map(h=>h.base ? esc(ups.join(" · "))
+      : ((h.missing||[]).length ? `<span class="gmuted">Same as in scope, except:</span><div class="gmiss">${h.missing.map(x=>"&#10007; "+esc(x)+" — not available").join("<br>")}</div>`
+                                : '<span class="gmuted">Same as in scope</span>'))) : "";
 
     /* name and badge on one line, then the picture beside the figures —
        side by side keeps the head short */
@@ -7686,7 +7690,7 @@ function altCompareHtml(frac){
         <span class="cmppill ${h.base?"base":""}">${h.base?"in scope":"alternative"}</span>
         <div class="cmpname">${esc(h.name)}</div>
         ${h.base?"":altWhyHtml(h.opt)}
-        ${(!h.base && (h.missing||[]).length)?`<div class="altmiss">Not available on this machine: ${(h.missing||[]).map(esc).join(", ")}</div>`:""}
+        ${(!h.base && (h.missing||[]).length && !ups.length)?`<div class="altmiss">Not available on this machine: ${(h.missing||[]).map(esc).join(", ")}</div>`:""}
         ${h.base?`<span class="cmppick current">Current selection</span>`
                :`<button class="pbtn cmpswap no-print" data-cmpswap="${esc(c.key)}|${esc(h.vid||(h.opt&&h.opt.id)||h.name)}">Take this alternative</button>`}
       </div>
@@ -7721,10 +7725,9 @@ function altCompareHtml(frac){
       <div class="cmpgrid" style="--cmp-cols:${heads.length}">
         <div class="gcell rl ghead"></div>
         ${heads.map(head).join("")}
-        ${rows.length?sec("Machine functionalities")+rows.map(l=>
-          line(esc(l), heads.map(h=>esc(valueOf(h,l))))).join(""):""}
-        ${propRows.length?sec("Option properties")+propRows.map(pr=>
-          line(esc(pr.name), pr.vals.map(v=>v==null?"—":String(v)))).join(""):""}
+        ${upgRow}
+        ${G.specs.length?sec("Machine specifications")+G.specs.map(g=>line(esc(g.label), g.vals.map((v,i)=>dcell(v,g.diff[i])))).join(""):""}
+        ${G.props.length?sec("Option properties")+G.props.map(g=>line(esc(g.label), g.vals.map((v,i)=>dcell(v,g.diff[i])))).join(""):""}
         ${extras.length?sec("Configuration selected")+extras.map(n=>
           line(esc(n), heads.map(h=>(h.extras||[]).some(e=>e.name===n)?'<span class="yes">&#10003;</span>':"—"))).join(""):""}
       </div>
@@ -11946,6 +11949,27 @@ function altSpecsOf(o){
   for(const x of (o.specs||[])){ const l=fillSupply(x.label||"").trim(); if(l && !m.has(l)) m.set(l, fillSupply(x.value||"").trim()||"yes"); }
   return m;
 }
+/* what one item carries of each option property, as label -> "12 pcs Digital counter · $ 12.235,77".
+   frac is the discount a customer document is quoted at; the sales screen shows list prices (0) */
+function altPropCell(o, frac){
+  const m=new Map(), k=1-(frac||0);
+  propPricedLines(o).forEach((l,i)=>{ const p=propLineProp(o,i); if(p) m.set(p.label||p.id, `${l.qty}${p.unit?" "+p.unit:"×"} ${l.name}${l.total?" · "+fmt(l.total*k):""}`); });
+  return m;
+}
+/* the upgrades in scope under an item, by name */
+function altUpgradesInScope(targetId){
+  const ups=[]; (function walk(nodes){ for(const nd of nodes){ if(nd.o.id===targetId){ (function sub(k){ for(const x of k.kids){ if(scopeKind(x.o)==="in") ups.push(x.o.name); sub(x); } })(nd); } else walk(nd.kids); } })(optionTree());
+  return ups;
+}
+/* The comparison rows the sales grid, the PDF and the customer link all show, worked out once so they cannot disagree:
+   per specification and per option property one value per column, and which of them differ from the column at baseIdx. */
+function altGridData(heads, baseIdx, frac){
+  const mk=maps=>{
+    const labels=[]; maps.forEach(m=>m.forEach((v,k)=>{ if(!labels.includes(k)) labels.push(k); }));
+    return labels.map(label=>{ const vals=maps.map(m=>m.get(label)||"—"); return {label, vals, diff:vals.map((v,i)=>i!==baseIdx && v!==vals[baseIdx])}; });
+  };
+  return {specs:mk(heads.map(h=>altSpecsOf(h.opt))), props:mk(heads.map(h=>altPropCell(h.opt, frac)))};
+}
 let altPickState={open:[]};
 function altsScreenHtml(){
   const cat=optionCatalogue();
@@ -11967,13 +11991,13 @@ function altsScreenHtml(){
     const colOf=id=>c ? c.cols.find(x=>x.opt && x.opt.id===id) : null;
     const nm=o=>(optQty(o)>1?`<span class="altqty">${optQty(o)}&times;</span> `:"")+esc(o.name||"");
     /* the upgrades in scope under the item, and per alternative what carries over */
-    const ups=[]; (function walk(nodes){ for(const nd of nodes){ if(nd.o.id===t.id){ (function sub(k){ for(const x of k.kids){ if(scopeKind(x.o)==="in") ups.push(x.o.name); sub(x); } })(nd); } else walk(nd.kids); } })(optionTree());
+    const ups=altUpgradesInScope(t.id);
     const cols=[{o:to, base:true}].concat(mine.map(x=>({o:x.o, x, col:colOf(x.id), carry:altCarry(t.id, x.id)})));
     const nAlt=cols.length-1;
     /* specifications and option properties, each column's values */
     const specs=cols.map(cc=>altSpecsOf(cc.o));
     const labels=[]; specs.forEach(m=>m.forEach((v,k)=>{ if(!labels.includes(k)) labels.push(k); }));
-    const propCell=o=>{ const m=new Map(); propPricedLines(o).forEach((l,i)=>{ const p=propLineProp(o,i); if(p) m.set(p.label||p.id, `${l.qty}${p.unit?" "+p.unit:"×"} ${l.name}${l.total?" · "+fmt(l.total):""}`); }); return m; };
+    const propCell=o=>altPropCell(o, 0);
     const pcells=cols.map(cc=>propCell(cc.o));
     const plabels=[]; pcells.forEach(m=>m.forEach((v,k)=>{ if(!plabels.includes(k)) plabels.push(k); }));
     const why=altWhyMap();
@@ -12224,6 +12248,9 @@ const I18N_ES={
   "Scope of supply":"Alcance del suministro", "Product and sleeve specifications":"Especificaciones del producto y de la manga",
   "Machine specifications":"Especificaciones de la m\u00e1quina", "Investment proposal":"Propuesta de inversi\u00f3n",
   "Optional items":"Art\u00edculos opcionales", "Alternatives":"Alternativas",
+  "Option properties":"Propiedades de opci\u00f3n", "Included upgrades":"Mejoras incluidas", "Compare in detail":"Comparar en detalle",
+  "Same as in scope":"Igual que lo ofrecido", "Same as in scope, except:":"Igual que lo ofrecido, excepto:",
+  "Current selection":"Selecci\u00f3n actual", "Same as current selection":"Igual que la selecci\u00f3n actual", "Same as current selection, except:":"Igual que la selecci\u00f3n actual, excepto:",
   "Commercial terms and conditions":"T\u00e9rminos y condiciones comerciales",
   "Description of the supplied items":"Descripci\u00f3n de los art\u00edculos suministrados",
   "Packing dimensions":"Dimensiones de embalaje", "*provisional dimensions":"*dimensiones provisionales",
@@ -12306,6 +12333,7 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/ \u2014 not available$/, " \u2014 no disponible"],
   [/^Not available on this machine: /, "No disponible en esta m\u00e1quina: "],
   [/^Why choose this:$/, "Por qu\u00e9 elegirlo:"],
   [/^ⓘ Included$/, "ⓘ Incluido"],
@@ -19772,10 +19800,31 @@ function shareAltGroupHtml(c, frac){
                bracket — those are types fitted to the machine, not a machine */
             String(c.key||"").startsWith("prop:")?"Choose this instead":"Choose this machine"}</button>`}
         </div>`).join("")}</div>
+      ${shareAltCompareHtml(c, cards, frac)}
       ${(c.perMachine||[]).length?`<div class="sharepropmach">With another machine in this step:
         ${c.perMachine.map(x=>`<span><b>${x.qty}&times;</b> ${esc(x.name)}</span>`).join("")}</div>`:""}
       ${c.note?`<div class="secnote">${esc(c.note)}</div>`:""}
     </div>`;
+}
+/* The same comparison as on the Alternatives tab, under the cards: specifications, option properties (with what they cost,
+   at this quotation's discount) and included upgrades, one column per card. What differs from the current selection is
+   highlighted. The cards above stay the place to choose. */
+function shareAltCompareHtml(c, cards, frac){
+  if(!c.targetOpt || cards.length<2) return "";
+  const bi=Math.max(0, cards.findIndex(h=>h.base)), G=altGridData(cards, bi, frac), ups=altUpgradesInScope(c.targetOpt.id);
+  if(!G.specs.length && !G.props.length && !ups.length) return "";
+  const rows=[];
+  const sec=t=>rows.push(`<div class="scsec">${esc(t)}</div>`);
+  const line=(label, vals, diffs)=>rows.push(`<div class="scl">${label}</div>`+vals.map((v,i)=>`<div class="scc ${cards[i].base?"base":""}">${diffs&&diffs[i]?`<span class="scdiff">${v}</span>`:v}</div>`).join(""));
+  const head=`<div class="scl"></div>`+cards.map(h=>`<div class="scc schead ${h.base?"base":""}">${h.base?'<span class="scbadge">Current selection</span>':""}<b>${esc(h.name)}</b></div>`).join("");
+  if(ups.length) line("Included upgrades", cards.map(h=>h.base ? esc(ups.join(" · "))
+    : ((h.missing||[]).length ? `<span class="scmuted">Same as current selection, except:</span><div class="scmiss">${h.missing.map(x=>"&#10007; "+esc(x)+" — not available").join("<br>")}</div>`
+                              : '<span class="scmuted">Same as current selection</span>')));
+  if(G.specs.length){ sec("Machine specifications"); G.specs.forEach(g=>line(esc(g.label), g.vals.map(esc), g.diff)); }
+  if(G.props.length){ sec("Option properties"); G.props.forEach(g=>line(esc(g.label), g.vals.map(esc), g.diff)); }
+  return `<div class="sharecmp"><div class="sharecmphead">Compare in detail</div>
+    <div class="sharecmpscroll"><div class="sharecmpgrid" style="grid-template-columns:minmax(120px,.8fr) repeat(${cards.length}, minmax(150px,1fr))">${head}${rows.join("")}</div></div>
+    <div class="sharecmplegend"><span class="scswatch"></span><b>Bold on amber</b> = differs from the current selection</div></div>`;
 }
 /* the discount everything on these pages is priced at, worked out the same
    way wherever it is needed */
