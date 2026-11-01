@@ -1343,6 +1343,7 @@
   .shareupname{font-size:13.5px;font-weight:600;color:#222}
   .shareupdesc{font-size:12px;color:#777;line-height:1.4;margin-top:3px}
   .shareupprice{font-size:15px;font-weight:700;color:#222;margin:10px 0 10px}
+  .shareupsvc{font-size:11px;color:#888;margin-top:6px}
   .shareupwas{font-size:11.5px;color:#888;margin-top:8px}
   .shareupwas s{margin-right:4px}
   .shareupwas span{color:#c15c00;font-weight:600}
@@ -6864,17 +6865,26 @@ function markTaken(id, on, n, anc, ancAlt, altOpt){
   if(l.length) state[TAKEN_KEY]=l; else delete state[TAKEN_KEY];
 }
 /* the options a nested one hangs from, outermost first */
+/* The same item can stand in several places (the inkjet unit is an upgrade of
+   the CR6, the CR3 and the film feed unit alike). The chain that counts is the
+   one it is actually chosen in, with everything above it chosen too; only if
+   it is chosen nowhere does the first place in the catalogue answer. Taking
+   the first place blindly made "add the inkjet unit" swap the machine for the
+   film feed unit it also hangs under. */
 function optionAncestors(id){
-  const trail=[];
-  let found=null;
-  (function walk(list, chain){
-    for(const m of (list||[])) for(const o of (m.options||[])){
-      if(o.id===id){ found=chain.slice(); return; }
-      if(o.children&&o.children.length) walk(o.children, chain.concat(o));
-      if(found) return;
+  let first=null, live=null;
+  (function walk(list, chain, on){
+    for(const m of (list||[])){
+      const v=state[m.id], ids=v===undefined?[]:(Array.isArray(v)?v:[v]);
+      for(const o of (m.options||[])){
+        const sel=on && ids.includes(o.id);
+        if(o.id===id){ if(!first) first=chain.slice(); if(sel && !live) live=chain.slice(); }
+        if(o.children&&o.children.length) walk(o.children, chain.concat(o), sel);
+        if(live) return;
+      }
     }
-  })(CONFIG.modules||[], []);
-  return found||trail;
+  })(CONFIG.modules||[], [], true);
+  return live||first||[];
 }
 /* the nearest option above this one that is offered as an alternative —
    what an "optional" choice down here would be an extra on top of */
@@ -12400,6 +12410,7 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^Service — no discount applies$/, "Servicio — sin descuento"],
   [/^Reference price$/, "Precio de referencia"],
   [/^Same price as the original scope$/, "Mismo precio que el alcance original"],
   [/^less than the original scope$/, "menos que el alcance original"],
@@ -19182,9 +19193,15 @@ function shareStepBlocks(frac){
 }
 /* the optional items a customer can actually add or drop, priced at the same
    discount as everything else on the page */
+/* A card keeps its place while the customer adds it and takes it out again:
+   the order is the one the cards had when he first saw them on this page,
+   and anything new joins at the end. */
+const shareUpgOrder=[];
 function shareUpgradeRows(frac){
-  return scaleRows(buildOptionalRows(false), frac)
+  const rows=scaleRows(buildOptionalRows(false), frac)
     .filter(r=>!r.isGroup && !r.subtotal && takeableId(r.node.o));
+  for(const r of rows){ const k=takeableId(r.node.o); if(!shareUpgOrder.includes(k)) shareUpgOrder.push(k); }
+  return rows.map((r,i)=>({r,i})).sort((a,b)=>shareUpgOrder.indexOf(takeableId(a.r.node.o))-shareUpgOrder.indexOf(takeableId(b.r.node.o)) || a.i-b.i).map(x=>x.r);
 }
 /* The top-level step a nested step ultimately hangs from. Blocks are keyed on
    that level, so anything being filed into one has to be resolved to it —
@@ -19725,7 +19742,8 @@ function shareUpgradeCardHtml(r, frac){
          quotation, which is why there are two. */""}
     <div class="shareupname">${esc(o.name||"")}</div>
     ${note?`<div class="shareupdesc">${esc(note)}</div>`:""}
-    ${/* net, like every price on the page; the section heading says the discount is in it */""}
+    ${/* net, like every price on the page; the section heading says the discount is in it — except service, which never has it */""}
+    ${(frac && isServiceRow(r))?`<div class="shareupsvc">Service — no discount applies</div>`:""}
     <div class="shareupprice">${r.hide?"price on request":(r.price?fmt(r.price):"included")}
       ${(q>1 && !r.hide && r.price)?`<span class="shareupeach">${q} &times; ${fmt(r.price/q)}</span>`:""}</div>
     ${/* On paper the buttons are gone, and then a card the customer had
