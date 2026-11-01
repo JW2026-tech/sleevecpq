@@ -1410,6 +1410,11 @@
   .sharecmpgrid .scimg{display:block;width:100%;height:110px;object-fit:contain;margin-bottom:8px}
   .sharecmpgrid .scname{font-weight:600;font-size:13.5px}
   .sharecmpgrid .scprice{font-size:16px;font-weight:700;color:#EF7B0B;margin:2px 0 4px}
+  .sharecmpgrid .scdelta{display:flex;flex-direction:column;align-items:flex-start;gap:1px;margin:2px 0 6px;padding:6px 10px;border-radius:8px;font-size:11px;line-height:1.3}
+  .sharecmpgrid .scdelta b{font-size:15px}
+  .sharecmpgrid .scdelta.down{background:#e7f6ec;color:#1d7a3e}
+  .sharecmpgrid .scdelta.up{background:#fff1e3;color:#b8560a}
+  .sharecmpgrid .scdelta.ref,.sharecmpgrid .scdelta.same{background:#eef1f8;color:#55607a;padding:6px 10px}
   .sharecmpgrid .scc.cur:not(.base){box-shadow:inset 0 3px 0 #EF7B0B}
   /* the same room for a picture in every column, so names and prices line up across */
   .sharecmp.hasimg .sccards .sharealtimg{height:110px;width:100%;object-fit:contain;margin:0 0 8px}
@@ -12392,6 +12397,12 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^Reference price$/, "Precio de referencia"],
+  [/^Same price as the original scope$/, "Mismo precio que el alcance original"],
+  [/^less than the original scope$/, "menos que el alcance original"],
+  [/^more than the original scope$/, "más que el alcance original"],
+  [/^Original scope$/, "Alcance original"],
+  [/^Choose this alternative$/, "Elegir esta alternativa"],
   [/ \u2014 not available$/, " \u2014 no disponible"],
   [/^Not available on this machine: /, "No disponible en esta m\u00e1quina: "],
   [/^Why choose this:$/, "Por qu\u00e9 elegirlo:"],
@@ -19906,11 +19917,20 @@ function shareAltCompareHtml(c, cards, frac, cardHtml){
     return `<div class="sharealtupg">${prev.length} upgrade option${prev.length>1?"s":""} with this machine${ceiling?` &mdash; up to <b>+ ${fmt(ceiling)}</b>`:""}</div>`;
   };
   const anyImg=cards.some(h=>h.opt&&h.opt.image);
+  /* what each costs more or less than the machine as quoted: one reference, the first column */
+  const ref=cardHtml ? (cards.find(h=>h.original)||cards.find(h=>h.base)) : null;
+  const diff=h=>{
+    if(!ref) return "";
+    if(h===ref) return `<div class="scdelta ref">Reference price</div>`;
+    const d=(+h.total||0)-(+ref.total||0);
+    if(Math.abs(d)<0.005) return `<div class="scdelta same">Same price as the original scope</div>`;
+    return `<div class="scdelta ${d<0?"down":"up"}"><b>${d<0?"&minus; ":"+ "}${fmt(Math.abs(d))}</b><span>${d<0?"less":"more"} than the original scope</span></div>`;
+  };
   const head=cardHtml
     ? `<div class="scl sccards"></div>`+cards.map(h=>`<div class="scc sccards ${h.original?"base":""} ${h.base?"cur":""}">${top(h)}
         ${anyImg?(h.opt&&h.opt.image?`<img class="scimg" src="${h.opt.image}" alt="${esc(h.name)}">`:'<div class="scimg none"></div>'):""}
         <div class="scname">${esc(h.name)}</div>
-        <div class="scprice">${h.total?fmt(h.total):"included"}</div>${upg(h)}</div>`).join("")
+        <div class="scprice">${h.total?fmt(h.total):"included"}</div>${diff(h)}${upg(h)}</div>`).join("")
       + (cards.some(h=>!h.base && altWhyText(h.opt&&h.opt.id))
          ? `<div class="scl">Why choose this</div>`+cards.map(h=>`<div class="scc ${h.original?"base":""}">${h.base?'<span class="scmuted">—</span>':esc(altWhyText(h.opt&&h.opt.id)||"")}</div>`).join("") : "")
     : `<div class="scl"></div>`+cards.map(h=>`<div class="scc schead ${h.base?"base":""}">${h.base?'<span class="scbadge">Current selection</span>':""}<b>${esc(h.name)}</b></div>`).join("");
