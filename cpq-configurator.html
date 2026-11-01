@@ -1402,6 +1402,15 @@
   .sharecmpgrid .sccards .sharealtupg{order:6}
   .sharecmpgrid .sccards .sharealtcard > button{order:7;margin-top:auto}
   .sharecmp.unified{margin-top:6px}
+  .sharecmpgrid .sctop{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;align-content:flex-start;min-height:62px;margin-bottom:8px}   /* room for a badge and a button, the same in every column */
+  .sharecmpgrid .sctop .scbadge{display:inline-block;margin:0;padding:3px 9px;border-radius:10px;font-size:10px;text-transform:uppercase;letter-spacing:.4px}
+  .sharecmpgrid .sctop .scbadge.orig{background:#2f6fe4;color:#fff}
+  .sharecmpgrid .sctop .scbadge.cur{background:#EF7B0B;color:#fff}
+  .sharecmpgrid .sctop .cmpswap{width:100%}
+  .sharecmpgrid .scimg{display:block;width:100%;height:110px;object-fit:contain;margin-bottom:8px}
+  .sharecmpgrid .scname{font-weight:600;font-size:13.5px}
+  .sharecmpgrid .scprice{font-size:16px;font-weight:700;color:#EF7B0B;margin:2px 0 4px}
+  .sharecmpgrid .scc.cur:not(.base){box-shadow:inset 0 3px 0 #EF7B0B}
   /* the same room for a picture in every column, so names and prices line up across */
   .sharecmp.hasimg .sccards .sharealtimg{height:110px;width:100%;object-fit:contain;margin:0 0 8px}
   .sharecmp.hasimg .sccards .sharealtcard:not(:has(.sharealtimg)) .sharealtname{margin-top:118px}
@@ -3922,7 +3931,9 @@ function altGateName(x){
 function effectivePick(x, mode){
   if(!mode) return mode;
   const g=gateScope(x);
-  if(g==="alt") return "alt";                     // travels with the alternative
+  /* travels with the alternative — but only what this format would actually be supplied: a part
+     it shares with another format, or only offers, is not part of what the alternative costs */
+  if(g==="alt") return (mode==="in"||mode==="alt") ? "alt" : (mode==="shared" ? "shared" : "altopt");
   if(mode==="alt") return "opt";                  // the alternative it hung on is gone
   return (mode==="in" && g==="opt") ? "opt" : mode;
 }
@@ -5758,7 +5769,7 @@ function reconcile(){
          answers, so they have no module id to match — skip them or they'd
          be pruned on every render and every pick would snap back to the
          default type */
-      if(key.startsWith("__assign_") || key.startsWith("__sample_") || key===QTY_KEY || key===PRODUCTS_KEY || key===GENERAL_KEY || key===ROLLS_KEY || key==="__show" || key==="__altwhy" || key===NA_KEY || key===SEED_KEY || key===CUSTOM_KEY || key===SERVICE_KEY || key===SPECOVR_KEY || key===TAKEN_KEY || key===PROPSKIP_KEY) continue;
+      if(key.startsWith("__assign_") || key.startsWith("__sample_") || key===QTY_KEY || key===PRODUCTS_KEY || key===GENERAL_KEY || key===ROLLS_KEY || key==="__show" || key==="__altwhy" || key==="__altorig" || key===NA_KEY || key===SEED_KEY || key===CUSTOM_KEY || key===SERVICE_KEY || key===SPECOVR_KEY || key===TAKEN_KEY || key===PROPSKIP_KEY) continue;
       /* out of the quote: forget the answer AND that it was ever seeded, so
          adding the step back starts from the Admin defaults again */
       if(!flatIds.has(key)){ delete state[key]; delete seeded()[key]; changed=true; }
@@ -7412,10 +7423,24 @@ function altOffers(){
     for(const g of groups) if(g.prefix && id.startsWith(g.prefix)) return g;
     for(const g of groups) if(g.ids && g.ids.has(id)) return g;
     for(const g of groups) if(g.ids && [...g.ids].some(x=>id.includes(x))) return g;
+    /* a format part goes with the machine that needs it, not with whichever group came first */
+    if(/^(__prdp_|__genp_)/.test(id)){
+      const part=(CONFIG.parts||[]).find(x=>x && x.id && id.endsWith("_"+x.id));
+      const req=(part&&part.requires)||[];
+      for(const g of groups) if(g.ids && req.some(x=>g.ids.has(x))) return g;
+    }
     return groups[0];
   };
   for(const r of rows){
     if(r.subtotal) continue;                    // a reading line, not money of its own
+    /* a format part two alternatives both need counts with each of them, since either one brings it */
+    const rid=String((r.node&&r.node.o&&r.node.o.id)||"");
+    if(/^(__prdp_|__genp_)/.test(rid)){
+      const part=(CONFIG.parts||[]).find(x=>x && x.id && rid.endsWith("_"+x.id));
+      const req=(part&&part.requires)||[];
+      const hit=groups.filter(g=>g.ids && req.some(x=>g.ids.has(x)));
+      if(hit.length){ for(const g of hit){ g.rows.push(r); g.total+=(+r.price||0); } continue; }
+    }
     const g=ownerOf(r); g.rows.push(r); g.total+=(+r.price||0);
   }
   for(const g of groups) if(g.targetId) g.replaced=replacedTotal(g.targetId, g.opts&&g.opts[0]&&g.opts[0].id);
@@ -7611,6 +7636,11 @@ function takeAlternative(token){
   } else {
     const now=optionById(id), was=optionById(key.replace(/^opt:/,""));
     if(!now||!was) return;
+    /* the machine as the quotation was made keeps that name, however often it is swapped */
+    { const orig=state[ALTORIG_KEY]||(state[ALTORIG_KEY]={});
+      const grp=[was.id, now.id];
+      for(const mm of allModules()) for(const o of (mm.options||[])) if(o.alt && (o.altFor===was.id || o.altFor===now.altFor)) grp.push(o.id);
+      if(!grp.some(x=>orig[x])) orig[was.id]=true; }
     const target=now.altFor||was.id;
     /* the upgrades it was compared with go with it: out of the old item's upgrade
        step, into its own — so the quotation holds what the customer was shown */
@@ -7638,6 +7668,8 @@ function takeAlternative(token){
         if(o.alt && (!o.altFor || o.altFor===target || o.altFor===now.id)){
           o.alt=false; delete o.altFor; o.optional=false; delete o.altOptional;
         } else if(!o.alt && o.optional && o.__viaAlt){ o.optional=false; delete o.altOptional; }
+        /* an extra that was optional on it stays optional now it is back in scope */
+        else if(!o.alt && o.altOptional){ delete o.altOptional; o.optional=true; }
         delete o.__viaAlt;
         if(o.children&&o.children.length) restore(o.children);
       }
@@ -7648,6 +7680,7 @@ function takeAlternative(token){
     (function mark(list){
       for(const m of (list||[])) for(const o of (m.options||[])){
         if(!o.optional) o.__viaAlt=true;
+        else if(!o.alt) o.altOptional=true;        // optional on it: an extra on the alternative, not part of it
         if(o.children&&o.children.length) mark(o.children);
       }
     })(was.children);
@@ -11863,6 +11896,7 @@ function renderServiceView(){
      option.altSuggest[altId] = {why, whyEs}     the live catalogue's suggestion
    ============================================================ */
 const ALTWHY_KEY="__altwhy";
+const ALTORIG_KEY="__altorig";              // ids of items that were in scope as originally quoted
 const altWhyMap=()=>state[ALTWHY_KEY]||(state[ALTWHY_KEY]={});
 /* the reason in the language the customer reads */
 function altWhyText(altId){
@@ -19809,7 +19843,10 @@ function shareAltGroupHtml(c, frac){
     /* a machine and what stands against it: the current selection first, then the alternatives,
        each one column from picture to details */
     const unified=!!c.targetOpt && cards.length>1 && !String(c.key||"").startsWith("prop:");
-    if(unified) cards.sort((x,y)=>(y.base?1:0)-(x.base?1:0));
+    const isOrig=h=>!!(h.opt && (state[ALTORIG_KEY]||{})[h.opt.id]);
+    const anyOrig=cards.some(isOrig);
+    if(unified) cards.forEach(h=>{ h.original = anyOrig ? isOrig(h) : !!h.base; });
+    if(unified) cards.sort((x,y)=>(y.original?1:0)-(x.original?1:0));
     const cardHtml=h=>`
         <div class="sharealtcard ${h.base?"current":""}">
           ${h.base?`<span class="sharealtbadge">Current selection</span>`:""}
@@ -19855,11 +19892,29 @@ function shareAltCompareHtml(c, cards, frac, cardHtml){
   if(!cardHtml && !G.specs.length && !G.props.length && !ups.length) return "";
   const rows=[];
   const sec=t=>rows.push(`<div class="scsec">${esc(t)}</div>`);
-  const line=(label, vals, diffs)=>rows.push(`<div class="scl">${label}</div>`+vals.map((v,i)=>`<div class="scc ${cards[i].base?"base":""}">${diffs&&diffs[i]?`<span class="scdiff">${v}</span>`:v}</div>`).join(""));
+  const outl=i=>cardHtml ? !!cards[i].original : !!cards[i].base;
+  const line=(label, vals, diffs)=>rows.push(`<div class="scl">${label}</div>`+vals.map((v,i)=>`<div class="scc ${outl(i)?"base":""}">${diffs&&diffs[i]?`<span class="scdiff">${v}</span>`:v}</div>`).join(""));
+  const top=h=>{
+    const badges=(h.original?'<span class="scbadge orig">Original scope</span>':"")+(h.base?'<span class="scbadge cur">Current selection</span>':"");
+    const btn=h.base?"":`<button class="btn sm pbtn cmpswap no-print" data-cmpswap="${esc(c.key)}|${esc(h.vid||(h.opt&&h.opt.id)||h.name)}">Choose this alternative</button>`;
+    return `<div class="sctop">${badges}${btn}</div>`;
+  };
+  const upg=h=>{
+    if(h.base||!h.opt) return "";
+    const prev=shareAltPropPreview(h.opt.id, frac); if(!prev.length) return "";
+    const ceiling=prev.reduce((s2,x)=>s2+x.levels.reduce((mx,l)=>Math.max(mx,+l.delta||0),0),0);
+    return `<div class="sharealtupg">${prev.length} upgrade option${prev.length>1?"s":""} with this machine${ceiling?` &mdash; up to <b>+ ${fmt(ceiling)}</b>`:""}</div>`;
+  };
+  const anyImg=cards.some(h=>h.opt&&h.opt.image);
   const head=cardHtml
-    ? `<div class="scl sccards"></div>`+cards.map(h=>`<div class="scc sccards ${h.base?"base":""}">${cardHtml(h)}</div>`).join("")
+    ? `<div class="scl sccards"></div>`+cards.map(h=>`<div class="scc sccards ${h.original?"base":""} ${h.base?"cur":""}">${top(h)}
+        ${anyImg?(h.opt&&h.opt.image?`<img class="scimg" src="${h.opt.image}" alt="${esc(h.name)}">`:'<div class="scimg none"></div>'):""}
+        <div class="scname">${esc(h.name)}</div>
+        <div class="scprice">${h.total?fmt(h.total):"included"}</div>${upg(h)}</div>`).join("")
+      + (cards.some(h=>!h.base && altWhyText(h.opt&&h.opt.id))
+         ? `<div class="scl">Why choose this</div>`+cards.map(h=>`<div class="scc ${h.original?"base":""}">${h.base?'<span class="scmuted">—</span>':esc(altWhyText(h.opt&&h.opt.id)||"")}</div>`).join("") : "")
     : `<div class="scl"></div>`+cards.map(h=>`<div class="scc schead ${h.base?"base":""}">${h.base?'<span class="scbadge">Current selection</span>':""}<b>${esc(h.name)}</b></div>`).join("");
-  const foot=cardHtml ? `<div class="scl scfoot"></div>`+cards.map(h=>`<div class="scc scfoot ${h.base?"base":""}"></div>`).join("") : "";
+  const foot=cardHtml ? `<div class="scl scfoot"></div>`+cards.map(h=>`<div class="scc scfoot ${h.original?"base":""}"></div>`).join("") : "";
   if(ups.length) line("Included upgrades", cards.map(h=>h.base ? esc(ups.join(" · "))
     : ((h.missing||[]).length ? `<span class="scmuted">Same as current selection, except:</span><div class="scmiss">${h.missing.map(x=>"&#10007; "+esc(x)+" — not available").join("<br>")}</div>`
                               : '<span class="scmuted">Same as current selection</span>')));
