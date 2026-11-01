@@ -1419,7 +1419,11 @@
   .sharecmpgrid .scdelta.down{background:#e7f6ec;color:#1d7a3e}
   .sharecmpgrid .scdelta.up{background:#fff1e3;color:#b8560a}
   .sharecmpgrid .scdelta.ref,.sharecmpgrid .scdelta.same{background:#eef1f8;color:#55607a;padding:6px 10px}
-  .sharecmpgrid .scc.cur:not(.base){box-shadow:inset 0 3px 0 #EF7B0B}
+  /* a different machine chosen than the one quoted: its whole column outlined in orange */
+  .sharecmpgrid .scc.curcol{background:#fff7ef;border-left:2px solid #EF7B0B;border-right:2px solid #EF7B0B}
+  .sharecmpgrid .scc.curcol.sccards{border-top:4px solid #EF7B0B;border-radius:12px 12px 0 0}
+  .sharecmpgrid .scc.curcol.scfoot{border-bottom:2px solid #EF7B0B;border-radius:0 0 12px 12px}
+  .sharecmpgrid .sctop .scbadge.cur{font-size:11px;padding:5px 10px}
   /* the same room for a picture in every column, so names and prices line up across */
   .sharecmp.hasimg .sccards .sharealtimg{height:110px;width:100%;object-fit:contain;margin:0 0 8px}
   .sharecmp.hasimg .sccards .sharealtcard:not(:has(.sharealtimg)) .sharealtname{margin-top:118px}
@@ -12504,6 +12508,7 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^✓ Current selection — in your quotation$/, "✓ Selección actual — en su cotización"],
   [/^ \u2014 not needed$/, " \u2014 no se necesita"],
   [/^ \u2014 needed for this machine$/, " \u2014 necesario para esta m\u00e1quina"],
   [/^Same as the item in scope$/, "Igual que el elemento en el alcance"],
@@ -20023,13 +20028,14 @@ function shareAltCompareHtml(c, cards, frac, cardHtml){
   if(!cardHtml && !G.specs.length && !G.props.length && !ups.length) return "";
   const rows=[];
   const sec=t=>rows.push(cardHtml
-    ? `<div class="scl scsec2">${esc(t)}</div>`+cards.map((h,i)=>`<div class="scc scsec2 ${outl(i)?"base":""}"></div>`).join("")
+    ? `<div class="scl scsec2">${esc(t)}</div>`+cards.map((h,i)=>`<div class="scc scsec2 ${colCls(i)}"></div>`).join("")
     : `<div class="scsec">${esc(t)}</div>`);
   const outl=i=>cardHtml ? !!cards[i].original : !!cards[i].base;
-  const line=(label, vals, diffs)=>rows.push(`<div class="scl">${label}</div>`+vals.map((v,i)=>`<div class="scc ${outl(i)?"base":""}">${diffs&&diffs[i]?`<span class="scdiff">${v}</span>`:v}</div>`).join(""));
+  const colCls=i=>(outl(i)?"base":"")+((cardHtml && cards[i].base && !cards[i].original)?" curcol":"");
+  const line=(label, vals, diffs)=>rows.push(`<div class="scl">${label}</div>`+vals.map((v,i)=>`<div class="scc ${colCls(i)}">${diffs&&diffs[i]?`<span class="scdiff">${v}</span>`:v}</div>`).join(""));
   const top=h=>{
     const badges=(h.original&&h.base) ? '<span class="scbadge orig">Original scope &middot; current selection</span>'
-      : (h.original?'<span class="scbadge orig">Original scope</span>':"")+(h.base?'<span class="scbadge cur">Current selection</span>':"");
+      : (h.original?'<span class="scbadge orig">Original scope</span>':"")+(h.base?'<span class="scbadge cur">&#10003; Current selection — in your quotation</span>':"");
     const btn=h.base?"":`<button class="btn sm pbtn cmpswap no-print" data-cmpswap="${esc(c.key)}|${esc(h.vid||(h.opt&&h.opt.id)||h.name)}">Choose this alternative</button>`;
     return `<div class="sctop">${badges}${btn}</div>`;
   };
@@ -20050,14 +20056,14 @@ function shareAltCompareHtml(c, cards, frac, cardHtml){
     return `<div class="scdelta ${d<0?"down":"up"}"><b>${d<0?"&minus; ":"+ "}${fmt(Math.abs(d))}</b><span>${d<0?"less":"more"} than the original scope</span></div>`;
   };
   const head=cardHtml
-    ? `<div class="scl sccards"></div>`+cards.map(h=>`<div class="scc sccards ${h.original?"base":""} ${h.base?"cur":""}">${top(h)}
+    ? `<div class="scl sccards"></div>`+cards.map((h,i)=>`<div class="scc sccards ${colCls(i)}">${top(h)}
         ${anyImg?(h.opt&&h.opt.image?`<img class="scimg" src="${h.opt.image}" alt="${esc(h.name)}">`:'<div class="scimg none"></div>'):""}
         <div class="scname">${esc(h.name)}</div>
         <div class="scprice">${h.total?fmt(h.total):"included"}</div>${diff(h)}${upg(h)}</div>`).join("")
       + (cards.some(h=>!h.base && altWhyText(h.opt&&h.opt.id))
-         ? `<div class="scl">Why choose this</div>`+cards.map(h=>`<div class="scc ${h.original?"base":""}">${h.base?'<span class="scmuted">—</span>':esc(altWhyText(h.opt&&h.opt.id)||"")}</div>`).join("") : "")
+         ? `<div class="scl">Why choose this</div>`+cards.map((h,i)=>`<div class="scc ${colCls(i)}">${h.base?'<span class="scmuted">—</span>':esc(altWhyText(h.opt&&h.opt.id)||"")}</div>`).join("") : "")
     : `<div class="scl"></div>`+cards.map(h=>`<div class="scc schead ${h.base?"base":""}">${h.base?'<span class="scbadge">Current selection</span>':""}<b>${esc(h.name)}</b></div>`).join("");
-  const foot=cardHtml ? `<div class="scl scfoot"></div>`+cards.map(h=>`<div class="scc scfoot ${h.original?"base":""}"></div>`).join("") : "";
+  const foot=cardHtml ? `<div class="scl scfoot"></div>`+cards.map((h,i)=>`<div class="scc scfoot ${colCls(i)}"></div>`).join("") : "";
   if(ups.length) line("Included upgrades", cards.map(h=>h.base ? esc(ups.join(" · "))
     : ((h.missing||[]).length ? `<span class="scmuted">Same as current selection, except:</span><div class="scmiss">${h.missing.map(x=>"&#10007; "+esc(x)+" — not available").join("<br>")}</div>`
                               : '<span class="scmuted">Same as current selection</span>')));
