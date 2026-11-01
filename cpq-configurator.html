@@ -2130,6 +2130,8 @@
   .fpsame{color:#888}
   .fpamt{white-space:nowrap}
   .totnote{font-size:10px;font-weight:400;text-transform:none;letter-spacing:0;opacity:.75}
+  .netpill{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:9px;background:#e7f6ec;color:#1d7a3e;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;vertical-align:middle}
+  .sharesectionhead .sharenetnote{flex:1 1 100%;margin:6px 0 0}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -12508,6 +12510,9 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^All prices below are net — your ([d.]+)% discount is already taken off. Service is not discounted.$/, "Todos los precios son netos — su descuento del $1% ya está aplicado. El servicio no tiene descuento."],
+  [/^All prices below are net — your ([d.]+)% discount is already taken off, so they compare directly with the investment.$/, "Todos los precios son netos — su descuento del $1% ya está aplicado, así que se comparan directamente con la inversión."],
+  [/^net$/, "neto"],
   [/^✓ Current selection — in your quotation$/, "✓ Selección actual — en su cotización"],
   [/^ \u2014 not needed$/, " \u2014 no se necesita"],
   [/^ \u2014 needed for this machine$/, " \u2014 necesario para esta m\u00e1quina"],
@@ -19848,7 +19853,7 @@ function shareUpgradeCardHtml(r, frac){
     ${note?`<div class="shareupdesc">${esc(note)}</div>`:""}
     ${/* net, like every price on the page; the section heading says the discount is in it — except service, which never has it */""}
     ${(frac && isServiceRow(r))?`<div class="shareupsvc">Service — no discount applies</div>`:""}
-    <div class="shareupprice">${r.hide?"price on request":(r.price?fmt(r.price):"included")}
+    <div class="shareupprice">${r.hide?"price on request":(r.price?fmt(r.price):"included")}${(frac && r.price && !r.hide && !isServiceRow(r))?'<span class="netpill">net</span>':""}
       ${(q>1 && !r.hide && r.price)?`<span class="shareupeach">${q} &times; ${fmt(r.price/q)}</span>`:""}</div>
     ${/* On paper the buttons are gone, and then a card the customer had
          already added read exactly like one he had not — while the page
@@ -19877,7 +19882,8 @@ function shareUpgradeCardsHtml(frac, blocks){
   if(!rows.length) return "";
   return `<div class="sharesectionhead">
       <h3>Optional items</h3>
-      <div class="sharesectionsub">Each of these is quoted <b>on top of</b> the investment on the previous page, and none of them is counted in it. Take one and it joins the quotation and its total.${frac?` The prices shown already have your ${(frac*100).toFixed(1)}% discount taken off.`:""}</div>
+      <div class="sharesectionsub">Each of these is quoted <b>on top of</b> the investment on the previous page, and none of them is counted in it. Take one and it joins the quotation and its total.</div>
+      ${frac?`<div class="discnote sharenetnote">All prices below are net — your ${(frac*100).toFixed(1)}% discount is already taken off. Service is not discounted.</div>`:""}
     </div>
     <div class="shareupgrades">${rows.map(r=>shareUpgradeCardHtml(r, frac)).join("")}</div>`;
 }
@@ -19923,6 +19929,7 @@ function shareAltCardsHtml(frac, blocks){
   return `<div class="sharesectionhead">
       <h3>Alternatives</h3>
       <div class="sharesectionsub">Each one is offered <b>instead of</b> the item it stands against, never on top of it — so none of them is counted in the investment on the previous page. Choosing one puts it in the quotation and takes the other out.</div>
+      ${frac?`<div class="discnote sharenetnote">All prices below are net — your ${(frac*100).toFixed(1)}% discount is already taken off, so they compare directly with the investment.</div>`:""}
     </div>` + list.map(c=>shareAltGroupHtml(c, frac)).join("");
 }
 /* the page itself, worked out the same way the proposal is */
@@ -20059,7 +20066,7 @@ function shareAltCompareHtml(c, cards, frac, cardHtml){
     ? `<div class="scl sccards"></div>`+cards.map((h,i)=>`<div class="scc sccards ${colCls(i)}">${top(h)}
         ${anyImg?(h.opt&&h.opt.image?`<img class="scimg" src="${h.opt.image}" alt="${esc(h.name)}">`:'<div class="scimg none"></div>'):""}
         <div class="scname">${esc(h.name)}</div>
-        <div class="scprice">${h.total?fmt(h.total):"included"}</div>${diff(h)}${upg(h)}</div>`).join("")
+        <div class="scprice">${h.total?fmt(h.total):"included"}${(frac && h.total)?'<span class="netpill">net</span>':""}</div>${diff(h)}${upg(h)}</div>`).join("")
       + (cards.some(h=>!h.base && altWhyText(h.opt&&h.opt.id))
          ? `<div class="scl">Why choose this</div>`+cards.map((h,i)=>`<div class="scc ${colCls(i)}">${h.base?'<span class="scmuted">—</span>':esc(altWhyText(h.opt&&h.opt.id)||"")}</div>`).join("") : "")
     : `<div class="scl"></div>`+cards.map(h=>`<div class="scc schead ${h.base?"base":""}">${h.base?'<span class="scbadge">Current selection</span>':""}<b>${esc(h.name)}</b></div>`).join("");
