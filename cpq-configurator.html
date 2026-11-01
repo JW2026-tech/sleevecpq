@@ -1979,6 +1979,38 @@
   .pwas s{margin-right:4px}
   .pdisc{display:inline-block;padding:0 6px;border-radius:9px;background:#e7f6ec;color:#1d7a3e;font-weight:600}
   .sharesummaryrow.is-disc span,.sharesummaryrow.is-disc b{color:#1d7a3e;font-weight:600}
+  .aggrid{display:grid;column-gap:10px;align-items:stretch;overflow-x:auto}
+  .agl{font-size:11.5px;color:var(--txt-dim);padding:10px 8px 10px 0;border-bottom:1px solid var(--line)}
+  .agc{padding:10px 12px;border-bottom:1px solid var(--line);font-size:12.5px;min-width:0;position:relative}
+  .agbase{background:#eef4ff;border-left:1.5px solid #2f6fe4;border-right:1.5px solid #2f6fe4}
+  .agbase.aghead{border-top:1.5px solid #2f6fe4;border-radius:10px 10px 0 0}
+  .agalt{background:var(--bg)}
+  .agalt.aghead{border-radius:10px 10px 0 0}
+  .aghead{border-bottom:0;padding-top:12px}
+  .agl.aghead{border-bottom:0}
+  .agname{font-weight:600;font-size:13.5px;margin-top:6px}
+  .agpic{display:block;width:100%;height:90px;object-fit:contain;background:#fff;border-radius:6px;margin-top:8px}
+  .agprice{font-size:16px;font-weight:700}
+  .agdelta{font-weight:600}.agdelta.down{color:#1d7a3e}.agdelta.up{color:#c15c00}
+  .agmiss{color:#c15c00;font-size:11.5px;margin-top:3px;line-height:1.4}
+  .agc textarea{width:100%;box-sizing:border-box;resize:vertical;font-size:12px}
+  .agbtns{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+  .btn.agsaved{border-color:#1d7a3e;color:#1d7a3e;background:#e7f6ec}
+  .agl.agfoot,.agc.agfoot{padding:0;height:8px;border-bottom:0}
+  .agbase.agfoot{border-bottom:1.5px solid #2f6fe4;border-radius:0 0 10px 10px}
+  .agalt.agfoot{border-radius:0 0 10px 10px}
+  .agsec{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-dim);padding:16px 0 6px;border-bottom:1px solid var(--line)}
+  .agdiff{display:block;margin:-10px -12px;padding:10px 12px;background:#fff4e2;font-weight:700}
+  .agadd{border:1.5px dashed var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;align-self:stretch}
+  .agsugs{border-top:1px dashed var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
+  .agsug{font-size:12px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+  .agtitle{display:flex;align-items:baseline;gap:10px}
+  .agstep{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-dim)}
+  .agtname{font-size:19px;font-weight:700}
+  .agtitle .altclose{margin-left:auto}
+  .agsub{margin:2px 0 12px;font-size:11.5px}
+  .aglegend{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--txt-dim);margin-top:10px}
+  .agswatch{width:14px;height:14px;border-radius:3px;background:#fff4e2;border:1px solid #f0d9b5}
   .altcard{border:1px solid var(--line);border-radius:12px;padding:12px 14px 14px;margin:0 0 16px;background:var(--bg-card,var(--bg))}
   .altcardhead{display:flex;align-items:baseline;gap:8px;font-size:14px;margin-bottom:10px}
   .altcardhead .altclose{margin-left:auto}
@@ -11932,79 +11964,70 @@ function altsScreenHtml(){
     const sugg=sugIds(t.id), sug=altSuggestionsFor(t.id);
     const base=c ? c.targetPrice : optionTotal(to);
     const colOf=id=>c ? c.cols.find(x=>x.opt && x.opt.id===id) : null;
-    /* the in-scope item, then what is offered instead, then what is often offered */
-    const tiles=[
-      `<div class="alttile base">
-        <span class="altbadge base">In scope</span>
-        ${pic(to)}
-        <div class="alttname">${optQty(to)>1?`<span class="altqty">${optQty(to)}&times;</span> `:""}${esc(t.name)}</div>
-        <div class="alttprice">${base?fmt(base):"included"}</div>
-      </div>`
-    ].concat(mine.map(x=>{
-      const col=colOf(x.id), w=why[x.id]||{}, sg=sug[x.id];
-      const same=sg && (sg.why||"")===(w.en||"") && (sg.whyEs||"")===(w.es||"");
-      return `<div class="alttile">
-        <span class="altbadge">Alternative</span>
-        <button class="altx" data-altdrop="${esc(x.id)}" title="No longer offered in this quotation">&times;</button>
-        ${pic(x.o)}
-        <div class="alttname">${optQty(x.o)>1?`<span class="altqty">${optQty(x.o)}&times;</span> `:""}${esc(x.name)}</div>
-        <div class="alttprice">${col?fmt(base+(+col.delta||0)):(optionTotal(x.o)?fmt(optionTotal(x.o)):"included")}</div>
-        <div class="alttdelta">${col?signed(col.delta):""}</div>
-        ${(()=>{ const cr=altCarry(t.id, x.id);
-          return (cr.carried.length?`<div class="altcarry">Same upgrades included: ${cr.carried.map(c=>esc(c.o.name)).join(", ")}</div>`:"")
-               + (cr.missing.length?`<div class="altmiss">Not available on this machine: ${cr.missing.map(esc).join(", ")}</div>`:""); })()}
-        <label class="altwhyin">Why choose this <span class="meta">— the customer reads this</span>
-          <textarea class="in" rows="3" data-altwhy="${esc(x.id)}" data-lang="en" placeholder="e.g. higher speed, lower steam consumption">${esc(w.en||"")}</textarea></label>
-        <details class="altes" ${String(w.es||"").trim()?"open":""}><summary>Spanish text</summary>
-          <textarea class="in" rows="3" data-altwhy="${esc(x.id)}" data-lang="es" placeholder="p. ej. mayor velocidad, menor consumo de vapor">${esc(w.es||"")}</textarea></details>
-        <div class="alttbtns">
-          <button class="btn sm ${same?"ok":""}" data-altsave="${esc(x.id)}" title="Keep this pairing and its reason in the live catalogue, so it is suggested whenever ${esc(t.name)} is quoted">${sg?(same?"&#10003; Saved as suggestion":"Update suggestion"):"&#9733; Save as suggestion"}</button>
-          ${sg?`<button class="btn sm ghost" data-altunsave="${esc(x.id)}" title="Stop suggesting it in new quotations">Forget</button>`:""}
-        </div>
-      </div>`;
-    })).concat(sugg.map(id=>{
-      const o=optionById(id), sg=sug[id]||{};
-      return `<div class="alttile sugg">
-        <span class="altbadge sugg">Suggested</span>
-        ${pic(o)}
-        <div class="alttname">${esc(o.name)}</div>
-        <div class="alttprice">${optionTotal(o)?fmt(optionTotal(o)):"included"}</div>
-        ${sg.why?`<div class="alttwhy">${esc(sg.why)}</div>`:""}
-        <div class="alttbtns"><button class="btn sm primary" data-altsug="${esc(t.id)}|${esc(id)}">+ Offer as alternative</button></div>
-      </div>`;
-    })).concat([
-      `<div class="alttile add">
-        <div class="altaddlbl">+ Add an alternative</div>
-        ${searchSelectHtml({attr:`data-altadd="${esc(t.id)}"`, value:"", placeholder:"type to search the catalogue…",
-           groups:[{label:"Anything in the catalogue", items:cat.filter(x=>x.id!==t.id && optionScope(x.id)!=="in" && optionScope(x.id)!=="alt")}]})}
-        <div class="meta">Both are quoted, only one is bought.</div>
-      </div>`]);
-    /* their specifications side by side, the lines that differ marked */
-    const cols=[to].concat(mine.map(x=>x.o), sugg.map(id=>optionById(id)));
-    const kindOf=i=>i===0?"base":(i<=mine.length?"alt":"sugg");
-    const specs=cols.map(altSpecsOf);
+    const nm=o=>(optQty(o)>1?`<span class="altqty">${optQty(o)}&times;</span> `:"")+esc(o.name||"");
+    /* the upgrades in scope under the item, and per alternative what carries over */
+    const ups=[]; (function walk(nodes){ for(const nd of nodes){ if(nd.o.id===t.id){ (function sub(k){ for(const x of k.kids){ if(scopeKind(x.o)==="in") ups.push(x.o.name); sub(x); } })(nd); } else walk(nd.kids); } })(optionTree());
+    const cols=[{o:to, base:true}].concat(mine.map(x=>({o:x.o, x, col:colOf(x.id), carry:altCarry(t.id, x.id)})));
+    const nAlt=cols.length-1;
+    /* specifications and option properties, each column's values */
+    const specs=cols.map(cc=>altSpecsOf(cc.o));
     const labels=[]; specs.forEach(m=>m.forEach((v,k)=>{ if(!labels.includes(k)) labels.push(k); }));
-    /* the option properties of each: how many of which type, and what that comes to */
     const propCell=o=>{ const m=new Map(); propPricedLines(o).forEach((l,i)=>{ const p=propLineProp(o,i); if(p) m.set(p.label||p.id, `${l.qty}${p.unit?" "+p.unit:"×"} ${l.name}${l.total?" · "+fmt(l.total):""}`); }); return m; };
-    const pcells=cols.map(propCell);
+    const pcells=cols.map(cc=>propCell(cc.o));
     const plabels=[]; pcells.forEach(m=>m.forEach((v,k)=>{ if(!plabels.includes(k)) plabels.push(k); }));
-    const propRowsHtml=plabels.length ? `<tr class="altsec"><td colspan="${cols.length+1}">Option properties</td></tr>`+plabels.map(l=>{
-        const vals=pcells.map(m=>m.get(l)||"—"); const differs=vals.some(v=>v!==vals[0]);
-        return `<tr class="${differs?"differs":""}"><td>${esc(l)}</td>${vals.map((v,i)=>`<td class="${differs&&i?"hl":""}">${esc(v)}</td>`).join("")}</tr>`; }).join("") : "";
-    const table=((labels.length||plabels.length) && cols.length>1) ? `<div class="altspecs"><table>
-        <thead><tr><th>Machine specifications</th>${cols.map((o,i)=>`<th class="${kindOf(i)}"><span class="altbadge ${kindOf(i)==='alt'?'':kindOf(i)} sm">${({base:'In scope',alt:'Alternative',sugg:'Suggested'})[kindOf(i)]}</span><br>${esc(o.name)}</th>`).join("")}</tr></thead>
-        <tbody>${labels.map(l=>{
-          const vals=specs.map(m=>m.get(l)||"—");
-          const differs=vals.some(v=>v!==vals[0]);
-          return `<tr class="${differs?"differs":""}"><td>${esc(l)}</td>${vals.map((v,i)=>`<td class="${differs&&i?"hl":""}">${esc(v)}</td>`).join("")}</tr>`;
-        }).join("")}${propRowsHtml}</tbody></table>
-        <div class="meta">Highlighted: where an alternative differs from the item in scope.</div></div>`
-      : (cols.length>1 ? '<div class="meta altnospec">No specifications on these items in the catalogue yet.</div>' : "");
+    const why=altWhyMap();
+    const rows=[];                                            // each row: label cell + one cell per column
+    const cell=(cc,i,html,cls)=>`<div class="agc ${cc.base?"agbase":"agalt"} ${cls||""}">${html}</div>`;
+    const row=(label, f, cls)=>rows.push(`<div class="agl ${cls||""}">${label}</div>`+cols.map((cc,i)=>cell(cc,i,f(cc,i),cls)).join(""));
+    const section=t2=>rows.push(`<div class="agsec" style="grid-column:1 / span ${cols.length+1}">${t2}</div>`);
+    row("", cc=>`${cc.base?'<span class="altbadge base">In scope</span>':`<span class="altbadge">Alternative ${cols.indexOf(cc)}</span><button class="altx" data-altdrop="${esc(cc.o.id)}" title="No longer offered in this quotation">&times;</button>`}
+      ${cc.o.image?`<img class="agpic" src="${cc.o.image}" alt="">`:""}<div class="agname">${nm(cc.o)}</div>`, "aghead");
+    row("Price", cc=>`<span class="agprice">${cc.base?(base?fmt(base):"included"):(cc.col?fmt(base+(+cc.col.delta||0)):(optionTotal(cc.o)?fmt(optionTotal(cc.o)):"included"))}</span>`);
+    row("Difference vs. in scope", cc=>cc.base?'<span class="meta">—</span>':(cc.col?`<span class="agdelta ${cc.col.delta<0?"down":cc.col.delta>0?"up":""}">${cc.col.delta<0?"&minus; "+fmt(-cc.col.delta):cc.col.delta>0?"+ "+fmt(cc.col.delta):"same price"}</span>`:""));
+    row("Included upgrades", cc=>{
+      if(cc.base) return ups.length?esc(ups.join(" · ")):'<span class="meta">none</span>';
+      const m=cc.carry.missing;
+      if(!ups.length) return '<span class="meta">none</span>';
+      return m.length ? `<span class="meta">Same as in scope, except:</span><div class="agmiss">${m.map(x=>"&#10007; "+esc(x)+" — not available").join("<br>")}</div>`
+                      : '<span class="meta">Same as in scope</span>';
+    });
+    section("Customer text — the customer reads this");
+    row("Why choose this (English)", cc=>cc.base?'<span class="meta">Base offer</span>'
+      :`<textarea class="in" rows="3" data-altwhy="${esc(cc.o.id)}" data-lang="en" placeholder="e.g. higher speed, lower steam consumption">${esc((why[cc.o.id]||{}).en||"")}</textarea>`);
+    row("Why choose this (Spanish)", cc=>cc.base?'<span class="meta">Oferta base</span>'
+      :`<textarea class="in" rows="3" data-altwhy="${esc(cc.o.id)}" data-lang="es" placeholder="Texto en español">${esc((why[cc.o.id]||{}).es||"")}</textarea>`);
+    row("", cc=>{
+      if(cc.base) return "";
+      const w=why[cc.o.id]||{}, sg=sug[cc.o.id];
+      const same=sg && (sg.why||"")===(w.en||"") && (sg.whyEs||"")===(w.es||"");
+      return `<button class="btn sm ${same?"agsaved":""}" data-altsave="${esc(cc.o.id)}" title="Keep this pairing and its reason in the live catalogue, so it is suggested whenever ${esc(t.name)} is quoted">${sg?(same?"&#10003; Saved as suggestion":"Update suggestion"):"&#9733; Save as suggestion"}</button>
+        ${sg?`<button class="btn sm ghost" data-altunsave="${esc(cc.o.id)}" title="Stop suggesting it in new quotations">Forget</button>`:""}`;
+    }, "agbtns");
+    const diffRows=(lbl, vals)=>{ const differs=vals.some(v=>v!==vals[0]); return {differs, vals}; };
+    if(labels.length){
+      section("Machine specifications");
+      labels.forEach(l=>{ const vals=specs.map(m=>m.get(l)||"—"); row(esc(l), (cc,i)=>`<span class="${i&&vals[i]!==vals[0]?"agdiff":""}">${esc(vals[i])}</span>`); });
+    }
+    if(plabels.length){
+      section("Option properties");
+      plabels.forEach(l=>{ const vals=pcells.map(m=>m.get(l)||"—"); row(esc(l), (cc,i)=>`<span class="${i&&vals[i]!==vals[0]?"agdiff":""}">${esc(vals[i])}</span>`); });
+    }
+    row("", ()=>"", "agfoot");                               // closes the columns off at the bottom
+    /* the last column: suggestions and the search, over the full height */
+    const addCol=`<div class="agadd" style="grid-column:${cols.length+2};grid-row:1 / span ${rows.length}">
+      <div class="altaddlbl">+ Add an alternative</div>
+      ${searchSelectHtml({attr:`data-altadd="${esc(t.id)}"`, value:"", placeholder:"Search the catalogue…",
+         groups:[{label:"Anything in the catalogue", items:cat.filter(x=>x.id!==t.id && optionScope(x.id)!=="in" && optionScope(x.id)!=="alt")}]})}
+      ${sugg.length?`<div class="agsugs"><div class="altsughead">Often offered</div>${sugg.map(id=>`
+        <div class="agsug"><b>${esc(optionLabel(id).split(" › ").pop())}</b>${(sug[id]||{}).why?`<div class="meta">${esc(sug[id].why)}</div>`:""}
+          <button class="btn sm primary" data-altsug="${esc(t.id)}|${esc(id)}">+ Offer</button></div>`).join("")}</div>`:""}
+    </div>`;
     return `<div class="altcard">
-      <div class="altcardhead"><span class="meta">${esc(t.step)}</span> <b>${esc(t.name)}</b>
+      <div class="agtitle"><span class="agstep">${esc(t.step)}</span> <span class="agtname">${esc(t.name)}</span>
         ${(!mine.length && !sugg.length)?`<button class="btn sm ghost altclose" data-altclose="${esc(t.id)}">Close</button>`:""}</div>
-      <div class="alttiles">${tiles.join("")}</div>
-      ${table}
+      <div class="meta agsub">Both are quoted, only one is bought.${nAlt?" Highlighted cells differ from the item in scope.":""}</div>
+      <div class="aggrid" style="grid-template-columns:170px repeat(${cols.length}, minmax(190px,1fr)) minmax(170px,.8fr)">${rows.join("")}${addCol}</div>
+      ${(labels.length||plabels.length)&&nAlt?'<div class="aglegend"><span class="agswatch"></span><b>Bold on amber</b> = differs from the item in scope</div>':""}
     </div>`;
   };
   const rest=inScope.filter(t=>!targets.includes(t));
