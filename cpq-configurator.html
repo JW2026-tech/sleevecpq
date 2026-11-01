@@ -1979,21 +1979,43 @@
   .pwas s{margin-right:4px}
   .pdisc{display:inline-block;padding:0 6px;border-radius:9px;background:#e7f6ec;color:#1d7a3e;font-weight:600}
   .sharesummaryrow.is-disc span,.sharesummaryrow.is-disc b{color:#1d7a3e;font-weight:600}
-  .altadd{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:12px 0 18px;background:var(--panel,transparent)}
-  .altaddgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  @media (max-width:760px){ .altaddgrid{grid-template-columns:1fr} }
-  .altadd label,.altwhyin{display:block;font-size:11.5px;color:var(--txt-dim);margin-top:8px}
-  .altwhyin textarea{width:100%;box-sizing:border-box;margin-top:3px;resize:vertical}
-  .altaddbar{display:flex;gap:12px;align-items:center;margin-top:10px}
-  .altcard{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:0 0 14px}
-  .altcardhead{font-size:13px;margin-bottom:6px}
-  .altrow{border-top:1px solid var(--line);padding:8px 0}
-  .altrowhead{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-  .altrowhead .altname{font-weight:600}
-  .altbtns{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
-  .altsugs{border-top:1px dashed var(--line);margin-top:6px;padding-top:8px}
-  .altsughead{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--txt-faint);margin-bottom:4px}
-  .altsug{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:3px 0;font-size:12.5px}
+  .altcard{border:1px solid var(--line);border-radius:12px;padding:12px 14px 14px;margin:0 0 16px;background:var(--bg-card,var(--bg))}
+  .altcardhead{display:flex;align-items:baseline;gap:8px;font-size:14px;margin-bottom:10px}
+  .altcardhead .altclose{margin-left:auto}
+  .alttiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;align-items:stretch}
+  .alttile{position:relative;border:1px solid var(--line);border-radius:10px;padding:10px 12px 12px;display:flex;flex-direction:column;gap:5px;background:var(--bg)}
+  .alttile.base{border-color:var(--accent);box-shadow:inset 0 3px 0 var(--accent)}
+  .alttile.sugg{border-style:dashed;background:transparent}
+  .alttile.add{border-style:dashed;background:transparent;justify-content:center}
+  .altaddlbl{font-weight:600;font-size:12.5px;color:var(--accent)}
+  .altbadge{align-self:flex-start;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 8px;border-radius:10px;background:#fff1e3;color:#c15c00}
+  .altbadge.base{background:var(--accent);color:#fff}
+  .altbadge.sugg{background:#eef1f8;color:#55607a}
+  .altbadge.sm{font-size:9px;padding:1px 6px}
+  .altx{position:absolute;top:6px;right:8px;background:none;border:0;font-size:18px;line-height:1;color:var(--txt-faint);cursor:pointer}
+  .altx:hover{color:#c0392b}
+  .altpic{width:100%;height:120px;object-fit:contain;background:#fff;border-radius:6px}
+  .altpic.none{height:0}
+  .alttname{font-weight:600;font-size:13px}
+  .alttprice{font-size:15px;font-weight:700}
+  .alttdelta{font-size:12px}
+  .alttdelta .up{color:#c15c00}.alttdelta .down{color:#1d7a3e}
+  .alttwhy{font-size:12px;color:var(--txt-dim);line-height:1.4}
+  .altwhyin{display:block;font-size:11px;color:var(--txt-dim);margin-top:4px}
+  .altwhyin textarea,.altes textarea{width:100%;box-sizing:border-box;margin-top:3px;resize:vertical;font-size:12px}
+  .altes summary{font-size:11px;color:var(--txt-faint);cursor:pointer}
+  .alttbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+  .alttbtns .btn.ok{border-color:#1d7a3e;color:#1d7a3e}
+  .altspecs{margin-top:14px;overflow-x:auto}
+  .altspecs table{border-collapse:collapse;width:100%;font-size:12px}
+  .altspecs th,.altspecs td{border-bottom:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+  .altspecs th{font-size:11px;color:var(--txt-dim);font-weight:600}
+  .altspecs td:first-child{color:var(--txt-dim);white-space:nowrap}
+  .altspecs tr.differs td.hl{background:#fff4e6;font-weight:600}
+  .altspecs th.sugg{color:var(--txt-faint)}
+  .altspecs .meta,.altnospec{margin-top:6px;font-size:11px}
+  .altstart{display:flex;flex-wrap:wrap;gap:12px;align-items:center;border:1px dashed var(--line);border-radius:12px;padding:12px 14px;margin:6px 0 16px;font-size:13px}
+  .altstart .ssel{flex:1 1 320px}
   .altwhy{font-size:11.5px;color:#1d7a3e;margin:4px 0;line-height:1.4}
   .altwhy b{font-weight:600}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
@@ -11791,72 +11813,117 @@ async function saveAltSuggestion(targetId, altId, entry){
     return true;
   }catch(err){ toast("Not saved: "+(err&&err.message||err), "warn"); return false; }
 }
+/* the specifications of an item, as label -> value: its features and its spec lines */
+function altSpecsOf(o){
+  const m=new Map();
+  if(!o) return m;
+  for(const f of featuresOf(o)) if(f.label) m.set(f.label, fillSupply(f.value||"yes"));
+  for(const x of (o.specs||[])){ const l=fillSupply(x.label||"").trim(); if(l && !m.has(l)) m.set(l, fillSupply(x.value||"").trim()||"yes"); }
+  return m;
+}
+let altPickState={open:[]};
 function altsScreenHtml(){
   const cat=optionCatalogue();
   const inScope=cat.filter(x=>optionScope(x.id)==="in");
   const alts=cat.filter(x=>optionScope(x.id)==="alt").map(x=>Object.assign({}, x, {o:optionById(x.id)})).filter(x=>x.o && x.o.altFor);
-  const targets=inScope.filter(t=>alts.some(a=>a.o.altFor===t.id) || Object.keys(altSuggestionsFor(t.id)).some(id=>optionById(id) && optionScope(id)!=="alt"));
-  const pick=altPickState;
+  const sugIds=t=>Object.keys(altSuggestionsFor(t)).filter(id=>id!==t && optionById(id) && optionScope(id)!=="alt" && optionScope(id)!=="in");
+  const open=altPickState.open||[];
+  const targets=inScope.filter(t=>open.includes(t.id) || alts.some(x=>x.o.altFor===t.id) || sugIds(t.id).length);
+  const cmp=new Map(altCompares(0).filter(c=>c.targetOpt).map(c=>[c.targetOpt.id, c]));
   const why=altWhyMap();
-  const altRow=a=>{
-    const w=why[a.id]||{}, sug=altSuggestionsFor(a.o.altFor)[a.id];
-    const same=sug && (sug.why||"")===(w.en||"") && (sug.whyEs||"")===(w.es||"");
-    return `<div class="altrow" data-alt="${esc(a.id)}">
-      <div class="altrowhead"><span class="altname">${esc(a.name)}</span> <span class="meta">${esc(a.step)}</span>
-        <span class="altbtns">
-          <button class="btn sm" data-altsave="${esc(a.id)}" title="Keep this pairing and its reason in the live catalogue, so it is suggested whenever ${esc(optionLabel(a.o.altFor))} is quoted">${sug?(same?"✓ In the live catalogue":"Update in the live catalogue"):"Save as suggestion"}</button>
-          ${sug?`<button class="btn sm ghost" data-altunsave="${esc(a.id)}" title="Stop suggesting it">Remove suggestion</button>`:""}
-          <button class="btn sm ghost" data-altdrop="${esc(a.id)}" title="No longer offered in this quotation">Remove</button>
-        </span></div>
-      <label class="altwhyin">Why choose this (the customer reads this)
-        <textarea class="in" rows="2" data-altwhy="${esc(a.id)}" data-lang="en" placeholder="e.g. higher speed, lower steam consumption">${esc(w.en||"")}</textarea></label>
-      <label class="altwhyin">Spanish <span class="meta">(for a Spanish quotation; left empty, the English is used)</span>
-        <textarea class="in" rows="2" data-altwhy="${esc(a.id)}" data-lang="es" placeholder="p. ej. mayor velocidad, menor consumo de vapor">${esc(w.es||"")}</textarea></label>
+  const pic=o=>o&&o.image ? `<img class="altpic" src="${o.image}" alt="">` : '<div class="altpic none"></div>';
+  const signed=v=>v<0?`<span class="down">&minus; ${fmt(-v)}</span>`:(v>0?`<span class="up">+ ${fmt(v)}</span>`:'<span class="meta">same price</span>');
+
+  const card=t=>{
+    const to=optionById(t.id), c=cmp.get(t.id);
+    const mine=alts.filter(x=>x.o.altFor===t.id);
+    const sugg=sugIds(t.id), sug=altSuggestionsFor(t.id);
+    const base=c ? c.targetPrice : optionTotal(to);
+    const colOf=id=>c ? c.cols.find(x=>x.opt && x.opt.id===id) : null;
+    /* the in-scope item, then what is offered instead, then what is often offered */
+    const tiles=[
+      `<div class="alttile base">
+        <span class="altbadge base">In scope</span>
+        ${pic(to)}
+        <div class="alttname">${esc(t.name)}</div>
+        <div class="alttprice">${base?fmt(base):"included"}</div>
+      </div>`
+    ].concat(mine.map(x=>{
+      const col=colOf(x.id), w=why[x.id]||{}, sg=sug[x.id];
+      const same=sg && (sg.why||"")===(w.en||"") && (sg.whyEs||"")===(w.es||"");
+      return `<div class="alttile">
+        <span class="altbadge">Alternative</span>
+        <button class="altx" data-altdrop="${esc(x.id)}" title="No longer offered in this quotation">&times;</button>
+        ${pic(x.o)}
+        <div class="alttname">${esc(x.name)}</div>
+        <div class="alttprice">${col&&col.total?fmt(col.total):(optionTotal(x.o)?fmt(optionTotal(x.o)):"included")}</div>
+        <div class="alttdelta">${col?signed(col.delta):""}</div>
+        <label class="altwhyin">Why choose this <span class="meta">— the customer reads this</span>
+          <textarea class="in" rows="3" data-altwhy="${esc(x.id)}" data-lang="en" placeholder="e.g. higher speed, lower steam consumption">${esc(w.en||"")}</textarea></label>
+        <details class="altes" ${String(w.es||"").trim()?"open":""}><summary>Spanish text</summary>
+          <textarea class="in" rows="3" data-altwhy="${esc(x.id)}" data-lang="es" placeholder="p. ej. mayor velocidad, menor consumo de vapor">${esc(w.es||"")}</textarea></details>
+        <div class="alttbtns">
+          <button class="btn sm ${same?"ok":""}" data-altsave="${esc(x.id)}" title="Keep this pairing and its reason in the live catalogue, so it is suggested whenever ${esc(t.name)} is quoted">${sg?(same?"&#10003; Saved as suggestion":"Update suggestion"):"&#9733; Save as suggestion"}</button>
+          ${sg?`<button class="btn sm ghost" data-altunsave="${esc(x.id)}" title="Stop suggesting it in new quotations">Forget</button>`:""}
+        </div>
+      </div>`;
+    })).concat(sugg.map(id=>{
+      const o=optionById(id), sg=sug[id]||{};
+      return `<div class="alttile sugg">
+        <span class="altbadge sugg">Suggested</span>
+        ${pic(o)}
+        <div class="alttname">${esc(o.name)}</div>
+        <div class="alttprice">${optionTotal(o)?fmt(optionTotal(o)):"included"}</div>
+        ${sg.why?`<div class="alttwhy">${esc(sg.why)}</div>`:""}
+        <div class="alttbtns"><button class="btn sm primary" data-altsug="${esc(t.id)}|${esc(id)}">+ Offer as alternative</button></div>
+      </div>`;
+    })).concat([
+      `<div class="alttile add">
+        <div class="altaddlbl">+ Add an alternative</div>
+        ${searchSelectHtml({attr:`data-altadd="${esc(t.id)}"`, value:"", placeholder:"type to search the catalogue…",
+           groups:[{label:"Anything in the catalogue", items:cat.filter(x=>x.id!==t.id && optionScope(x.id)!=="in" && optionScope(x.id)!=="alt")}]})}
+        <div class="meta">Both are quoted, only one is bought.</div>
+      </div>`]);
+    /* their specifications side by side, the lines that differ marked */
+    const cols=[to].concat(mine.map(x=>x.o), sugg.map(id=>optionById(id)));
+    const kindOf=i=>i===0?"base":(i<=mine.length?"alt":"sugg");
+    const specs=cols.map(altSpecsOf);
+    const labels=[]; specs.forEach(m=>m.forEach((v,k)=>{ if(!labels.includes(k)) labels.push(k); }));
+    const table=(labels.length && cols.length>1) ? `<div class="altspecs"><table>
+        <thead><tr><th>Machine specifications</th>${cols.map((o,i)=>`<th class="${kindOf(i)}"><span class="altbadge ${kindOf(i)==='alt'?'':kindOf(i)} sm">${({base:'In scope',alt:'Alternative',sugg:'Suggested'})[kindOf(i)]}</span><br>${esc(o.name)}</th>`).join("")}</tr></thead>
+        <tbody>${labels.map(l=>{
+          const vals=specs.map(m=>m.get(l)||"—");
+          const differs=vals.some(v=>v!==vals[0]);
+          return `<tr class="${differs?"differs":""}"><td>${esc(l)}</td>${vals.map((v,i)=>`<td class="${differs&&i?"hl":""}">${esc(v)}</td>`).join("")}</tr>`;
+        }).join("")}</tbody></table>
+        <div class="meta">Highlighted: where an alternative differs from the item in scope.</div></div>`
+      : (cols.length>1 ? '<div class="meta altnospec">No specifications on these items in the catalogue yet.</div>' : "");
+    return `<div class="altcard">
+      <div class="altcardhead"><span class="meta">${esc(t.step)}</span> <b>${esc(t.name)}</b>
+        ${(!mine.length && !sugg.length)?`<button class="btn sm ghost altclose" data-altclose="${esc(t.id)}">Close</button>`:""}</div>
+      <div class="alttiles">${tiles.join("")}</div>
+      ${table}
     </div>`;
   };
-  const sugRows=t=>{
-    const s=altSuggestionsFor(t.id);
-    const ids=Object.keys(s).filter(id=>optionById(id) && optionScope(id)!=="alt" && id!==t.id);
-    if(!ids.length) return "";
-    return `<div class="altsugs"><div class="altsughead">Often offered with ${esc(t.name)}</div>${ids.map(id=>`
-      <div class="altsug"><span><b>${esc(optionLabel(id))}</b>${s[id].why?` &mdash; ${esc(s[id].why)}`:""}</span>
-        <button class="btn sm" data-altsug="${esc(t.id)}|${esc(id)}">Offer as alternative</button></div>`).join("")}</div>`;
-  };
-  return `<div class="docsub">An alternative is offered <b>instead of</b> an item in the quotation: both are quoted, only one is bought. Pick the item in scope, put an alternative beside it, and say in a few words why a customer might choose it. Save it as a suggestion and it comes back by itself whenever that item is in a quotation.</div>
-    <div class="altadd">
-      <div class="altaddgrid">
-        <label>Item in scope
-          ${searchSelectHtml({attr:'data-altpick="target"', value:pick.target||"", placeholder:"choose an item in this quotation… (type to search)", groups:[{label:"In scope in this quotation", items:inScope}]})}</label>
-        <label>Alternative
-          ${searchSelectHtml({attr:'data-altpick="alt"', value:pick.alt||"", placeholder:"choose the alternative… (type to search)", groups:[{label:"Anything in the catalogue", items:cat.filter(x=>x.id!==pick.target && optionScope(x.id)!=="in")}]})}</label>
-      </div>
-      <label class="altwhyin">Why choose this (the customer reads this)
-        <textarea class="in" rows="2" id="altNewWhy" placeholder="e.g. higher speed, lower steam consumption">${esc(pick.why||"")}</textarea></label>
-      <div class="altaddbar"><button class="btn primary" id="altAdd" ${(pick.target&&pick.alt)?"":"disabled"}>Add alternative</button>
-        ${(pick.target && Object.keys(altSuggestionsFor(pick.target)).length)?`<span class="meta">Suggestions for this item are listed below.</span>`:""}</div>
-    </div>
-    ${targets.length ? targets.map(t=>`<div class="altcard">
-        <div class="altcardhead">Instead of <b>${esc(t.name)}</b> <span class="meta">${esc(t.step)} &middot; in scope</span></div>
-        ${alts.filter(a=>a.o.altFor===t.id).map(altRow).join("")}
-        ${sugRows(t)}
-      </div>`).join("")
-      : '<div class="docempty">No alternatives in this quotation yet.</div>'}`;
+  const rest=inScope.filter(t=>!targets.includes(t));
+  return `<div class="docsub">Offer something <b>instead of</b> an item in the quotation: both are quoted, the customer buys one. Saved as a suggestion, an alternative comes back by itself whenever that item is in a quotation.</div>
+    ${targets.length ? targets.map(card).join("") : '<div class="docempty">No alternatives in this quotation yet — pick an item in scope below to start.</div>'}
+    ${rest.length?`<div class="altstart">
+      <span>Offer an alternative for another item in scope</span>
+      ${searchSelectHtml({attr:'data-altopen="1"', value:"", placeholder:"choose an item in this quotation… (type to search)", groups:[{label:"In scope in this quotation", items:rest}]})}
+    </div>`:""}`;
 }
-let altPickState={};
 function renderAltsView(){
   const el=document.getElementById("altBody");
   el.innerHTML=`<h2>Alternatives</h2>${altsScreenHtml()}`;
-  wireSearchSelect(el.querySelector('[data-altpick="target"]'), (sel,id)=>{ altPickState.target=id||""; if(altPickState.alt===id) altPickState.alt=""; renderAltsView(); });
-  wireSearchSelect(el.querySelector('[data-altpick="alt"]'), (sel,id)=>{ altPickState.alt=id||""; renderAltsView(); });
-  const nw=el.querySelector("#altNewWhy"); if(nw) nw.oninput=()=>{ altPickState.why=nw.value; };
-  const add=el.querySelector("#altAdd");
-  if(add) add.onclick=()=>{
-    const {target, alt}=altPickState, w=(altPickState.why||"").trim();
-    if(!offerAlternative(target, alt)) return;
-    if(w) altWhyMap()[alt]=Object.assign({}, altWhyMap()[alt]||{}, {en:w});
-    else { const s=altSuggestionsFor(target)[alt]; if(s) altWhyMap()[alt]={en:s.why||"", es:s.whyEs||""}; }
-    altPickState={target}; saveSoon(); renderAltsView();
-  };
+  wireSearchSelect(el.querySelector('[data-altopen]'), (sel,id)=>{ if(id && !altPickState.open.includes(id)) altPickState.open.push(id); renderAltsView(); });
+  el.querySelectorAll('[data-altadd]').forEach(ss=>wireSearchSelect(ss, (sel,id)=>{
+    const t=sel.dataset.altadd; if(!id) return;
+    if(!offerAlternative(t, id)) return;
+    const sg=altSuggestionsFor(t)[id]; if(sg && !altWhyMap()[id]) altWhyMap()[id]={en:sg.why||"", es:sg.whyEs||""};
+    saveSoon(); renderAltsView();
+  }));
+  el.querySelectorAll("[data-altclose]").forEach(b=>b.onclick=()=>{ altPickState.open=altPickState.open.filter(x=>x!==b.dataset.altclose); renderAltsView(); });
   el.querySelectorAll("[data-altwhy]").forEach(t=>{
     t.oninput=()=>{ const m=altWhyMap(), k=t.dataset.altwhy; m[k]=Object.assign({}, m[k]||{}, {[t.dataset.lang]:t.value}); saveSoon(); };
     t.onchange=()=>renderAltsView();
@@ -11865,7 +11932,7 @@ function renderAltsView(){
   el.querySelectorAll("[data-altsug]").forEach(b=>b.onclick=()=>{
     const [t,a]=b.dataset.altsug.split("|");
     if(!offerAlternative(t,a)) return;
-    const s=altSuggestionsFor(t)[a]; if(s && !altWhyMap()[a]) altWhyMap()[a]={en:s.why||"", es:s.whyEs||""};
+    const sg=altSuggestionsFor(t)[a]; if(sg && !altWhyMap()[a]) altWhyMap()[a]={en:sg.why||"", es:sg.whyEs||""};
     saveSoon(); renderAltsView();
   });
   el.querySelectorAll("[data-altsave]").forEach(b=>b.onclick=async()=>{
