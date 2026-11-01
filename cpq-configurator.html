@@ -7705,6 +7705,8 @@ function takeAlternative(token){
     /* the upgrades it was compared with go with it: out of the old item's upgrade
        step, into its own — so the quotation holds what the customer was shown */
     const moved=altCarry(was.id, now.id).carried;
+    /* the machine coming in gets the types the one going out had, where it has none of its own */
+    matchAltProps(was.id, now.id);
     const stepHolding=(root, oid, chosen)=>{ let hit=null; (function walk(o){ for(const m of (o.children||[])){ if(hit) return;
         const v=state[m.id], ids=v===undefined?[]:(Array.isArray(v)?v:[v]);
         if((m.options||[]).some(x=>x.id===oid) && (!chosen || ids.includes(oid))){ hit=m; return; }
@@ -7961,6 +7963,8 @@ function wirePriceToggles(container){
         if(scopeKind(c.o)!=="in") continue;
         const cur=assignedVariant(p, c.o.id);
         if(cur && cur.id===vid) continue;
+        /* only where this type was offered: the button priced those machines, not the others */
+        if(!(assignEntry(p, c.o.id)[vid]||[]).length) continue;
         setVariantScope(p, c.o.id, vid, "in", true);
         /* what it replaces stays on offer, so the customer can go back */
         if(cur) setVariantScope(p, c.o.id, cur.id, "opt", true);
@@ -19549,6 +19553,7 @@ function sharePropTables(frac){
 const sharePropOpen=new Set();
 function sharePropTablesHtml(frac){
   const list=sharePropTables(frac);
+  const net=n=>(+n||0)*(1-(+frac||0));          // a type's own price, at the discount everything else on the page has
   if(!list.length) return "";
   const alleOpen=list.every(t=>sharePropOpen.has(t.p.id));
   return `<div class="sharesectionhead">
@@ -19575,7 +19580,7 @@ function sharePropTablesHtml(frac){
         <thead><tr><th class="pmach"></th>
           ${t.types.map(v=>`<th>${v.image?`<img class="tpic" src="${v.image}" alt="">`:""}
             <span class="tname">${esc(v.name)}</span>${
-            +v.unitPrice?`<span class="trate">${fmt(+v.unitPrice)} each</span>`:`<span class="trate">included</span>`}${
+            +v.unitPrice?`<span class="trate">${fmt(net(v.unitPrice))} each</span>`:`<span class="trate">included</span>`}${
             v.note?`<span class="tnote">${esc(v.note)}</span>`:""}</th>`).join("")}
         </tr></thead>
         <tbody>
@@ -19592,7 +19597,7 @@ function sharePropTablesHtml(frac){
               if(cellen.every(c=>c.current))
                 return `<span class="pcur">&#10003; ${(()=>{
                   /* what the type comes to in all: its price each, for every position it is fitted to */
-                  const d=(+v.unitPrice||0)*totaal;
+                  const d=net(v.unitPrice)*totaal;
                   return d>0?"included &ndash; "+fmt(d):"included";})()}</span>`;
               const kan=cellen.filter(c=>!c.blocked && c.offered);
               if(!kan.length) return `<span class="pna">&mdash;</span>`;
@@ -19614,7 +19619,7 @@ function sharePropTablesHtml(frac){
             <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>${
               r.mixed?`<span class="pmixed">not all the same &mdash; pick one to align them</span>`:""}</td>
             ${r.cells.map(x=>`<td>${x.current
-              ? `<span class="pcur">&#10003; ${(()=>{const tv=t.types.find(y=>y.id===x.vid); const d=((tv&&+tv.unitPrice)||0)*r.qty; return d>0?"included &ndash; "+fmt(d):"included";})()}</span>`
+              ? `<span class="pcur">&#10003; ${(()=>{const tv=t.types.find(y=>y.id===x.vid); const d=net(tv&&tv.unitPrice)*r.qty; return d>0?"included &ndash; "+fmt(d):"included";})()}</span>`
               : (x.blocked
                  ? (x.blocked.enabler
                     ? `<span class="pwaits" title="This machine can only have it together with ${esc(x.blocked.enabler.v.name)}, which is offered above.">
