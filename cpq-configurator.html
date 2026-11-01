@@ -1979,6 +1979,23 @@
   .pwas s{margin-right:4px}
   .pdisc{display:inline-block;padding:0 6px;border-radius:9px;background:#e7f6ec;color:#1d7a3e;font-weight:600}
   .sharesummaryrow.is-disc span,.sharesummaryrow.is-disc b{color:#1d7a3e;font-weight:600}
+  .altadd{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:12px 0 18px;background:var(--panel,transparent)}
+  .altaddgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:760px){ .altaddgrid{grid-template-columns:1fr} }
+  .altadd label,.altwhyin{display:block;font-size:11.5px;color:var(--txt-dim);margin-top:8px}
+  .altwhyin textarea{width:100%;box-sizing:border-box;margin-top:3px;resize:vertical}
+  .altaddbar{display:flex;gap:12px;align-items:center;margin-top:10px}
+  .altcard{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:0 0 14px}
+  .altcardhead{font-size:13px;margin-bottom:6px}
+  .altrow{border-top:1px solid var(--line);padding:8px 0}
+  .altrowhead{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .altrowhead .altname{font-weight:600}
+  .altbtns{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+  .altsugs{border-top:1px dashed var(--line);margin-top:6px;padding-top:8px}
+  .altsughead{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--txt-faint);margin-bottom:4px}
+  .altsug{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:3px 0;font-size:12.5px}
+  .altwhy{font-size:11.5px;color:#1d7a3e;margin:4px 0;line-height:1.4}
+  .altwhy b{font-weight:600}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -2876,6 +2893,7 @@
   <button class="subtab" data-sub="configure">Steps</button>
   <button class="subtab" data-sub="formats">Format parts</button>
   <button class="subtab" data-sub="service">Services</button>
+  <button class="subtab" data-sub="alts">Alternatives</button>
 </div>
 
 <!-- The reminder that a sent link no longer matches this quote. Outside the
@@ -2952,6 +2970,7 @@
 <!-- ===== format parts ===== -->
 <div class="fmtview hidden" id="viewFormats"><div class="fmtsheet" id="fmtBody"></div></div>
 <div class="fmtview hidden" id="viewService"><div class="fmtsheet" id="svcBody"></div></div>
+<div class="fmtview hidden" id="viewAlts"><div class="fmtsheet" id="altBody"></div></div>
 
 <!-- ===== admin ===== -->
 <div class="admin hidden" id="viewAdmin">
@@ -5616,7 +5635,7 @@ function reconcile(){
          answers, so they have no module id to match — skip them or they'd
          be pruned on every render and every pick would snap back to the
          default type */
-      if(key.startsWith("__assign_") || key.startsWith("__sample_") || key===QTY_KEY || key===PRODUCTS_KEY || key===GENERAL_KEY || key===ROLLS_KEY || key==="__show" || key===NA_KEY || key===SEED_KEY || key===CUSTOM_KEY || key===SERVICE_KEY || key===SPECOVR_KEY || key===TAKEN_KEY || key===PROPSKIP_KEY) continue;
+      if(key.startsWith("__assign_") || key.startsWith("__sample_") || key===QTY_KEY || key===PRODUCTS_KEY || key===GENERAL_KEY || key===ROLLS_KEY || key==="__show" || key==="__altwhy" || key===NA_KEY || key===SEED_KEY || key===CUSTOM_KEY || key===SERVICE_KEY || key===SPECOVR_KEY || key===TAKEN_KEY || key===PROPSKIP_KEY) continue;
       /* out of the quote: forget the answer AND that it was ever seeded, so
          adding the step back starts from the Admin defaults again */
       if(!flatIds.has(key)){ delete state[key]; delete seeded()[key]; changed=true; }
@@ -7514,6 +7533,7 @@ function altCompareHtml(frac){
       <div class="ghtop">
         <span class="cmppill ${h.base?"base":""}">${h.base?"in scope":"alternative"}</span>
         <div class="cmpname">${esc(h.name)}</div>
+        ${h.base?"":altWhyHtml(h.opt)}
         ${h.base?`<span class="cmppick current">Current selection</span>`
                :`<button class="pbtn cmpswap no-print" data-cmpswap="${esc(c.key)}|${esc(h.vid||(h.opt&&h.opt.id)||h.name)}">Take this alternative</button>`}
       </div>
@@ -11657,6 +11677,212 @@ function renderServiceView(){
   el.innerHTML=`<h2>Services</h2>${serviceScreenHtml()}`;
   wireServiceScreen(el);
 }
+/* ============================================================
+   ALTERNATIVES
+   Something offered instead of an item in the quote: both are quoted, only
+   one is bought. Set here per item in scope, with a few words on why a
+   customer might choose it. The same pairing tends to come back quote after
+   quote, so it can be kept in the live catalogue, on the item in scope, and
+   is then suggested whenever that item is in a quotation again.
+     state.__altwhy[altId] = {en, es}            this quote's reason
+     option.altSuggest[altId] = {why, whyEs}     the live catalogue's suggestion
+   ============================================================ */
+const ALTWHY_KEY="__altwhy";
+const altWhyMap=()=>state[ALTWHY_KEY]||(state[ALTWHY_KEY]={});
+/* the reason in the language the customer reads */
+function altWhyText(altId){
+  const w=(state[ALTWHY_KEY]||{})[altId]; if(!w) return "";
+  return (docLanguage()==="es" && String(w.es||"").trim()) ? String(w.es).trim() : String(w.en||"").trim();
+}
+function altWhyHtml(opt){
+  const t=opt&&opt.id ? altWhyText(opt.id) : "";
+  return t ? `<div class="altwhy"><b>Why choose this:</b> ${esc(t)}</div>` : "";
+}
+/* suggestions saved in the catalogue, plus the ones saved in this session (a quote on an
+   older catalogue version does not see the live catalogue's newest additions otherwise) */
+const altSugCache={};                 // targetId -> {altId: entry | null (removed)}
+function altSuggestionsFor(targetId){
+  const o=optionById(targetId);
+  const out=Object.assign({}, (o&&o.altSuggest&&typeof o.altSuggest==="object")?o.altSuggest:{});
+  for(const [k,v] of Object.entries(altSugCache[targetId]||{})){ if(v) out[k]=v; else delete out[k]; }
+  return out;
+}
+/* where an option sits in the catalogue, as the id path the live catalogue's patches use */
+function optionPath(id){
+  let hit=null;
+  (function walk(list, path){
+    for(const m of (list||[])){
+      if(hit) return;
+      for(const o of (m.options||[])){
+        const p=path.concat(m.id, "options", o.id);
+        if(o.id===id){ hit=p; return; }
+        if(o.children&&o.children.length) walk(o.children, p.concat("children"));
+      }
+    }
+  })(CONFIG.modules, ["modules"]);
+  return hit;
+}
+/* the item that step holds, wherever it is in the tree */
+function stepOfOption(id){
+  for(const m of allModules()) if((m.options||[]).some(o=>o.id===id)) return m;
+  return null;
+}
+function offerAlternative(targetId, altId){
+  if(!targetId || !altId || targetId===altId) return false;
+  const m=stepOfOption(altId), o=optionById(altId);
+  if(!m || !o){ toast("That item is not in this quotation's catalogue", "warn"); return false; }
+  const cur=state[m.id];
+  if(!m.multi && cur!==undefined && cur!==altId){
+    alert(`"${o.name}" sits in the step "${m.title||""}", which takes one choice only, and "${optionLabel(cur)}" is chosen there.\n\nIt can't be offered beside it.`);
+    return false;
+  }
+  ensureAltTarget(targetId);
+  setNA(altId, false);
+  o.alt=true; o.optional=true; o.altFor=targetId; delete o.altOptional;
+  markTaken(altId, false);
+  if(m.multi){ const a=Array.isArray(cur)?cur.slice():(cur!==undefined?[cur]:[]); if(!a.includes(altId)) a.push(altId); state[m.id]=a; }
+  else state[m.id]=altId;
+  reconcile();
+  if(optionScope(altId)!=="alt"){
+    /* its step is not open in this quotation: undo, and say why */
+    o.alt=false; delete o.altFor; o.optional=false;
+    alert(`"${o.name}" sits in a step that is not open in this quotation ("${m.title||""}"). Choose what opens that step first in Steps.`);
+    reconcile(); return false;
+  }
+  saveSoon();
+  return true;
+}
+function dropAlternative(altId){
+  const m=stepOfOption(altId), o=optionById(altId);
+  if(!m || !o) return;
+  const cur=state[m.id];
+  if(Array.isArray(cur)){ const a=cur.filter(x=>x!==altId); if(a.length) state[m.id]=a; else delete state[m.id]; }
+  else if(cur===altId) delete state[m.id];
+  o.alt=false; delete o.altFor; o.optional=false;
+  reconcile(); saveSoon();
+}
+/* write one suggestion into the live catalogue (or take it out): a patch on that one item,
+   so it cannot collide with a colleague editing something else */
+async function saveAltSuggestion(targetId, altId, entry){
+  if(!supa){ toast("Not connected — the suggestion is not saved", "warn"); return false; }
+  const p=optionPath(targetId);
+  if(!p){ toast("That item is not in the catalogue", "warn"); return false; }
+  const run=async patches=>{ const {data, error}=await supa.rpc("apply_catalogue_patches",{p_patches:patches}); if(error) throw error; return data||{}; };
+  try{
+    let data;
+    if(entry){
+      data=await run([{op:"set", path:p.concat("altSuggest", altId), value:entry}]);
+      /* no suggestions on that item yet: start the list with this one */
+      if(data.ok && (data.skipped||[]).length) data=await run([{op:"set", path:p.concat("altSuggest"), value:{[altId]:entry}}]);
+    } else data=await run([{op:"del", path:p.concat("altSuggest", altId)}]);
+    if(!data.ok) throw new Error(data.reason||"not saved");
+    if(entry && (data.skipped||[]).length){ toast("That item is not in the live catalogue any more — nothing saved", "warn"); return false; }
+    (altSugCache[targetId]||(altSugCache[targetId]={}))[altId]=entry||null;
+    if(data.rev) noteDraftRevAfterWrite(data.rev);
+    /* working on the live catalogue itself: put it in memory too, and in the baseline the
+       next save is measured against, so it is not sent a second time */
+    if(draftRev!==null && data.rev){
+      const put=root=>{ const o=(function find(list){ for(const m of (list||[])) for(const x of (m.options||[])){ if(x.id===targetId) return x; const r=find(x.children); if(r) return r; } return null; })(root&&root.modules);
+        if(!o) return; if(entry){ o.altSuggest=Object.assign({}, o.altSuggest||{}, {[altId]:clone(entry)}); } else if(o.altSuggest){ delete o.altSuggest[altId]; } };
+      put(CONFIG); if(draftBase) put(draftBase);
+      draftRev=data.rev; draftSavedSig=catalogueSig();
+    }
+    toast(entry ? "Saved in the live catalogue — suggested whenever this item is quoted" : "Taken out of the live catalogue");
+    return true;
+  }catch(err){ toast("Not saved: "+(err&&err.message||err), "warn"); return false; }
+}
+function altsScreenHtml(){
+  const cat=optionCatalogue();
+  const inScope=cat.filter(x=>optionScope(x.id)==="in");
+  const alts=cat.filter(x=>optionScope(x.id)==="alt").map(x=>Object.assign({}, x, {o:optionById(x.id)})).filter(x=>x.o && x.o.altFor);
+  const targets=inScope.filter(t=>alts.some(a=>a.o.altFor===t.id) || Object.keys(altSuggestionsFor(t.id)).some(id=>optionById(id) && optionScope(id)!=="alt"));
+  const pick=altPickState;
+  const why=altWhyMap();
+  const altRow=a=>{
+    const w=why[a.id]||{}, sug=altSuggestionsFor(a.o.altFor)[a.id];
+    const same=sug && (sug.why||"")===(w.en||"") && (sug.whyEs||"")===(w.es||"");
+    return `<div class="altrow" data-alt="${esc(a.id)}">
+      <div class="altrowhead"><span class="altname">${esc(a.name)}</span> <span class="meta">${esc(a.step)}</span>
+        <span class="altbtns">
+          <button class="btn sm" data-altsave="${esc(a.id)}" title="Keep this pairing and its reason in the live catalogue, so it is suggested whenever ${esc(optionLabel(a.o.altFor))} is quoted">${sug?(same?"✓ In the live catalogue":"Update in the live catalogue"):"Save as suggestion"}</button>
+          ${sug?`<button class="btn sm ghost" data-altunsave="${esc(a.id)}" title="Stop suggesting it">Remove suggestion</button>`:""}
+          <button class="btn sm ghost" data-altdrop="${esc(a.id)}" title="No longer offered in this quotation">Remove</button>
+        </span></div>
+      <label class="altwhyin">Why choose this (the customer reads this)
+        <textarea class="in" rows="2" data-altwhy="${esc(a.id)}" data-lang="en" placeholder="e.g. higher speed, lower steam consumption">${esc(w.en||"")}</textarea></label>
+      <label class="altwhyin">Spanish <span class="meta">(for a Spanish quotation; left empty, the English is used)</span>
+        <textarea class="in" rows="2" data-altwhy="${esc(a.id)}" data-lang="es" placeholder="p. ej. mayor velocidad, menor consumo de vapor">${esc(w.es||"")}</textarea></label>
+    </div>`;
+  };
+  const sugRows=t=>{
+    const s=altSuggestionsFor(t.id);
+    const ids=Object.keys(s).filter(id=>optionById(id) && optionScope(id)!=="alt" && id!==t.id);
+    if(!ids.length) return "";
+    return `<div class="altsugs"><div class="altsughead">Often offered with ${esc(t.name)}</div>${ids.map(id=>`
+      <div class="altsug"><span><b>${esc(optionLabel(id))}</b>${s[id].why?` &mdash; ${esc(s[id].why)}`:""}</span>
+        <button class="btn sm" data-altsug="${esc(t.id)}|${esc(id)}">Offer as alternative</button></div>`).join("")}</div>`;
+  };
+  return `<div class="docsub">An alternative is offered <b>instead of</b> an item in the quotation: both are quoted, only one is bought. Pick the item in scope, put an alternative beside it, and say in a few words why a customer might choose it. Save it as a suggestion and it comes back by itself whenever that item is in a quotation.</div>
+    <div class="altadd">
+      <div class="altaddgrid">
+        <label>Item in scope
+          ${searchSelectHtml({attr:'data-altpick="target"', value:pick.target||"", placeholder:"choose an item in this quotation… (type to search)", groups:[{label:"In scope in this quotation", items:inScope}]})}</label>
+        <label>Alternative
+          ${searchSelectHtml({attr:'data-altpick="alt"', value:pick.alt||"", placeholder:"choose the alternative… (type to search)", groups:[{label:"Anything in the catalogue", items:cat.filter(x=>x.id!==pick.target && optionScope(x.id)!=="in")}]})}</label>
+      </div>
+      <label class="altwhyin">Why choose this (the customer reads this)
+        <textarea class="in" rows="2" id="altNewWhy" placeholder="e.g. higher speed, lower steam consumption">${esc(pick.why||"")}</textarea></label>
+      <div class="altaddbar"><button class="btn primary" id="altAdd" ${(pick.target&&pick.alt)?"":"disabled"}>Add alternative</button>
+        ${(pick.target && Object.keys(altSuggestionsFor(pick.target)).length)?`<span class="meta">Suggestions for this item are listed below.</span>`:""}</div>
+    </div>
+    ${targets.length ? targets.map(t=>`<div class="altcard">
+        <div class="altcardhead">Instead of <b>${esc(t.name)}</b> <span class="meta">${esc(t.step)} &middot; in scope</span></div>
+        ${alts.filter(a=>a.o.altFor===t.id).map(altRow).join("")}
+        ${sugRows(t)}
+      </div>`).join("")
+      : '<div class="docempty">No alternatives in this quotation yet.</div>'}`;
+}
+let altPickState={};
+function renderAltsView(){
+  const el=document.getElementById("altBody");
+  el.innerHTML=`<h2>Alternatives</h2>${altsScreenHtml()}`;
+  wireSearchSelect(el.querySelector('[data-altpick="target"]'), (sel,id)=>{ altPickState.target=id||""; if(altPickState.alt===id) altPickState.alt=""; renderAltsView(); });
+  wireSearchSelect(el.querySelector('[data-altpick="alt"]'), (sel,id)=>{ altPickState.alt=id||""; renderAltsView(); });
+  const nw=el.querySelector("#altNewWhy"); if(nw) nw.oninput=()=>{ altPickState.why=nw.value; };
+  const add=el.querySelector("#altAdd");
+  if(add) add.onclick=()=>{
+    const {target, alt}=altPickState, w=(altPickState.why||"").trim();
+    if(!offerAlternative(target, alt)) return;
+    if(w) altWhyMap()[alt]=Object.assign({}, altWhyMap()[alt]||{}, {en:w});
+    else { const s=altSuggestionsFor(target)[alt]; if(s) altWhyMap()[alt]={en:s.why||"", es:s.whyEs||""}; }
+    altPickState={target}; saveSoon(); renderAltsView();
+  };
+  el.querySelectorAll("[data-altwhy]").forEach(t=>{
+    t.oninput=()=>{ const m=altWhyMap(), k=t.dataset.altwhy; m[k]=Object.assign({}, m[k]||{}, {[t.dataset.lang]:t.value}); saveSoon(); };
+    t.onchange=()=>renderAltsView();
+  });
+  el.querySelectorAll("[data-altdrop]").forEach(b=>b.onclick=()=>{ dropAlternative(b.dataset.altdrop); renderAltsView(); });
+  el.querySelectorAll("[data-altsug]").forEach(b=>b.onclick=()=>{
+    const [t,a]=b.dataset.altsug.split("|");
+    if(!offerAlternative(t,a)) return;
+    const s=altSuggestionsFor(t)[a]; if(s && !altWhyMap()[a]) altWhyMap()[a]={en:s.why||"", es:s.whyEs||""};
+    saveSoon(); renderAltsView();
+  });
+  el.querySelectorAll("[data-altsave]").forEach(b=>b.onclick=async()=>{
+    const a=b.dataset.altsave, o=optionById(a); if(!o||!o.altFor) return;
+    const w=altWhyMap()[a]||{};
+    b.disabled=true;
+    await saveAltSuggestion(o.altFor, a, {why:String(w.en||"").trim(), whyEs:String(w.es||"").trim()});
+    renderAltsView();
+  });
+  el.querySelectorAll("[data-altunsave]").forEach(b=>b.onclick=async()=>{
+    const a=b.dataset.altunsave, o=optionById(a); if(!o||!o.altFor) return;
+    if(!confirm("Stop suggesting this alternative in new quotations?")) return;
+    b.disabled=true;
+    await saveAltSuggestion(o.altFor, a, null);
+    renderAltsView();
+  });
+}
 function renderConfigureQuiet(){ invalidateQtyCache(); reconcile(); }
 
 document.getElementById("exportSteps").onclick=()=>exportStepsCsv();
@@ -11879,6 +12105,7 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^Why choose this:$/, "Por qu\u00e9 elegirlo:"],
   [/^ⓘ Included$/, "ⓘ Incluido"],
   [/^Net price \u2014 your ([\d.]+)% discount is included$/, "Precio neto \u2014 su descuento del $1% est\u00e1 incluido"],
   [/^All prices are net \u2014 your ([\d.]+)% discount is already included\.$/, "Todos los precios son netos \u2014 su descuento del $1% ya est\u00e1 incluido."],
@@ -13776,12 +14003,13 @@ function renderCurrent(){
   ensureLanguages();
   if(mode==="formats") renderFormatsView();
   else if(mode==="service") renderServiceView();
+  else if(mode==="alts") renderAltsView();
   else if(mode==="admin") renderAdmin();
   else if(mode==="docs") renderDocs();
   else if(mode==="quotes") renderQuotes();
   else renderConfigure();
 }
-const CONFIG_SUBMODES=["configure","formats","service"];
+const CONFIG_SUBMODES=["configure","formats","service","alts"];
 /* How much chrome is stuck to the top right now. Everything below it (the
    step list, the summary, the document bar, the drop-down panel) hangs off
    --topbar, so this is the one place that has to be right. Below 900px the
@@ -13833,7 +14061,7 @@ function syncQuoteTabs(){
 }
 function setMode(next){
   /* the two that need a quotation stay shut while there is none */
-  if((next==="configure"||next==="docs"||next==="formats"||next==="service") && noQuoteOpen()){
+  if((next==="configure"||next==="docs"||next==="formats"||next==="service"||next==="alts") && noQuoteOpen()){
     toast(quotePutAway && quotePutAway.number
       ? `Quotation ${quotePutAway.number} is put away — open it again first`
       : "No quotation open", "warn");
@@ -13845,6 +14073,7 @@ function setMode(next){
   document.getElementById("viewFormats").classList.toggle("hidden",mode!=="formats");
   document.getElementById("mService").classList.toggle("on",mode==="service");
   document.getElementById("viewService").classList.toggle("hidden",mode!=="service");
+  document.getElementById("viewAlts").classList.toggle("hidden",mode!=="alts");
   document.getElementById("mAdmin").classList.toggle("on",mode==="admin");
   document.getElementById("mDocs").classList.toggle("on",mode==="docs");
   document.getElementById("mQuotes").classList.toggle("on",mode==="quotes");
@@ -17276,7 +17505,7 @@ function applySnapshot(raw){
     _sigCache={at:0, sig:null};
     /* pick up where the last session left off — the screen that was open,
        which document tab, and which Admin section */
-    if(["configure","formats","service","admin","docs","quotes"].includes(d.mode)) mode=d.mode;
+    if(["configure","formats","service","alts","admin","docs","quotes"].includes(d.mode)) mode=d.mode;
     if(DOC_TABS.some(t=>t.id===d.docsTab)) docsTab=d.docsTab;
     if(["modules","languages","specs","props","parts","service","electrical","prices","commercial"].includes(d.adminSection)) adminSection=d.adminSection;
     if(Array.isArray(d.sel)) sel=d.sel;
@@ -19319,6 +19548,7 @@ function shareAltGroupHtml(c, frac){
           ${h.opt&&h.opt.image?`<img class="sharealtimg" src="${h.opt.image}" alt="${esc(h.name)}">`:""}
           <div class="sharealtname">${esc(h.name)}</div>
           ${specLine(h)?`<div class="sharealtspec">${esc(specLine(h))}</div>`:""}
+          ${h.base?"":altWhyHtml(h.opt)}
           <div class="sharealtprice">${h.total?fmt(h.total):"included"}</div>
           ${/* One line, not three panels. This page is for comparing machines
                 and picking one, so the upgrades a machine would open up are
