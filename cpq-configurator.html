@@ -1980,35 +1980,36 @@
   .pdisc{display:inline-block;padding:0 6px;border-radius:9px;background:#e7f6ec;color:#1d7a3e;font-weight:600}
   .sharesummaryrow.is-disc span,.sharesummaryrow.is-disc b{color:#1d7a3e;font-weight:600}
   .aggrid{display:grid;column-gap:10px;align-items:stretch;overflow-x:auto}
-  .agl{font-size:11.5px;color:var(--txt-dim);padding:10px 8px 10px 0;border-bottom:1px solid var(--line)}
-  .agc{padding:10px 12px;border-bottom:1px solid var(--line);font-size:12.5px;min-width:0;position:relative}
+  .agl{font-size:11.5px;color:var(--txt-dim);padding:6px 8px 6px 0;border-bottom:1px solid var(--line)}
+  .agc{padding:6px 10px;border-bottom:1px solid var(--line);font-size:12.5px;min-width:0;position:relative}
   .agbase{background:#eef4ff;border-left:1.5px solid #2f6fe4;border-right:1.5px solid #2f6fe4}
   .agbase.aghead{border-top:1.5px solid #2f6fe4;border-radius:10px 10px 0 0}
   .agalt{background:var(--bg)}
   .agalt.aghead{border-radius:10px 10px 0 0}
-  .aghead{border-bottom:0;padding-top:12px}
+  .aghead{border-bottom:0;padding-top:8px}
   .agl.aghead{border-bottom:0}
-  .agname{font-weight:600;font-size:13.5px;margin-top:6px}
-  .agpic{display:block;width:100%;height:90px;object-fit:contain;background:#fff;border-radius:6px;margin-top:8px}
+  .agname{font-weight:600;font-size:13.5px;margin-top:4px}
+  .agpic{display:block;width:100%;height:64px;object-fit:contain;background:#fff;border-radius:6px;margin-top:8px}
   .agprice{font-size:16px;font-weight:700}
   .agdelta{font-weight:600}.agdelta.down{color:#1d7a3e}.agdelta.up{color:#c15c00}
   .agmiss{color:#c15c00;font-size:11.5px;margin-top:3px;line-height:1.4}
   .agc textarea{width:100%;box-sizing:border-box;resize:vertical;font-size:12px}
-  .agbtns{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+  .agbtns{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
   .btn.agsaved{border-color:#1d7a3e;color:#1d7a3e;background:#e7f6ec}
   .agl.agfoot,.agc.agfoot{padding:0;height:8px;border-bottom:0}
   .agbase.agfoot{border-bottom:1.5px solid #2f6fe4;border-radius:0 0 10px 10px}
   .agalt.agfoot{border-radius:0 0 10px 10px}
-  .agsec{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-dim);padding:16px 0 6px;border-bottom:1px solid var(--line)}
-  .agdiff{display:block;margin:-10px -12px;padding:10px 12px;background:#fff4e2;font-weight:700}
+  .agsec{padding-top:10px!important;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-dim);padding:16px 0 6px;border-bottom:1px solid var(--line)}
+  .agdiff{display:block;margin:-6px -10px;padding:6px 10px;background:#fff4e2;font-weight:700}
   .agadd{border:1.5px dashed var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;align-self:stretch}
+  .agadd .ssel{flex:0 0 auto;max-width:none;min-width:0}          /* the picker is a row here, not a column of its own */
   .agsugs{border-top:1px dashed var(--line);padding-top:8px;display:flex;flex-direction:column;gap:8px}
   .agsug{font-size:12px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
   .agtitle{display:flex;align-items:baseline;gap:10px}
   .agstep{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--txt-dim)}
   .agtname{font-size:19px;font-weight:700}
   .agtitle .altclose{margin-left:auto}
-  .agsub{margin:2px 0 12px;font-size:11.5px}
+  .agsub{margin:2px 0 8px;font-size:11.5px}
   .aglegend{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--txt-dim);margin-top:10px}
   .agswatch{width:14px;height:14px;border-radius:3px;background:#fff4e2;border:1px solid #f0d9b5}
   .altcard{border:1px solid var(--line);border-radius:12px;padding:12px 14px 14px;margin:0 0 16px;background:var(--bg-card,var(--bg))}
@@ -11984,7 +11985,7 @@ function altsScreenHtml(){
       ${cc.o.image?`<img class="agpic" src="${cc.o.image}" alt="">`:""}<div class="agname">${nm(cc.o)}</div>`, "aghead");
     row("Price", cc=>`<span class="agprice">${cc.base?(base?fmt(base):"included"):(cc.col?fmt(base+(+cc.col.delta||0)):(optionTotal(cc.o)?fmt(optionTotal(cc.o)):"included"))}</span>`);
     row("Difference vs. in scope", cc=>cc.base?'<span class="meta">—</span>':(cc.col?`<span class="agdelta ${cc.col.delta<0?"down":cc.col.delta>0?"up":""}">${cc.col.delta<0?"&minus; "+fmt(-cc.col.delta):cc.col.delta>0?"+ "+fmt(cc.col.delta):"same price"}</span>`:""));
-    row("Included upgrades", cc=>{
+    if(ups.length) row("Included upgrades", cc=>{
       if(cc.base) return ups.length?esc(ups.join(" · ")):'<span class="meta">none</span>';
       const m=cc.carry.missing;
       if(!ups.length) return '<span class="meta">none</span>';
@@ -11993,9 +11994,9 @@ function altsScreenHtml(){
     });
     section("Customer text — the customer reads this");
     row("Why choose this (English)", cc=>cc.base?'<span class="meta">Base offer</span>'
-      :`<textarea class="in" rows="3" data-altwhy="${esc(cc.o.id)}" data-lang="en" placeholder="e.g. higher speed, lower steam consumption">${esc((why[cc.o.id]||{}).en||"")}</textarea>`);
-    row("Why choose this (Spanish)", cc=>cc.base?'<span class="meta">Oferta base</span>'
-      :`<textarea class="in" rows="3" data-altwhy="${esc(cc.o.id)}" data-lang="es" placeholder="Texto en español">${esc((why[cc.o.id]||{}).es||"")}</textarea>`);
+      :`<textarea class="in" rows="2" data-altwhy="${esc(cc.o.id)}" data-lang="en" placeholder="e.g. higher speed, lower steam consumption">${esc((why[cc.o.id]||{}).en||"")}</textarea>`);
+    if(docLanguage()==="es") row("Why choose this (Spanish)", cc=>cc.base?'<span class="meta">Oferta base</span>'
+      :`<textarea class="in" rows="2" data-altwhy="${esc(cc.o.id)}" data-lang="es" placeholder="Texto en español">${esc((why[cc.o.id]||{}).es||"")}</textarea>`);
     row("", cc=>{
       if(cc.base) return "";
       const w=why[cc.o.id]||{}, sg=sug[cc.o.id];
