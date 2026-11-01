@@ -2013,6 +2013,9 @@
   .altspecs td:first-child{color:var(--txt-dim);white-space:nowrap}
   .altspecs tr.differs td.hl{background:#fff4e6;font-weight:600}
   .altspecs th.sugg{color:var(--txt-faint)}
+  .altspecs tr.altsec td{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--txt-faint);padding-top:12px}
+  .altcarry{font-size:11.5px;color:#1d7a3e;line-height:1.4}
+  .altmiss{font-size:11.5px;color:#c15c00;line-height:1.4}
   .altspecs .meta,.altnospec{margin-top:6px;font-size:11px}
   .altstart{display:flex;flex-wrap:wrap;gap:12px;align-items:center;border:1px dashed var(--line);border-radius:12px;padding:12px 14px;margin:6px 0 16px;font-size:13px}
   .altstart .ssel{flex:1 1 320px}
@@ -7316,12 +7319,67 @@ function altOffers(){
     if(r.subtotal) continue;                    // a reading line, not money of its own
     const g=ownerOf(r); g.rows.push(r); g.total+=(+r.price||0);
   }
-  for(const g of groups) if(g.targetId) g.replaced=replacedTotal(g.targetId);
+  for(const g of groups) if(g.targetId) g.replaced=replacedTotal(g.targetId, g.opts&&g.opts[0]&&g.opts[0].id);
+  for(const g of groups){
+    const a=g.opts&&g.opts[0];
+    if(!g.targetId || !a || !g.rows.length) continue;
+    const cr=altCarry(g.targetId, a.id);
+    for(const c of cr.carried){
+      g.rows.push({isPropLine:true, rolled:false, hide:false, canHide:false, carried:true, price:c.price,
+        node:{m:null, root:null, depth:1, trail:[], o:{id:"__carry_"+a.id+"_"+c.o.id, name:c.o.name, qty:c.qty>1?c.qty:0, isPropLine:true}}});
+      g.total+=c.price;
+    }
+    g.missing=cr.missing;
+  }
   return groups.filter(g=>g.rows.length);
+}
+/* LIKE FOR LIKE
+   The upgrades chosen under the item in scope are, in the catalogue, the very
+   same items an alternative offers under its own upgrade step (the edge
+   controller under the CR6 is the edge controller under the CR3). They cannot
+   be chosen a second time under the alternative without dragging the item in
+   scope along, so they are counted with it instead: every upgrade in scope
+   under the item that the alternative also offers (same item, or the same
+   name) goes into the alternative's price, and what it does not offer is
+   named, so the comparison is between two machines configured alike. */
+function altCarry(targetId, altId){
+  const out={carried:[], missing:[]};
+  const alt=optionById(altId); if(!alt) return out;
+  const offered=new Map();                      // everything the alternative offers under itself
+  (function walk(o){ for(const m of (o.children||[])) for(const x of (m.options||[])){
+    offered.set("id:"+x.id, x); offered.set("nm:"+String(x.name||"").trim().toLowerCase(), x); walk(x); } })(alt);
+  const already=new Set();                      // chosen under the alternative itself already
+  (function walk(nodes, under){ for(const nd of nodes){ const u=under || nd.o.id===altId; if(under) already.add(nd.o.id); walk(nd.kids, u); } })(optionTree(), false);
+  (function walk(nodes){ for(const nd of nodes){
+    if(nd.o.id===targetId){
+      (function sub(n){ for(const k of n.kids){
+        if(scopeKind(k.o)==="in"){
+          const hit=offered.get("id:"+k.o.id) || offered.get("nm:"+String(k.o.name||"").trim().toLowerCase());
+          if(hit){ if(!already.has(hit.id)) out.carried.push({o:hit, src:k.o, qty:optQty(k.o), price:optionPrice(hit)*optQty(k.o)/Math.max(1,optQty(hit))+propsSurcharge(hit)}); }
+          else out.missing.push(k.o.name||"");
+        }
+        sub(k);
+      } })(nd);
+    } else walk(nd.kids);
+  } })(optionTree());
+  return out;
+}
+/* the types chosen on the item in scope, given to the alternative where it has none of its own */
+function matchAltProps(targetId, altId){
+  let changed=false;
+  for(const p of (CONFIG.props||[])){
+    if(propSkipped(p)) continue;
+    const t=optionById(targetId), a=optionById(altId);
+    if(!t || !a || !(propQtyOf(a,p.id)>0) || !(propQtyOf(t,p.id)>0)) continue;
+    if(Object.keys(assignEntry(p, altId)).length) continue;      // set by hand: leave it
+    const e=assignEntry(p, targetId), vid=Object.keys(e).find(k=>(e[k]||[]).includes("in"));
+    if(vid && (p.variants||[]).some(v=>v.id===vid)){ setVariantScope(p, altId, vid, "in", true); changed=true; }
+  }
+  return changed;
 }
 /* what leaves the quote if the alternative is taken: the option itself and
    everything that only hangs on it */
-function replacedTotal(targetId){
+function replacedTotal(targetId, altId){
   let n=0;
   const walk=nodes=>{ for(const nd of nodes){
     if(nd.o.id===targetId){
@@ -7335,9 +7393,10 @@ function replacedTotal(targetId){
   walk(optionTree());
   /* the format parts that only this option unlocks */
   const tKind=optionScope(targetId)||"in";
+  /* a part the alternative needs as well stays in the quote when it is taken */
   const onlyThis=x=>{
     const req=(x.requires)||[];
-    return req.includes(targetId) && !req.some(id=>id!==targetId && optionScope(id)===tKind);
+    return req.includes(targetId) && !(altId && req.includes(altId)) && !req.some(id=>id!==targetId && optionScope(id)===tKind);
   };
   const side = tKind==="alt" ? "alt" : (tKind==="opt");
   for(const pr of formatProducts()){
@@ -7417,7 +7476,8 @@ function altCompares(frac){
                              isProp:/^(__pc_|__optprop_|__altprop_)/.test(String(o.id||""))}; }),
       /* this branch's own optional sub-items — an alternative can offer
          accessories of its own, distinct from what the in-scope item offers */
-      optionals: (g.opts&&g.opts[0]) ? cutOpts(itemBelongings(g.opts[0].id,"opt")) : []
+      optionals: (g.opts&&g.opts[0]) ? cutOpts(itemBelongings(g.opts[0].id,"opt")) : [],
+      missing: g.missing||[]
     });
   }
   return [...byKey.values()].filter(c=>c.cols.length);
@@ -7453,6 +7513,22 @@ function takeAlternative(token){
     const now=optionById(id), was=optionById(key.replace(/^opt:/,""));
     if(!now||!was) return;
     const target=now.altFor||was.id;
+    /* the upgrades it was compared with go with it: out of the old item's upgrade
+       step, into its own — so the quotation holds what the customer was shown */
+    const moved=altCarry(was.id, now.id).carried;
+    const stepHolding=(root, oid, chosen)=>{ let hit=null; (function walk(o){ for(const m of (o.children||[])){ if(hit) return;
+        const v=state[m.id], ids=v===undefined?[]:(Array.isArray(v)?v:[v]);
+        if((m.options||[]).some(x=>x.id===oid) && (!chosen || ids.includes(oid))){ hit=m; return; }
+        for(const x of (m.options||[])) walk(x); } })(root); return hit; };
+    for(const c of moved){
+      const from=stepHolding(was, c.src.id, true), to=stepHolding(now, c.o.id, false);
+      if(!from || !to) continue;
+      const fv=state[from.id];
+      if(Array.isArray(fv)){ const a=fv.filter(x=>x!==c.src.id); if(a.length) state[from.id]=a; else delete state[from.id]; } else if(fv===c.src.id) delete state[from.id];
+      const tv=state[to.id];
+      if(to.multi){ const a=Array.isArray(tv)?tv.slice():(tv!==undefined?[tv]:[]); if(!a.includes(c.o.id)) a.push(c.o.id); state[to.id]=a; }
+      else state[to.id]=c.o.id;
+    }
     now.alt=false; now.optional=false; delete now.altFor;
     /* Everything under it was pulled along when it was the alternative —
        marked optional and pointed at the same item. Coming back into scope
@@ -7556,6 +7632,7 @@ function altCompareHtml(frac){
         <span class="cmppill ${h.base?"base":""}">${h.base?"in scope":"alternative"}</span>
         <div class="cmpname">${esc(h.name)}</div>
         ${h.base?"":altWhyHtml(h.opt)}
+        ${(!h.base && (h.missing||[]).length)?`<div class="altmiss">Not available on this machine: ${(h.missing||[]).map(esc).join(", ")}</div>`:""}
         ${h.base?`<span class="cmppick current">Current selection</span>`
                :`<button class="pbtn cmpswap no-print" data-cmpswap="${esc(c.key)}|${esc(h.vid||(h.opt&&h.opt.id)||h.name)}">Take this alternative</button>`}
       </div>
@@ -11856,8 +11933,11 @@ function altsScreenHtml(){
         <button class="altx" data-altdrop="${esc(x.id)}" title="No longer offered in this quotation">&times;</button>
         ${pic(x.o)}
         <div class="alttname">${esc(x.name)}</div>
-        <div class="alttprice">${col&&col.total?fmt(col.total):(optionTotal(x.o)?fmt(optionTotal(x.o)):"included")}</div>
+        <div class="alttprice">${col?fmt(base+(+col.delta||0)):(optionTotal(x.o)?fmt(optionTotal(x.o)):"included")}</div>
         <div class="alttdelta">${col?signed(col.delta):""}</div>
+        ${(()=>{ const cr=altCarry(t.id, x.id);
+          return (cr.carried.length?`<div class="altcarry">Same upgrades included: ${cr.carried.map(c=>esc(c.o.name)).join(", ")}</div>`:"")
+               + (cr.missing.length?`<div class="altmiss">Not available on this machine: ${cr.missing.map(esc).join(", ")}</div>`:""); })()}
         <label class="altwhyin">Why choose this <span class="meta">— the customer reads this</span>
           <textarea class="in" rows="3" data-altwhy="${esc(x.id)}" data-lang="en" placeholder="e.g. higher speed, lower steam consumption">${esc(w.en||"")}</textarea></label>
         <details class="altes" ${String(w.es||"").trim()?"open":""}><summary>Spanish text</summary>
@@ -11889,13 +11969,20 @@ function altsScreenHtml(){
     const kindOf=i=>i===0?"base":(i<=mine.length?"alt":"sugg");
     const specs=cols.map(altSpecsOf);
     const labels=[]; specs.forEach(m=>m.forEach((v,k)=>{ if(!labels.includes(k)) labels.push(k); }));
-    const table=(labels.length && cols.length>1) ? `<div class="altspecs"><table>
+    /* the option properties of each: how many of which type, and what that comes to */
+    const propCell=o=>{ const m=new Map(); propPricedLines(o).forEach((l,i)=>{ const p=propLineProp(o,i); if(p) m.set(p.label||p.id, `${l.qty}${p.unit?" "+p.unit:"×"} ${l.name}${l.total?" · "+fmt(l.total):""}`); }); return m; };
+    const pcells=cols.map(propCell);
+    const plabels=[]; pcells.forEach(m=>m.forEach((v,k)=>{ if(!plabels.includes(k)) plabels.push(k); }));
+    const propRowsHtml=plabels.length ? `<tr class="altsec"><td colspan="${cols.length+1}">Option properties</td></tr>`+plabels.map(l=>{
+        const vals=pcells.map(m=>m.get(l)||"—"); const differs=vals.some(v=>v!==vals[0]);
+        return `<tr class="${differs?"differs":""}"><td>${esc(l)}</td>${vals.map((v,i)=>`<td class="${differs&&i?"hl":""}">${esc(v)}</td>`).join("")}</tr>`; }).join("") : "";
+    const table=((labels.length||plabels.length) && cols.length>1) ? `<div class="altspecs"><table>
         <thead><tr><th>Machine specifications</th>${cols.map((o,i)=>`<th class="${kindOf(i)}"><span class="altbadge ${kindOf(i)==='alt'?'':kindOf(i)} sm">${({base:'In scope',alt:'Alternative',sugg:'Suggested'})[kindOf(i)]}</span><br>${esc(o.name)}</th>`).join("")}</tr></thead>
         <tbody>${labels.map(l=>{
           const vals=specs.map(m=>m.get(l)||"—");
           const differs=vals.some(v=>v!==vals[0]);
           return `<tr class="${differs?"differs":""}"><td>${esc(l)}</td>${vals.map((v,i)=>`<td class="${differs&&i?"hl":""}">${esc(v)}</td>`).join("")}</tr>`;
-        }).join("")}</tbody></table>
+        }).join("")}${propRowsHtml}</tbody></table>
         <div class="meta">Highlighted: where an alternative differs from the item in scope.</div></div>`
       : (cols.length>1 ? '<div class="meta altnospec">No specifications on these items in the catalogue yet.</div>' : "");
     return `<div class="altcard">
@@ -11915,11 +12002,16 @@ function altsScreenHtml(){
 }
 function renderAltsView(){
   const el=document.getElementById("altBody");
+  /* the types: an alternative with none of its own gets the ones the item in scope has */
+  let typed=false;
+  for(const x of optionCatalogue()) if(optionScope(x.id)==="alt"){ const o=optionById(x.id); if(o && o.altFor && matchAltProps(o.altFor, x.id)) typed=true; }
+  if(typed){ reconcile(); saveSoon(); }
   el.innerHTML=`<h2>Alternatives</h2>${altsScreenHtml()}`;
   wireSearchSelect(el.querySelector('[data-altopen]'), (sel,id)=>{ if(id && !altPickState.open.includes(id)) altPickState.open.push(id); renderAltsView(); });
   el.querySelectorAll('[data-altadd]').forEach(ss=>wireSearchSelect(ss, (sel,id)=>{
     const t=sel.dataset.altadd; if(!id) return;
     if(!offerAlternative(t, id)) return;
+    matchAltProps(t, id);
     const sg=altSuggestionsFor(t)[id]; if(sg && !altWhyMap()[id]) altWhyMap()[id]={en:sg.why||"", es:sg.whyEs||""};
     saveSoon(); renderAltsView();
   }));
@@ -11932,6 +12024,7 @@ function renderAltsView(){
   el.querySelectorAll("[data-altsug]").forEach(b=>b.onclick=()=>{
     const [t,a]=b.dataset.altsug.split("|");
     if(!offerAlternative(t,a)) return;
+    matchAltProps(t, a);
     const sg=altSuggestionsFor(t)[a]; if(sg && !altWhyMap()[a]) altWhyMap()[a]={en:sg.why||"", es:sg.whyEs||""};
     saveSoon(); renderAltsView();
   });
@@ -12172,6 +12265,7 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^Not available on this machine: /, "No disponible en esta m\u00e1quina: "],
   [/^Why choose this:$/, "Por qu\u00e9 elegirlo:"],
   [/^ⓘ Included$/, "ⓘ Incluido"],
   [/^Net price \u2014 your ([\d.]+)% discount is included$/, "Precio neto \u2014 su descuento del $1% est\u00e1 incluido"],
@@ -19616,6 +19710,7 @@ function shareAltGroupHtml(c, frac){
           <div class="sharealtname">${esc(h.name)}</div>
           ${specLine(h)?`<div class="sharealtspec">${esc(specLine(h))}</div>`:""}
           ${h.base?"":altWhyHtml(h.opt)}
+          ${(!h.base && (h.missing||[]).length)?`<div class="altmiss">Not available on this machine: ${(h.missing||[]).map(esc).join(", ")}</div>`:""}
           <div class="sharealtprice">${h.total?fmt(h.total):"included"}</div>
           ${/* One line, not three panels. This page is for comparing machines
                 and picking one, so the upgrades a machine would open up are
