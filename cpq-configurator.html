@@ -1997,6 +1997,7 @@
   .altpic{width:100%;height:120px;object-fit:contain;background:#fff;border-radius:6px}
   .altpic.none{height:0}
   .alttname{font-weight:600;font-size:13px}
+  .altqty{color:var(--accent)}
   .alttprice{font-size:15px;font-weight:700}
   .alttdelta{font-size:12px}
   .alttdelta .up{color:#c15c00}.alttdelta .down{color:#1d7a3e}
@@ -4207,11 +4208,25 @@ function qtyShortfall(o){
   const need=inheritedQty(o.id);
   return optQty(o) < need ? need : 0;
 }
-function setOptQty(optionId, n){
+function setOptQty(optionId, n, noFollow){
   const m=Object.assign({}, state[QTY_KEY]||{});
   n=Math.max(1, Math.floor(+n||1));
   if(n===1) delete m[optionId]; else m[optionId]=n;
   state[QTY_KEY]=m;
+  /* an alternative is offered in the same number as what it stands in for */
+  if(!noFollow) for(const mm of allModules()) for(const o of (mm.options||[]))
+    if(o.alt && o.altFor===optionId && o.id!==optionId) setOptQty(o.id, n, true);
+}
+/* every alternative in the number of what it stands in for */
+function syncAltQtys(){
+  let changed=false;
+  for(const mm of allModules()) for(const o of (mm.options||[])){
+    if(!o.alt || !o.altFor || optionScope(o.id)!=="alt") continue;
+    const t=optionById(o.altFor); if(!t) continue;
+    const want=optQty(t);
+    if(optQty(o)!==want){ setOptQty(o.id, want, true); changed=true; }
+  }
+  return changed;
 }
 /* how many of a property this option brings, quantity included */
 function propQtyOf(o, propId){ return (+(o.props&&o.props[propId])||0) * optQty(o); }
@@ -11922,7 +11937,7 @@ function altsScreenHtml(){
       `<div class="alttile base">
         <span class="altbadge base">In scope</span>
         ${pic(to)}
-        <div class="alttname">${esc(t.name)}</div>
+        <div class="alttname">${optQty(to)>1?`<span class="altqty">${optQty(to)}&times;</span> `:""}${esc(t.name)}</div>
         <div class="alttprice">${base?fmt(base):"included"}</div>
       </div>`
     ].concat(mine.map(x=>{
@@ -11932,7 +11947,7 @@ function altsScreenHtml(){
         <span class="altbadge">Alternative</span>
         <button class="altx" data-altdrop="${esc(x.id)}" title="No longer offered in this quotation">&times;</button>
         ${pic(x.o)}
-        <div class="alttname">${esc(x.name)}</div>
+        <div class="alttname">${optQty(x.o)>1?`<span class="altqty">${optQty(x.o)}&times;</span> `:""}${esc(x.name)}</div>
         <div class="alttprice">${col?fmt(base+(+col.delta||0)):(optionTotal(x.o)?fmt(optionTotal(x.o)):"included")}</div>
         <div class="alttdelta">${col?signed(col.delta):""}</div>
         ${(()=>{ const cr=altCarry(t.id, x.id);
@@ -12005,13 +12020,14 @@ function renderAltsView(){
   /* the types: an alternative with none of its own gets the ones the item in scope has */
   let typed=false;
   for(const x of optionCatalogue()) if(optionScope(x.id)==="alt"){ const o=optionById(x.id); if(o && o.altFor && matchAltProps(o.altFor, x.id)) typed=true; }
+  if(syncAltQtys()) typed=true;
   if(typed){ reconcile(); saveSoon(); }
   el.innerHTML=`<h2>Alternatives</h2>${altsScreenHtml()}`;
   wireSearchSelect(el.querySelector('[data-altopen]'), (sel,id)=>{ if(id && !altPickState.open.includes(id)) altPickState.open.push(id); renderAltsView(); });
   el.querySelectorAll('[data-altadd]').forEach(ss=>wireSearchSelect(ss, (sel,id)=>{
     const t=sel.dataset.altadd; if(!id) return;
     if(!offerAlternative(t, id)) return;
-    matchAltProps(t, id);
+    matchAltProps(t, id); syncAltQtys();
     const sg=altSuggestionsFor(t)[id]; if(sg && !altWhyMap()[id]) altWhyMap()[id]={en:sg.why||"", es:sg.whyEs||""};
     saveSoon(); renderAltsView();
   }));
@@ -12024,7 +12040,7 @@ function renderAltsView(){
   el.querySelectorAll("[data-altsug]").forEach(b=>b.onclick=()=>{
     const [t,a]=b.dataset.altsug.split("|");
     if(!offerAlternative(t,a)) return;
-    matchAltProps(t, a);
+    matchAltProps(t, a); syncAltQtys();
     const sg=altSuggestionsFor(t)[a]; if(sg && !altWhyMap()[a]) altWhyMap()[a]={en:sg.why||"", es:sg.whyEs||""};
     saveSoon(); renderAltsView();
   });
