@@ -1380,7 +1380,32 @@
   .sharecmpgrid{display:grid;font-size:12.5px;color:#222}
   .sharecmpgrid .scl, .sharecmpgrid .scc{padding:7px 12px;border-bottom:1px solid #eef0f6;min-width:0;overflow-wrap:anywhere}
   .sharecmpgrid .scl{color:#777}
-  .sharecmpgrid .scc.base{background:#fff7ee}
+  .sharecmpgrid .scc.base{background:#f2f6ff;border-left:2px solid #2f6fe4;border-right:2px solid #2f6fe4}
+  .sharecmpgrid .scc.base.sccards{border-top:2px solid #2f6fe4;border-radius:12px 12px 0 0}
+  .sharecmpgrid .scc.base.scfoot{border-bottom:2px solid #2f6fe4;border-radius:0 0 12px 12px}
+  .sharecmpgrid .scfoot{padding:0;height:8px;border-bottom:0}
+  .sharecmpgrid .sccards{padding:12px;border-bottom:1px solid #eef0f6;vertical-align:top}
+  .sharecmpgrid .sccards .sharealtcard{border:0;padding:0;background:transparent;box-shadow:none;height:100%}
+  .sharecmpgrid .sccards .sharealtcard.current{border:0}
+  .sharecmpgrid .sccards .sharealtbadge{position:static;align-self:flex-start;background:#2f6fe4;margin-bottom:8px;height:20px;line-height:20px;box-sizing:border-box;padding-top:0;padding-bottom:0}
+  /* every column reads in the same order, so the same things sit at the same height:
+     picture, name, price, then what is particular to it, the button at the bottom */
+  .sharecmpgrid .sccards .sharealtcard{display:flex;flex-direction:column}
+  .sharecmpgrid .sccards .sharealtcard:not(.current)::before{content:"";display:block;height:28px;order:-1}
+  .sharecmpgrid .sccards .sharealtbadge{order:-1}
+  .sharecmpgrid .sccards .sharealtimg{order:0}
+  .sharecmpgrid .sccards .sharealtname{order:1}
+  .sharecmpgrid .sccards .sharealtprice{order:2;margin:2px 0 6px}
+  .sharecmpgrid .sccards .sharealtspec{order:3}
+  .sharecmpgrid .sccards .altwhy{order:4}
+  .sharecmpgrid .sccards .altmiss{order:5}
+  .sharecmpgrid .sccards .sharealtupg{order:6}
+  .sharecmpgrid .sccards .sharealtcard > button{order:7;margin-top:auto}
+  .sharecmp.unified{margin-top:6px}
+  /* the same room for a picture in every column, so names and prices line up across */
+  .sharecmp.hasimg .sccards .sharealtimg{height:110px;width:100%;object-fit:contain;margin:0 0 8px}
+  .sharecmp.hasimg .sccards .sharealtcard:not(:has(.sharealtimg)) .sharealtname{margin-top:118px}
+  .sharecmp.unified .sharecmpgrid .scbadge{color:#2f6fe4}
   .sharecmpgrid .scsec{grid-column:1 / -1;background:#f4f5f9;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#777;padding:6px 12px}
   .sharecmpgrid .schead{font-size:13px}
   .sharecmpgrid .scbadge{display:block;color:#EF7B0B;font-size:10.5px;font-weight:700;margin-bottom:2px}
@@ -19781,9 +19806,11 @@ function shareAltGroupHtml(c, frac){
       return 999;
     };
     cards.sort((a,b)=>ordOf(a)-ordOf(b));      // stable: ties keep their order
-    return `<div class="sharealtgroup">
-      <div class="sharealtgrouplbl">Instead of ${esc(c.target)}</div>
-      <div class="sharealts">${cards.map(h=>`
+    /* a machine and what stands against it: the current selection first, then the alternatives,
+       each one column from picture to details */
+    const unified=!!c.targetOpt && cards.length>1 && !String(c.key||"").startsWith("prop:");
+    if(unified) cards.sort((x,y)=>(y.base?1:0)-(x.base?1:0));
+    const cardHtml=h=>`
         <div class="sharealtcard ${h.base?"current":""}">
           ${h.base?`<span class="sharealtbadge">Current selection</span>`:""}
           ${h.opt&&h.opt.image?`<img class="sharealtimg" src="${h.opt.image}" alt="${esc(h.name)}">`:""}
@@ -19810,8 +19837,10 @@ function shareAltGroupHtml(c, frac){
             /* "Choose this machine" is wrong on a set of feet or a lock
                bracket — those are types fitted to the machine, not a machine */
             String(c.key||"").startsWith("prop:")?"Choose this instead":"Choose this machine"}</button>`}
-        </div>`).join("")}</div>
-      ${shareAltCompareHtml(c, cards, frac)}
+        </div>`;
+    return `<div class="sharealtgroup">
+      <div class="sharealtgrouplbl">Instead of ${esc(c.target)}</div>
+      ${unified ? shareAltCompareHtml(c, cards, frac, cardHtml) : `<div class="sharealts">${cards.map(cardHtml).join("")}</div>${shareAltCompareHtml(c, cards, frac)}`}
       ${(c.perMachine||[]).length?`<div class="sharepropmach">With another machine in this step:
         ${c.perMachine.map(x=>`<span><b>${x.qty}&times;</b> ${esc(x.name)}</span>`).join("")}</div>`:""}
       ${c.note?`<div class="secnote">${esc(c.note)}</div>`:""}
@@ -19820,21 +19849,25 @@ function shareAltGroupHtml(c, frac){
 /* The same comparison as on the Alternatives tab, under the cards: specifications, option properties (with what they cost,
    at this quotation's discount) and included upgrades, one column per card. What differs from the current selection is
    highlighted. The cards above stay the place to choose. */
-function shareAltCompareHtml(c, cards, frac){
+function shareAltCompareHtml(c, cards, frac, cardHtml){
   if(!c.targetOpt || cards.length<2) return "";
   const bi=Math.max(0, cards.findIndex(h=>h.base)), G=altGridData(cards, bi, frac), ups=altUpgradesInScope(c.targetOpt.id);
-  if(!G.specs.length && !G.props.length && !ups.length) return "";
+  if(!cardHtml && !G.specs.length && !G.props.length && !ups.length) return "";
   const rows=[];
   const sec=t=>rows.push(`<div class="scsec">${esc(t)}</div>`);
   const line=(label, vals, diffs)=>rows.push(`<div class="scl">${label}</div>`+vals.map((v,i)=>`<div class="scc ${cards[i].base?"base":""}">${diffs&&diffs[i]?`<span class="scdiff">${v}</span>`:v}</div>`).join(""));
-  const head=`<div class="scl"></div>`+cards.map(h=>`<div class="scc schead ${h.base?"base":""}">${h.base?'<span class="scbadge">Current selection</span>':""}<b>${esc(h.name)}</b></div>`).join("");
+  const head=cardHtml
+    ? `<div class="scl sccards"></div>`+cards.map(h=>`<div class="scc sccards ${h.base?"base":""}">${cardHtml(h)}</div>`).join("")
+    : `<div class="scl"></div>`+cards.map(h=>`<div class="scc schead ${h.base?"base":""}">${h.base?'<span class="scbadge">Current selection</span>':""}<b>${esc(h.name)}</b></div>`).join("");
+  const foot=cardHtml ? `<div class="scl scfoot"></div>`+cards.map(h=>`<div class="scc scfoot ${h.base?"base":""}"></div>`).join("") : "";
   if(ups.length) line("Included upgrades", cards.map(h=>h.base ? esc(ups.join(" · "))
     : ((h.missing||[]).length ? `<span class="scmuted">Same as current selection, except:</span><div class="scmiss">${h.missing.map(x=>"&#10007; "+esc(x)+" — not available").join("<br>")}</div>`
                               : '<span class="scmuted">Same as current selection</span>')));
   if(G.specs.length){ sec("Machine specifications"); G.specs.forEach(g=>line(esc(g.label), g.vals.map(esc), g.diff)); }
   if(G.props.length){ sec("Option properties"); G.props.forEach(g=>line(esc(g.label), g.vals.map(esc), g.diff)); }
-  return `<div class="sharecmp"><div class="sharecmphead">Compare in detail</div>
-    <div class="sharecmpscroll"><div class="sharecmpgrid" style="grid-template-columns:minmax(120px,.8fr) repeat(${cards.length}, minmax(150px,1fr))">${head}${rows.join("")}</div></div>
+  const hasImg=cardHtml && cards.some(h=>h.opt&&h.opt.image);
+  return `<div class="sharecmp ${cardHtml?"unified":""} ${hasImg?"hasimg":""}">${cardHtml?"":'<div class="sharecmphead">Compare in detail</div>'}
+    <div class="sharecmpscroll"><div class="sharecmpgrid" style="grid-template-columns:minmax(120px,.7fr) repeat(${cards.length}, minmax(190px,1fr))">${head}${rows.join("")}${foot}</div></div>
     <div class="sharecmplegend"><span class="scswatch"></span><b>Bold on amber</b> = differs from the current selection</div></div>`;
 }
 /* the discount everything on these pages is priced at, worked out the same
