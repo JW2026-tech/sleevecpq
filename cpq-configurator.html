@@ -6129,8 +6129,9 @@ function altPropGapHtml(){
 }
 function openStepsHtml(cls){
   const open=openSteps();
-  if(!open.length) return recommendWarnHtml()+partGapHtml()+altPropGapHtml();
-  return recommendWarnHtml()+partGapHtml()+altPropGapHtml()+`<div class="openwarn no-print ${cls||""}">
+  /* (the warning about types on alternatives is gone: an alternative now takes the types of the item in scope) */
+  if(!open.length) return recommendWarnHtml()+partGapHtml();
+  return recommendWarnHtml()+partGapHtml()+`<div class="openwarn no-print ${cls||""}">
     <div class="ow-head">${open.length} step${open.length>1?"s":""} still unanswered — this quote may be incomplete</div>
     <div class="ow-list">${open.map(o=>`<span class="ow-item" data-goto="${esc(o.m.id)}" title="Go to this step">${
       o.trail.length?`<span class="ow-trail">${o.trail.map(esc).join(" › ")} › </span>`:""}${esc(o.m.title||"Untitled")}</span>`).join("")}</div>
