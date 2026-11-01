@@ -8455,21 +8455,14 @@ function renderConfigure(){
           <div class="scope" data-oid="${esc(o.id)}">
             <label class="${selNorm?"on":""} ${(lockNormal||clash||hardClash)?"disabled":""}" title="${hardClash?`Can't be combined with ${esc(hardClash)}`:(clash?`Not alongside ${esc(clash)} — Optional is still open`:(lockNormal?"Not available — an ancestor decision is optional":""))}"><input type="radio" name="scope-${esc(m.id)}-${esc(o.id)}" data-mode="normal" ${selNorm?"checked":""} ${(lockNormal||clash)?"disabled":""}> In scope</label>
             <label class="${selOpt?"on opt-on":""} ${hardClash?"disabled":""}" title="${hardClash?`Can't be combined with ${esc(hardClash)}`:(node.altAncestor?`Offered as an extra on top of ${esc(node.altAncestor.name||"this alternative")}`:"")}"><input type="radio" name="scope-${esc(m.id)}-${esc(o.id)}" data-mode="optional" ${selOpt?"checked":""} ${hardClash?"disabled":""}> Optional</label>
-            <label class="${selAlt?"on alt-on":""}" title="Offered instead of something else in the quote — both are quoted, only one is bought"><input type="radio" name="scope-${esc(m.id)}-${esc(o.id)}" data-mode="alt" ${selAlt?"checked":""}> Alternative</label>
             <label class="${isNA(o.id)?"on na-on":""}" title="Ruled out for this quote — no price, but the decision is recorded"><input type="radio" name="scope-${esc(m.id)}-${esc(o.id)}" data-mode="na" ${isNA(o.id)?"checked":""}> Not applicable</label>
           </div>
           <div class="body">
             <div class="name">${kindIcon(optKind(o))}${esc(o.name)}${o.tag?`<span class="tag">${esc(o.tag)}</span>`:""}</div>
             ${o.children&&o.children.length?`<div class="more">${sel?"Opened":"Unlocks"}: ${o.children.map(ch=>`<span class="unl ${sel?"go":""}" ${sel?`data-goto="${esc(ch.id)}"`:""} title="${sel?"Go to this step":"Select this option to open it"}">${esc(ch.title||"Untitled step")}</span>`).join("")}</div>`:""}
             ${(!(sel && !o.optional) && recommendReason(o))?`<div class="recnote" title="Advice from the product and sleeve specifications">Recommended in scope — ${esc(recommendReason(o))}</div>`:""}
-            ${selAlt?`<div class="altpick">
-              <span class="altlbl">Instead of</span>
-              ${searchSelectHtml({attr:`data-altfor="${esc(o.id)}"`, value:o.altFor||"",
-                 placeholder:"choose what it replaces… (type to search)",
-                 clearLabel:"— nothing yet —", groups:altTargetChoices(o)})}
-              ${o.altFor?`<span class="meta">Both are quoted, only one is bought.</span>`
-                        :`<span class="altwarn">Pick one, or this item is quoted as a plain optional.</span>`}
-            </div>`:(o.altFor?`<div class="altnote">Can be offered instead of <b>${esc(altName)}</b></div>`:"")}
+            ${/* alternatives are set on their own tab now; here it only says so */""}
+            ${selAlt?`<div class="altnote">Offered as an alternative to <b>${esc(altName||"—")}</b> &middot; <a href="#" class="goalts">change in Alternatives</a></div>`:""}
             ${(selOpt && node.altAncestor)?`<div class="altoptnote">Optional extra on the alternative <b>${esc(node.altAncestor.name||"")}</b> — quoted on top of it, not included in it</div>`:""}
             ${(selNorm && isTaken(o.id))?`<div class="takennote">Taken from the optional items in the proposal — still listed there.
               <button class="pbtn" data-settle="${esc(o.id)}">Keep it in scope, drop it from the options</button></div>`:""}
@@ -8535,6 +8528,7 @@ function renderConfigure(){
     inp.onclick=e=>e.stopPropagation();
     inp.onchange=()=>{ setOptQty(inp.dataset.qty, inp.value); renderConfigure(); };
   });
+  document.querySelectorAll("#main .goalts").forEach(a=>{ a.onclick=e=>{ e.preventDefault(); e.stopPropagation(); setMode("alts"); }; });
   document.querySelectorAll("#main .unl.go").forEach(u=>{
     u.onclick=e=>{ e.stopPropagation(); goToStep(u.dataset.goto); };
   });
