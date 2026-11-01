@@ -2121,6 +2121,10 @@
   .altwhy b{font-weight:600}
   .svrow.off .svname{font-weight:400}
   .tariffon{display:flex;align-items:center;gap:6px;cursor:pointer}
+  .fpdrop{color:#b3261e;line-height:1.45}
+  .fpadd{color:#b8560a;line-height:1.45}
+  .fpsame{color:#888}
+  .fpamt{white-space:nowrap}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -12086,6 +12090,45 @@ function altUpgradesInScope(targetId){
   const ups=[]; (function walk(nodes){ for(const nd of nodes){ if(nd.o.id===targetId){ (function sub(k){ for(const x of k.kids){ if(scopeKind(x.o)==="in") ups.push(x.o.name); sub(x); } })(nd); } else walk(nd.kids); } })(optionTree());
   return ups;
 }
+/* Format parts that hang on a machine: the cutting tool a splicer needs and a film feed unit does not.
+   For the item in scope, the parts in the quotation that only it needs; for an alternative, which of
+   those drop off when it is chosen and which parts of its own come along. Grouped by part, with what
+   they come to (net of the discount when frac is given). */
+function partOfRow(r){
+  const id=String((r.node&&r.node.o&&r.node.o.id)||"");
+  if(!/^(__prdp_|__genp_)/.test(id)) return null;
+  return (CONFIG.parts||[]).find(x=>x && x.id && id.endsWith("_"+x.id))||null;
+}
+function altFormatParts(targetId, altId, frac){
+  const k=1-(+frac||0);
+  const group=list=>{ const m=new Map(); for(const x of list){ const g=m.get(x.part.id)||{name:x.part.desc||"Format part", qty:0, price:0}; g.qty+=x.qty; g.price+=x.price*k; m.set(x.part.id,g); } return [...m.values()]; };
+  const mine=[], dropped=[];
+  for(const r of buildPriceRows(false)){
+    const p=partOfRow(r); if(!p) continue;
+    const req=p.requires||[];
+    if(!req.includes(targetId)) continue;
+    const q=+(r.node.o.qty||1)||1, row={part:p, qty:q, price:+r.price||0};
+    mine.push(row);
+    /* it stays if the alternative needs it too, or something else in scope does */
+    if(altId && !req.includes(altId) && !req.some(id=>id!==targetId && optionScope(id)==="in")) dropped.push(row);
+  }
+  const added=[];
+  if(altId) for(const r of buildAltRows(false)){
+    const p=partOfRow(r); if(!p) continue;
+    const req=p.requires||[];
+    if(req.includes(altId) && !req.includes(targetId)) added.push({part:p, qty:+(r.node.o.qty||1)||1, price:+r.price||0});
+  }
+  return {mine:group(mine), dropped:group(dropped), added:group(added)};
+}
+const fpLine=(g, sign)=>`${g.qty>1?g.qty+"&times; ":""}${esc(g.name)}${g.price?` <span class="fpamt">(${sign}${fmt(g.price)})</span>`:""}`;
+function altFormatCell(targetId, altId, frac, base){
+  const d=altFormatParts(targetId, base?null:altId, frac);
+  if(base) return d.mine.length ? d.mine.map(g=>fpLine(g,"")).join("<br>") : "";
+  const out=[];
+  if(d.dropped.length) out.push(`<div class="fpdrop">${d.dropped.map(g=>"&#10007; "+fpLine(g,"&minus; ")+" — not needed").join("<br>")}</div>`);
+  if(d.added.length) out.push(`<div class="fpadd">${d.added.map(g=>"+ "+fpLine(g,"+ ")+" — needed for this machine").join("<br>")}</div>`);
+  return out.length ? out.join("") : (d.mine.length ? '<span class="fpsame">Same as the item in scope</span>' : "");
+}
 /* The comparison rows the sales grid, the PDF and the customer link all show, worked out once so they cannot disagree:
    per specification and per option property one value per column, and which of them differ from the column at baseIdx. */
 function altGridData(heads, baseIdx, frac){
@@ -12141,6 +12184,8 @@ function altsScreenHtml(){
       return m.length ? `<span class="meta">Same as in scope, except:</span><div class="agmiss">${m.map(x=>"&#10007; "+esc(x)+" — not available").join("<br>")}</div>`
                       : '<span class="meta">Same as in scope</span>';
     });
+    { const fcells=cols.map(cc=>altFormatCell(t.id, cc.o.id, 0, !!cc.base));
+      if(fcells.some(Boolean)) row("Format parts", (cc,i)=>fcells[i]||'<span class="meta">—</span>'); }
     section("Customer text — the customer reads this");
     row("Why choose this (English)", cc=>cc.base?'<span class="meta">Base offer</span>'
       :`<textarea class="in" rows="2" data-altwhy="${esc(cc.o.id)}" data-lang="en" placeholder="e.g. higher speed, lower steam consumption">${esc((why[cc.o.id]||{}).en||"")}</textarea>`);
@@ -12458,6 +12503,10 @@ const I18N_ES_RULES=[
   [/The difference shown already includes the same ([\d.]+)% discount\./, "La diferencia mostrada ya incluye el mismo descuento de $1%."],
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
+  [/^ \u2014 not needed$/, " \u2014 no se necesita"],
+  [/^ \u2014 needed for this machine$/, " \u2014 necesario para esta m\u00e1quina"],
+  [/^Same as the item in scope$/, "Igual que el elemento en el alcance"],
+  [/^Format parts$/, "Partes de formato"],
   [/^Tariffs \(([\d.]+)% of the machine price\)$/, "Aranceles ($1% del precio de la m\u00e1quina)"],
   [/^Service — no discount applies$/, "Servicio — sin descuento"],
   [/^Reference price$/, "Precio de referencia"],
@@ -20011,6 +20060,8 @@ function shareAltCompareHtml(c, cards, frac, cardHtml){
   if(ups.length) line("Included upgrades", cards.map(h=>h.base ? esc(ups.join(" · "))
     : ((h.missing||[]).length ? `<span class="scmuted">Same as current selection, except:</span><div class="scmiss">${h.missing.map(x=>"&#10007; "+esc(x)+" — not available").join("<br>")}</div>`
                               : '<span class="scmuted">Same as current selection</span>')));
+  { const fcells=cards.map(h=>altFormatCell(c.targetOpt.id, h.opt&&h.opt.id, frac, !!h.base));
+    if(fcells.some(Boolean)) line("Format parts", fcells.map(v=>v||'<span class="scmuted">—</span>')); }
   if(G.specs.length){ sec("Machine specifications"); G.specs.forEach(g=>line(esc(g.label), g.vals.map(esc), g.diff)); }
   if(G.props.length){ sec("Option properties"); G.props.forEach(g=>line(esc(g.label), g.vals.map(esc), g.diff)); }
   const hasImg=cardHtml && cards.some(h=>h.opt&&h.opt.image);
