@@ -1402,12 +1402,15 @@
   .sharecmpgrid .sccards .sharealtupg{order:6}
   .sharecmpgrid .sccards .sharealtcard > button{order:7;margin-top:auto}
   .sharecmp.unified{margin-top:6px}
-  .sharecmpgrid .sctop{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;align-content:flex-start;min-height:62px;margin-bottom:8px}   /* room for a badge and a button, the same in every column */
+  .sharecmpgrid .sctop{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;align-content:flex-start;min-height:30px;margin-bottom:10px}
+  .sharecmp.twotop .sharecmpgrid .sctop{min-height:66px}      /* a column with a badge and a button: the others keep the same room */
+  .sharecmpgrid .scsec2{padding:14px 12px 4px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;border-bottom:1px solid #eef0f6}
   .sharecmpgrid .sctop .scbadge{display:inline-block;margin:0;padding:3px 9px;border-radius:10px;font-size:10px;text-transform:uppercase;letter-spacing:.4px}
   .sharecmpgrid .sctop .scbadge.orig{background:#2f6fe4;color:#fff}
   .sharecmpgrid .sctop .scbadge.cur{background:#EF7B0B;color:#fff}
   .sharecmpgrid .sctop .cmpswap{width:100%}
   .sharecmpgrid .scimg{display:block;width:100%;height:110px;object-fit:contain;margin-bottom:8px}
+  .sharecmpgrid .scimg.none{background:repeating-linear-gradient(135deg,#e8edf8 0 8px,#eef2fb 8px 16px);border-radius:8px}   /* no picture: a quiet panel, not a hole */
   .sharecmpgrid .scname{font-weight:600;font-size:13.5px}
   .sharecmpgrid .scprice{font-size:16px;font-weight:700;color:#EF7B0B;margin:2px 0 4px}
   .sharecmpgrid .scdelta{display:flex;flex-direction:column;align-items:flex-start;gap:1px;margin:2px 0 6px;padding:6px 10px;border-radius:8px;font-size:11px;line-height:1.3}
@@ -1419,7 +1422,7 @@
   /* the same room for a picture in every column, so names and prices line up across */
   .sharecmp.hasimg .sccards .sharealtimg{height:110px;width:100%;object-fit:contain;margin:0 0 8px}
   .sharecmp.hasimg .sccards .sharealtcard:not(:has(.sharealtimg)) .sharealtname{margin-top:118px}
-  .sharecmp.unified .sharecmpgrid .scbadge{color:#2f6fe4}
+  .sharecmp.unified .sharecmpgrid .scbadge{color:#fff}
   .sharecmpgrid .scsec{grid-column:1 / -1;background:#f4f5f9;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#777;padding:6px 12px}
   .sharecmpgrid .schead{font-size:13px}
   .sharecmpgrid .scbadge{display:block;color:#EF7B0B;font-size:10.5px;font-weight:700;margin-bottom:2px}
@@ -19902,11 +19905,14 @@ function shareAltCompareHtml(c, cards, frac, cardHtml){
   const bi=Math.max(0, cards.findIndex(h=>h.base)), G=altGridData(cards, bi, frac), ups=altUpgradesInScope(c.targetOpt.id);
   if(!cardHtml && !G.specs.length && !G.props.length && !ups.length) return "";
   const rows=[];
-  const sec=t=>rows.push(`<div class="scsec">${esc(t)}</div>`);
+  const sec=t=>rows.push(cardHtml
+    ? `<div class="scl scsec2">${esc(t)}</div>`+cards.map((h,i)=>`<div class="scc scsec2 ${outl(i)?"base":""}"></div>`).join("")
+    : `<div class="scsec">${esc(t)}</div>`);
   const outl=i=>cardHtml ? !!cards[i].original : !!cards[i].base;
   const line=(label, vals, diffs)=>rows.push(`<div class="scl">${label}</div>`+vals.map((v,i)=>`<div class="scc ${outl(i)?"base":""}">${diffs&&diffs[i]?`<span class="scdiff">${v}</span>`:v}</div>`).join(""));
   const top=h=>{
-    const badges=(h.original?'<span class="scbadge orig">Original scope</span>':"")+(h.base?'<span class="scbadge cur">Current selection</span>':"");
+    const badges=(h.original&&h.base) ? '<span class="scbadge orig">Original scope &middot; current selection</span>'
+      : (h.original?'<span class="scbadge orig">Original scope</span>':"")+(h.base?'<span class="scbadge cur">Current selection</span>':"");
     const btn=h.base?"":`<button class="btn sm pbtn cmpswap no-print" data-cmpswap="${esc(c.key)}|${esc(h.vid||(h.opt&&h.opt.id)||h.name)}">Choose this alternative</button>`;
     return `<div class="sctop">${badges}${btn}</div>`;
   };
@@ -19941,7 +19947,8 @@ function shareAltCompareHtml(c, cards, frac, cardHtml){
   if(G.specs.length){ sec("Machine specifications"); G.specs.forEach(g=>line(esc(g.label), g.vals.map(esc), g.diff)); }
   if(G.props.length){ sec("Option properties"); G.props.forEach(g=>line(esc(g.label), g.vals.map(esc), g.diff)); }
   const hasImg=cardHtml && cards.some(h=>h.opt&&h.opt.image);
-  return `<div class="sharecmp ${cardHtml?"unified":""} ${hasImg?"hasimg":""}">${cardHtml?"":'<div class="sharecmphead">Compare in detail</div>'}
+  const twoTop=cardHtml && cards.some(h=>h.original && !h.base);
+  return `<div class="sharecmp ${cardHtml?"unified":""} ${hasImg?"hasimg":""} ${twoTop?"twotop":""}">${cardHtml?"":'<div class="sharecmphead">Compare in detail</div>'}
     <div class="sharecmpscroll"><div class="sharecmpgrid" style="grid-template-columns:minmax(120px,.7fr) repeat(${cards.length}, minmax(190px,1fr))">${head}${rows.join("")}${foot}</div></div>
     <div class="sharecmplegend"><span class="scswatch"></span><b>Bold on amber</b> = differs from the current selection</div></div>`;
 }
