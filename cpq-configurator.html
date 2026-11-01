@@ -2051,8 +2051,13 @@
   .altcarry{font-size:11.5px;color:#1d7a3e;line-height:1.4}
   .altmiss{font-size:11.5px;color:#c15c00;line-height:1.4}
   .altspecs .meta,.altnospec{margin-top:6px;font-size:11px}
-  .altstart{display:flex;flex-wrap:wrap;gap:12px;align-items:center;border:1px dashed var(--line);border-radius:12px;padding:12px 14px;margin:6px 0 16px;font-size:13px}
-  .altstart .ssel{flex:1 1 320px}
+  .altstart{display:flex;flex-wrap:wrap;gap:14px;align-items:center;border:2px dashed var(--accent);border-radius:12px;padding:14px 16px;margin:6px 0 16px;font-size:13px;background:color-mix(in srgb, var(--accent) 6%, transparent)}
+  .altstart:hover{background:color-mix(in srgb, var(--accent) 11%, transparent)}
+  .altplus{flex:0 0 auto;width:34px;height:34px;border-radius:50%;background:var(--accent);color:#fff;font-size:22px;font-weight:600;display:flex;align-items:center;justify-content:center;line-height:1}
+  .altstarttxt{display:flex;flex-direction:column;gap:2px}
+  .altstarttxt b{font-size:14px;color:var(--accent)}
+  .altstart .ssel{flex:1 1 360px;max-width:520px}
+  .altstart .ssinput{height:36px;font-size:13px}
   .altwhy{font-size:11.5px;color:#1d7a3e;margin:4px 0;line-height:1.4}
   .altwhy b{font-weight:600}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
@@ -12035,7 +12040,8 @@ function altsScreenHtml(){
   return `<div class="docsub">Offer something <b>instead of</b> an item in the quotation: both are quoted, the customer buys one. Saved as a suggestion, an alternative comes back by itself whenever that item is in a quotation.</div>
     ${targets.length ? targets.map(card).join("") : '<div class="docempty">No alternatives in this quotation yet — pick an item in scope below to start.</div>'}
     ${rest.length?`<div class="altstart">
-      <span>Offer an alternative for another item in scope</span>
+      <span class="altplus">+</span>
+      <span class="altstarttxt"><b>Add an alternative</b><span class="meta">for an item in scope — pick the item, then choose what to offer instead</span></span>
       ${searchSelectHtml({attr:'data-altopen="1"', value:"", placeholder:"choose an item in this quotation… (type to search)", groups:[{label:"In scope in this quotation", items:rest}]})}
     </div>`:""}`;
 }
