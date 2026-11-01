@@ -16740,8 +16740,19 @@ function applyScopeFlags(map){
   }
   return true;
 }
+/* Texts that once went through a wrong character set lost their accents to a
+   replacement character: "H�roes", "M�xico". The catalogue was put right,
+   but quotes made before carry their own copy of the terms. The words it hit
+   are known, so they are put back wherever such a copy turns up. */
+const MOJIBAKE_FIX=[["H�roes","Héroes"],["M�xico","México"],["Raz�n","Razón"],["C�digo","Código"]];
+function repairMojibake(v){
+  if(typeof v==="string"){ if(v.indexOf("�")<0) return v; let t=v; for(const [a,b] of MOJIBAKE_FIX) t=t.split(a).join(b); return t; }
+  if(v && typeof v==="object") for(const k of Object.keys(v)) v[k]=repairMojibake(v[k]);
+  return v;
+}
 function applyQuote(d){
   if(!d || !d.quote) return false;
+  if(d.quote.docs) repairMojibake(d.quote.docs);
   quoteOwnCat=d.ownCatalogue||null;
   delete CONFIG.quoteLang; delete CONFIG.esPairs;     // what the previous quote left behind is not this quote's
   for(const k of QUOTE_KEYS) if(d.quote[k]!==undefined) CONFIG[k]=clone(d.quote[k]);
