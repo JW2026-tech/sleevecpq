@@ -20685,7 +20685,7 @@ document.addEventListener("wheel", e=>{
    that fades. A catalogue change counts as unsaved once it has waited
    longer than the save normally takes.
    ============================================================ */
-let catPendingSince=0;
+let catPendingSince=0, catTroubleSince=0, quoteTroubleSince=0;
 function catalogueUnsaved(){
   return !!supa && draftRev!==null && (!!draftConflict || catalogueSig()!==draftSavedSig);
 }
@@ -20693,8 +20693,16 @@ function checkUnsaved(){
   if(inShareMode()) return;
   const cat=catalogueUnsaved();
   if(cat){ if(!catPendingSince) catPendingSince=Date.now(); } else catPendingSince=0;
-  const catLate = cat && (catSaveTrouble || !!draftConflict || Date.now()-catPendingSince>10000);
-  const quoteLate = !!supa && !!cloudQuoteId && (quoteSaveTrouble || cloudConflictPaused);
+  /* Waiting is normal: the save holds off while you type and goes 1.5s after the
+     last change, so a busy minute is "pending" most of the time. The bar is for
+     a save that failed and stayed failed, or work that has waited a full minute
+     with nothing under way. A single failure that the retry fixes says nothing. */
+  if(!catSaveTrouble) catTroubleSince=0; else if(!catTroubleSince) catTroubleSince=Date.now();
+  if(!quoteSaveTrouble) quoteTroubleSince=0; else if(!quoteTroubleSince) quoteTroubleSince=Date.now();
+  const now=Date.now();
+  const catLate = cat && (!!draftConflict || (catTroubleSince && now-catTroubleSince>15000)
+                          || (now-catPendingSince>60000 && !draftSaving && !editingAField()));
+  const quoteLate = !!supa && !!cloudQuoteId && (cloudConflictPaused || (quoteTroubleSince && now-quoteTroubleSince>15000));
   let bar=document.getElementById("unsavedBar");
   document.body.classList.toggle("has-unsaved", !!(catLate||quoteLate));
   if(!catLate && !quoteLate){ if(bar) bar.remove(); return; }
