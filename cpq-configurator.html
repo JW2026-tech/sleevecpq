@@ -17824,17 +17824,28 @@ function snapshot(){
                             whatever catalogue work had not gone up yet. */
                          draftBase, draftRev});
 }
+/* The copy in this browser. When it no longer fits (the catalogue carries its
+   pictures, and the copy holds it twice) the old copy is thrown away rather than
+   left behind: a reload would otherwise start from work that is hours old. */
+function saveLocalCopy(){
+  if(!storageOK) return false;
+  try{ localStorage.setItem(SAVE_KEY, snapshot()); return true; }
+  catch(err){
+    try{ localStorage.removeItem(SAVE_KEY); localStorage.setItem(SAVE_KEY, snapshot()); return true; }
+    catch(err2){
+      try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+      storageOK=false;                   // private browsing, a blocked origin, or no room
+      return false;
+    }
+  }
+}
 function saveNow(){
   if(inShareMode()) return;              // see saveSoon
-  if(!storageOK) return;
-  try{
-    localStorage.setItem(SAVE_KEY, snapshot());
-    flagSaved("Saved");
-  }catch(err){
-    /* private browsing, a blocked file:// origin, or quota exhausted */
-    storageOK=false;
-    flagSaved("Not saved — use Download config", true);
-  }
+  /* The local copy failing must not stop the rest: it used to return here, and
+     from then on nothing in that tab reached the server — not the quote, not
+     the catalogue — while the screen went on looking normal. */
+  if(saveLocalCopy()) flagSaved("Saved");
+  else if(!supa) flagSaved("Not saved — use Download config", true);
   /* A quote used to need a button pressed before it existed anywhere but
      in this browser — and until it was pressed nothing was shared, nothing
      was backed up, and a closed tab took it with it. It saves itself from
@@ -17900,10 +17911,8 @@ function saveNow(){
 async function flushQuoteNow(){
   clearTimeout(saveTimer);
   ownCatalogueNow(true);
-  if(storageOK){
-    try{ localStorage.setItem(SAVE_KEY, snapshot()); flagSaved("Saved"); }
-    catch(err){ storageOK=false; flagSaved("Not saved — use Download config", true); }
-  }
+  if(saveLocalCopy()) flagSaved("Saved");
+  else if(!supa) flagSaved("Not saved — use Download config", true);
   draftSaveSoon();
   if(supa && cloudQuoteId){
     try{ await cloudSaveQuote(); }catch(err){ flagSaved("Not synced — retrying", true); }
@@ -17957,7 +17966,6 @@ function inShareMode(){
 }
 function saveSoon(){
   if(inShareMode()) return;
-  if(!storageOK) return;
   clearTimeout(saveTimer);
   if(editingAField()){
     savePending=true;
