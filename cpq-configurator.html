@@ -1414,6 +1414,10 @@
   .sharecmpgrid .scimg{display:block;width:100%;height:110px;object-fit:contain;margin-bottom:8px}
   .sharecmpgrid .scimg.none{background:repeating-linear-gradient(135deg,#e8edf8 0 8px,#eef2fb 8px 16px);border-radius:8px}   /* no picture: a quiet panel, not a hole */
   .sharecmpgrid .scname{font-weight:600;font-size:13.5px}
+  /* the reason to choose it: the one sentence written for the customer, so it reads as such */
+  .sharecmpgrid .scwhy{padding:14px 14px;font-size:14px;line-height:1.5;color:#1f2a44}
+  .sharecmpgrid .scwhyl{padding:14px 12px;font-size:12.5px;font-weight:700;color:#1c2563}
+  .sharecmpgrid .scwhyq{display:block;border-left:3px solid #EF7B0B;padding:2px 0 2px 10px;font-weight:500}
   .sharecmpgrid .scprice{font-size:16px;font-weight:700;color:#EF7B0B;margin:2px 0 4px}
   .sharecmpgrid .scdelta{display:flex;flex-direction:column;align-items:flex-start;gap:1px;margin:2px 0 6px;padding:6px 10px;border-radius:8px;font-size:11px;line-height:1.3}
   .sharecmpgrid .scdelta b{font-size:15px}
@@ -2058,6 +2062,7 @@
   .agdelta{font-weight:600}.agdelta.down{color:#1d7a3e}.agdelta.up{color:#c15c00}
   .agmiss{color:#c15c00;font-size:11.5px;margin-top:3px;line-height:1.4}
   .agc textarea{width:100%;box-sizing:border-box;resize:vertical;font-size:12px}
+  .agc textarea.agwhy{font-size:13.5px;line-height:1.45;min-height:72px}
   .agbtns{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
   .btn.agsaved{border-color:#1d7a3e;color:#1d7a3e;background:#e7f6ec}
   .agl.agfoot,.agc.agfoot{padding:0;height:8px;border-bottom:0}
@@ -2122,7 +2127,7 @@
   .altstarttxt b{font-size:14px;color:var(--accent)}
   .altstart .ssel{flex:1 1 360px;max-width:520px}
   .altstart .ssinput{height:36px;font-size:13px}
-  .altwhy{font-size:11.5px;color:#1d7a3e;margin:4px 0;line-height:1.4}
+  .altwhy{font-size:13px;color:#1d7a3e;margin:6px 0;line-height:1.45}
   .altwhy b{font-weight:600}
   .svrow.off .svname{font-weight:400}
   .tariffon{display:flex;align-items:center;gap:6px;cursor:pointer}
@@ -12200,9 +12205,9 @@ function altsScreenHtml(){
       if(fcells.some(Boolean)) row("Format parts", (cc,i)=>fcells[i]||'<span class="meta">—</span>'); }
     section("Customer text — the customer reads this");
     row("Why choose this (English)", cc=>cc.base?'<span class="meta">Base offer</span>'
-      :`<textarea class="in" rows="2" data-altwhy="${esc(cc.o.id)}" data-lang="en" placeholder="e.g. higher speed, lower steam consumption">${esc((why[cc.o.id]||{}).en||"")}</textarea>`);
+      :`<textarea class="in agwhy" rows="3" data-altwhy="${esc(cc.o.id)}" data-lang="en" placeholder="e.g. higher speed, lower steam consumption">${esc((why[cc.o.id]||{}).en||"")}</textarea>`);
     if(docLanguage()==="es") row("Why choose this (Spanish)", cc=>cc.base?'<span class="meta">Oferta base</span>'
-      :`<textarea class="in" rows="2" data-altwhy="${esc(cc.o.id)}" data-lang="es" placeholder="Texto en español">${esc((why[cc.o.id]||{}).es||"")}</textarea>`);
+      :`<textarea class="in agwhy" rows="3" data-altwhy="${esc(cc.o.id)}" data-lang="es" placeholder="Texto en español">${esc((why[cc.o.id]||{}).es||"")}</textarea>`);
     row("", cc=>{
       if(cc.base) return "";
       const w=why[cc.o.id]||{}, sg=sug[cc.o.id];
@@ -20075,7 +20080,7 @@ function shareAltCompareHtml(c, cards, frac, cardHtml){
         <div class="scname">${esc(h.name)}</div>
         <div class="scprice">${h.total?fmt(h.total):"included"}${(frac && h.total)?'<span class="netpill">net</span>':""}</div>${diff(h)}${upg(h)}</div>`).join("")
       + (cards.some(h=>!h.base && altWhyText(h.opt&&h.opt.id))
-         ? `<div class="scl">Why choose this</div>`+cards.map((h,i)=>`<div class="scc ${colCls(i)}">${h.base?'<span class="scmuted">—</span>':esc(altWhyText(h.opt&&h.opt.id)||"")}</div>`).join("") : "")
+         ? `<div class="scl scwhyl">Why choose this</div>`+cards.map((h,i)=>`<div class="scc scwhy ${colCls(i)}">${h.base?'<span class="scmuted">—</span>':(altWhyText(h.opt&&h.opt.id)?`<span class="scwhyq">${esc(altWhyText(h.opt&&h.opt.id))}</span>`:"")}</div>`).join("") : "")
     : `<div class="scl"></div>`+cards.map(h=>`<div class="scc schead ${h.base?"base":""}">${h.base?'<span class="scbadge">Current selection</span>':""}<b>${esc(h.name)}</b></div>`).join("");
   const foot=cardHtml ? `<div class="scl scfoot"></div>`+cards.map((h,i)=>`<div class="scc scfoot ${colCls(i)}"></div>`).join("") : "";
   if(ups.length) line("Included upgrades", cards.map(h=>h.base ? esc(ups.join(" · "))
