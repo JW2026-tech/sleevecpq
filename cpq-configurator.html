@@ -740,13 +740,14 @@
     font-weight:400;white-space:normal}
   .sharepropt .ponsome{display:block;font-size:11px;color:#999;margin-top:3px}
   /* the machines are folded behind the "All machines" row */
-  .sharepropt.shut .pmachrow{display:none}
+  .sharepropt.shut .pmachrow,.sharepropt.shut .plocked,.sharepropt.shut .sharelockednote{display:none}   /* the alternatives fold away with the machines */
   .sharepropt .pmachfold{display:block;margin-top:5px;border:0;background:none;padding:0;
     font:inherit;font-size:12px;font-weight:600;color:#28338A;cursor:pointer;text-align:left}
   .sharepropt .pmachfold:hover{text-decoration:underline}
   .sharesectionhead .sharepropall{flex:0 0 auto;margin-left:auto}
   /* on paper there is nothing to click, so every machine is out */
-  body.print-all .sharepropt.shut .pmachrow{display:table-row}
+  body.print-all .sharepropt.shut .pmachrow,body.print-all .sharepropt.shut .plocked{display:table-row}
+  body.print-all .sharepropt.shut .sharelockednote{display:flex}
   .opt.justhere{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   /* searching the list on the left */
   .navsearch{margin:0 0 8px;font-size:12px;padding:6px 9px}
@@ -2687,7 +2688,7 @@
     /* the button that says this is hidden below, so on paper the card says
        it in words instead */
     .shareupcard .sharetaken{display:flex}
-    .sharepropt.shut .pmachrow{display:table-row!important}
+    .sharepropt.shut .pmachrow,.sharepropt.shut .plocked{display:table-row!important}
     /* The type tables are laid out for a screen: 760px wide at the least, in a
        box that scrolls sideways. A page cannot scroll, so the third type was
        simply cut off. On paper the table takes the width of the page, and the
@@ -12494,6 +12495,7 @@ const I18N_ES_RULES=[
   [/^(\d+) \u00d7 (.+)$/, (m,n,rest)=>n+" \u00d7 "+rest],
   [/^\u2713 included(?: \u2013 (.+))?$/, (m,a)=>"\u2713 incluido"+(a?" \u2013 "+a:"")],
   [/^\u25b8 per machine \((\d+)\)$/, "\u25b8 por m\u00e1quina ($1)"],
+  [/^\u25b8 per machine \((\d+) \+ (\d+) alternatives?\)$/, "\u25b8 por m\u00e1quina ($1 + $2 alternativas)"],
   [/^on (\d+) of (\d+)$/, "en $1 de $2"],
   [/^(\d+) days?$/, (m,n)=>n+(+n===1?" d\u00eda":" d\u00edas")],
   [/: (\d+) days? \((\d+(?:\.\d+)?) work \+ (\d+(?:\.\d+)?) travel\)/, ": $1 d\u00edas ($2 trabajo + $3 viaje)"],
@@ -19610,9 +19612,9 @@ function sharePropTablesHtml(frac){
             return `<tr class="pall">
             <td class="pmach">${t.rows.length>1?"All machines":esc(t.rows[0]?t.rows[0].machine:"")}
               <span class="pqty">${totaal}&times;</span>
-              ${t.rows.length>1?`<button class="pmachfold no-print" data-proptfold="${esc(t.p.id)}"
+              ${(t.rows.length>1||t.locked.length)?`<button class="pmachfold no-print" data-proptfold="${esc(t.p.id)}"
                 title="${open?"Back to one line for the whole line":"Show what each machine has, so one of them can be set on its own"}">${
-                open?"&#9662; hide the machines":`&#9656; per machine (${t.rows.length})`}</button>`:""}</td>
+                open?"&#9662; hide the machines":`&#9656; per machine (${t.rows.length}${t.locked.length?` + ${t.locked.length} alternative${t.locked.length>1?"s":""}`:""})`}</button>`:""}</td>
             ${t.types.map(v=>`<td>${cel(v)}</td>`).join("")}
           </tr>`;})()}
           ${t.rows.map(r=>`<tr class="pmachrow">
