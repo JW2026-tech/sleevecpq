@@ -8748,7 +8748,9 @@ function allModules(list=CONFIG.modules, acc=[]){
   return acc;
 }
 /* A picture chosen in Admin is stored inside the catalogue, so it has to be
-   small: scaled to fit a box of `max` pixels and re-encoded as JPEG. */
+   small: scaled to fit a box of `max` pixels and re-encoded as JPEG. A picture
+   with see-through parts stays PNG, or its background would turn white: JPEG
+   has no transparency. */
 function shrinkImage(file, max, done){
   const rd=new FileReader();
   rd.onload=()=>{
@@ -8759,9 +8761,14 @@ function shrinkImage(file, max, done){
       const cv=document.createElement("canvas");
       cv.width=w; cv.height=h;
       const cx=cv.getContext("2d");
-      cx.fillStyle="#fff"; cx.fillRect(0,0,w,h);
       cx.drawImage(img,0,0,w,h);
-      try{ done(cv.toDataURL("image/jpeg",0.82)); }
+      let see=false;
+      try{
+        const px=cx.getImageData(0,0,w,h).data;
+        for(let i=3;i<px.length;i+=4) if(px[i]<250){ see=true; break; }
+      }catch(err){}
+      if(!see){ cx.globalCompositeOperation="destination-over"; cx.fillStyle="#fff"; cx.fillRect(0,0,w,h); }
+      try{ done(see ? cv.toDataURL("image/png") : cv.toDataURL("image/jpeg",0.82)); }
       catch(err){ alert("That image could not be read."); }
     };
     img.onerror=()=>alert("That file is not an image this browser can read.");
