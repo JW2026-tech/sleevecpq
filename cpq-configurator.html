@@ -16663,7 +16663,7 @@ function renderTemplatePicker(){
   }
   ensureLanguages();
   sel.innerHTML=(CONFIG.templates||[]).map(t=>
-    `<option value="${esc(t.code)}" ${t.code===docLang?"selected":""}>${esc(t.label)}</option>`).join("");
+    `<option value="${esc(t.code)}" ${t.code===docLang?"selected":""}>${esc(t.altCur ? String(t.label||"").replace(/s*([^)]*)s*$/,"") : t.label)}</option>`).join("");   /* the currency of a template with a choice of currencies is picked beside it */
   /* a full re-render: the template drives every price on the screen */
   sel.onchange=()=>{ docLang=sel.value; renderTemplatePicker(); refreshView();
                      if(mode==="configure") renderConfigure(); saveSoon(); };
