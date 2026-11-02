@@ -16949,6 +16949,12 @@ function linkOptionsByKey(){
 function applyCatalogue(d){
   const c=(d&&d.catalogue)||(d&&Array.isArray(d.modules)?d:null);
   if(!c || !Array.isArray(c.modules)) return false;
+  /* What the screen holds is replaced, so the shared catalogue as this browser
+     knew it at the reload no longer describes it. Left in place it was merged
+     against later: a quotation opened on version 63 and then "Go to the live
+     catalogue" counted everything added to the live catalogue since as deleted
+     by me, and wrote version 63 back over it. */
+  restoredDraftBase=null; restoredDraftRev=null;
   /* The open quote's optional/alternative marks live on the option objects
      that are about to be replaced. They belong to the QUOTE, so they are
      carried across: loading the team's catalogue, taking a newer version,
@@ -17079,7 +17085,9 @@ async function cloudLoadCatalogueDraft(){
        a live update — what we last agreed on, what the database holds, and
        what is on screen. */
     let incoming=data.data;
-    if(restoredDraftBase && restoredDraftRev!==null && restoredDraftRev!==data.rev){
+    /* only work done on the live catalogue itself is merged; a quotation's own
+       catalogue on screen is never "mine" against the live one */
+    if(restoredDraftBase && restoredDraftRev!==null && restoredDraftRev!==data.rev && !quoteCatVersion && !cloudQuoteId){
       try{
         const mine=cataloguePayload().catalogue;
         const report=mergeReport(restoredDraftBase, data.data, mine);
