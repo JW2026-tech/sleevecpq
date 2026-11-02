@@ -3034,6 +3034,7 @@
     <span class="hdrtplrow">
       <select id="langSelect" title="Switches the whole quote: letterhead, currency, number format, delivery terms and terms &amp; conditions"></select>
       <select id="docLangSelect" title="The language the customer reads: the page behind his link and the PDF"></select>
+      <select id="quoteCurSelect" class="hidden" title="The currency the prices are quoted in"></select>
     </span>
     <span class="tplnote" id="tplNote"></span>
   </span>
@@ -3553,7 +3554,32 @@ const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&
 /* the template currently driving the quote */
 function activeTemplate(){
   ensureLanguages();
-  return CONFIG.templates.find(t=>t.code===docLang) || CONFIG.templates[0];
+  return withQuoteCurrency(CONFIG.templates.find(t=>t.code===docLang) || CONFIG.templates[0]);
+}
+/* A template with a second currency (Indonesia: IDR with USD beside it) can be
+   quoted another way per quote: all in USD, all in EUR, or IDR with EUR beside
+   it. CONFIG.quoteCur holds the choice; without it the template stands as it is. */
+const QUOTE_CURS=[
+  {id:"",     label:"IDR + USD"},
+  {id:"eur2", label:"IDR + EUR"},
+  {id:"usd",  label:"USD only"},
+  {id:"eur",  label:"EUR only"}];
+function withQuoteCurrency(t){
+  const mode=CONFIG.quoteCur;
+  if(!t || !t.altCur || !mode) return t;
+  const usd={currency:t.altCur.currency, symbol:t.altCur.symbol, numFmt:t.altCur.numFmt, fxFromEur:t.altCur.fxFromEur, decimals:2};
+  const eur={currency:"EUR", symbol:"\u20ac", numFmt:"eu", fxFromEur:1, decimals:2};
+  if(mode==="usd") return Object.assign({}, t, usd, {altCur:null, priceLabel:"price in US Dollar"});
+  if(mode==="eur") return Object.assign({}, t, eur, {altCur:null, priceLabel:"price in Euro"});
+  if(mode==="eur2"){
+    const rate=new Intl.NumberFormat("de-DE",{maximumFractionDigits:0}).format(+t.fxFromEur||0);
+    const note=/USD 1 = [A-Z]+ [\d.,]+/.test(t.altCur.note||"")
+      ? t.altCur.note.replace(/USD 1 = ([A-Z]+) [\d.,]*\d/, (m,c)=>`EUR 1 = ${c} ${rate}`)
+      : `Prices are quoted in ${t.currency}, based on an exchange rate of EUR 1 = ${t.currency} ${rate}. Any exchange rate fluctuation may affect the final price.`;
+    return Object.assign({}, t, {priceLabel:`price in ${t.currency} and Euro`,
+      altCur:Object.assign({}, eur, {label:"Price (EUR)", note})});
+  }
+  return t;
 }
 
 /* Keeps CONFIG.templates / CONFIG.termsDefaults / CONFIG.docs.terms /
@@ -14630,7 +14656,7 @@ function importJsonFile(file){
    a reload — got prices pointing at classes that were not there, and every
    part quietly fell back to the type's own price. */
 const CATALOGUE_KEYS=["modules","templates","languages","props","parts","partClasses","formatQs","specFields","termsDefaults","folderPaths","service","electrical","commercial"];
-const QUOTE_KEYS=["esPairs","model","currency","quoteNumber","customer","customerInfo","validity","docs","specColumns","specValues","sharedBase","discount","quoteLang"];
+const QUOTE_KEYS=["esPairs","model","currency","quoteNumber","customer","customerInfo","validity","docs","specColumns","specValues","sharedBase","discount","quoteLang","quoteCur"];
 function pickKeys(src, keys){
   const out={};
   for(const k of keys) if(src && src[k]!==undefined) out[k]=clone(src[k]);
@@ -16652,6 +16678,18 @@ function renderTemplatePicker(){
       if(mode==="docs") renderDocs();
     };
   }
+  const cs=document.getElementById("quoteCurSelect");
+  if(cs){
+    const base=CONFIG.templates.find(t=>t.code===docLang) || CONFIG.templates[0];
+    cs.classList.toggle("hidden", !(base && base.altCur));
+    cs.innerHTML=QUOTE_CURS.map(c=>`<option value="${c.id}" ${(CONFIG.quoteCur||"")===c.id?"selected":""}>${esc(c.id?c.label:(base&&base.altCur?`${base.currency} + ${base.altCur.currency}`:c.label))}</option>`).join("");
+    cs.onchange=()=>{
+      if(cs.value) CONFIG.quoteCur=cs.value; else delete CONFIG.quoteCur;
+      saveSoon(); renderTemplatePicker(); refreshView();
+      if(mode==="configure") renderConfigure();
+      if(mode==="docs") renderDocs();
+    };
+  }
   const tpl=activeTemplate(), note=document.getElementById("tplNote");
   if(note) note.innerHTML=`${esc(tpl.entity||"")} &middot; ${esc(tpl.currency||"")}${
     tpl.altCur?" + "+esc(tpl.altCur.currency):""} &middot; ${tpl.numFmt==="us"?"1,234.56":"1.234,56"}`;
@@ -16984,7 +17022,7 @@ function applyQuote(d){
   if(!d || !d.quote) return false;
   if(d.quote.docs) repairMojibake(d.quote.docs);
   quoteOwnCat=d.ownCatalogue||null;
-  delete CONFIG.quoteLang; delete CONFIG.esPairs;     // what the previous quote left behind is not this quote's
+  delete CONFIG.quoteLang; delete CONFIG.quoteCur; delete CONFIG.esPairs;     // what the previous quote left behind is not this quote's
   for(const k of QUOTE_KEYS) if(d.quote[k]!==undefined) CONFIG[k]=clone(d.quote[k]);
   state=d.state||{};
   docLang=d.docLang||null;
@@ -17689,7 +17727,7 @@ function clearQuoteSide(){
   /* discount has no entry in DEFAULT_CONFIG — discountSpec() builds it on
      first use, so dropping it is how you get a clean one */
   delete CONFIG.discount;
-  delete CONFIG.quoteLang; delete CONFIG.esPairs;
+  delete CONFIG.quoteLang; delete CONFIG.quoteCur; delete CONFIG.esPairs;
   delete CONFIG.customerInfo;
   delete CONFIG.specColumns; delete CONFIG.specValues;
   ensureCustomer(); ensureSpecs();
