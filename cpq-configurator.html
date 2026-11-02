@@ -6646,7 +6646,7 @@ function buildItemRows(forceTop, wantOptional){
     };
     add("__svc_pack", `Packaging${packType().label?`: ${packType().label.toLowerCase()}`:""}`,
         packagingTotal(), packEntry().scope);
-    if(tariffEntry().on) add("__svc_tariff", `Tariffs (${+tariffEntry().pct||0}% of the machine price)`, tariffTotal(), tariffEntry().scope);
+    if(tariffEntry().on) add("__svc_tariff", `Estimated tariffs (${+tariffEntry().pct||0}% of the machine price)`, tariffTotal(), tariffEntry().scope);
     if(transportAtCost()){
       if((transEntry().scope==="opt")===!!wantOptional) raw.push(at({
         isPropLine:true, price:0, rolled:false, hide:false, canHide:false,
@@ -12537,7 +12537,7 @@ const I18N_ES_RULES=[
   [/^ \u2014 needed for this machine$/, " \u2014 necesario para esta m\u00e1quina"],
   [/^Same as the item in scope$/, "Igual que el elemento en el alcance"],
   [/^Format parts$/, "Partes de formato"],
-  [/^Tariffs \(([\d.]+)% of the machine price\)$/, "Aranceles ($1% del precio de la m\u00e1quina)"],
+  [/^Estimated tariffs \(([\d.]+)% of the machine price\)$/, "Aranceles estimados ($1% del precio de la m\u00e1quina)"],
   [/^Service — no discount applies$/, "Servicio — sin descuento"],
   [/^Reference price$/, "Precio de referencia"],
   [/^Same price as the original scope$/, "Mismo precio que el alcance original"],
