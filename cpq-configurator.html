@@ -2154,6 +2154,11 @@
   #lightbox .lbclose:hover{background:rgba(255,255,255,.3)}
   @keyframes lbin{from{opacity:0}to{opacity:1}}
   @media print{#lightbox{display:none}}
+  #unsavedBar{position:fixed;top:0;left:0;right:0;z-index:9000;display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:center;
+    padding:10px 16px;background:#b3261e;color:#fff;font-size:14px;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+  body.has-unsaved{padding-top:48px}
+  #unsavedBar .ubicon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#fff;color:#b3261e;font-weight:800}
+  #unsavedBar .btn{background:#fff;color:#b3261e;border-color:#fff;font-weight:600}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -17121,10 +17126,19 @@ async function cloudLoadCatalogueDraft(){
    pictures, so this is a much heavier write than a quote and there is no
    point sending one per keystroke. Only writes when the catalogue actually
    differs from what we last stored. */
+/* A save that fails is tried again, and the bar says so until one gets through. */
+let catSaveTrouble=false, quoteSaveTrouble=false, quoteRetryTimer=null;
+let draftRetryWaiting=false;          // a retry is already on its way: do not start another
+function saveDraftWithRetry(){
+  draftRetryWaiting=false;
+  cloudSaveCatalogueDraft()
+    .then(()=>{ catSaveTrouble=false; checkUnsaved(); })
+    .catch(()=>{ catSaveTrouble=true; checkUnsaved(); clearTimeout(draftTimer); draftTimer=setTimeout(saveDraftWithRetry, 5000); draftRetryWaiting=true; });
+}
 function draftSaveSoon(){
   if(!supa || draftRev===null || draftConflict) return;
   clearTimeout(draftTimer);
-  draftTimer=setTimeout(()=>{ cloudSaveCatalogueDraft().catch(()=>{}); }, 1500);
+  draftTimer=setTimeout(saveDraftWithRetry, 1500);
 }
 /* Express the difference between the catalogue as last stored and what is on
    screen as id-addressed patches.
@@ -17893,7 +17907,9 @@ function saveNow(){
       .catch(()=>flagSaved("Not saved to the cloud — retrying", true))
       .finally(()=>{ creatingQuote=false; });
   }
-  else if(supa) cloudSaveQuote().catch(()=>flagSaved("Not synced — retrying", true));
+  else if(supa) cloudSaveQuote().then(()=>{ quoteSaveTrouble=false; checkUnsaved(); })
+                   .catch(()=>{ quoteSaveTrouble=true; checkUnsaved(); flagSaved("Not synced — retrying", true);
+                     clearTimeout(quoteRetryTimer); quoteRetryTimer=setTimeout(()=>saveSoon(), 5000); });
   /* also when the write above is skipped as a no-op, or when there is no
      cloud row at all: whether the customer's copy still matches is decided
      by what is on screen, not by whether anything was written */
@@ -17915,7 +17931,8 @@ async function flushQuoteNow(){
   else if(!supa) flagSaved("Not saved — use Download config", true);
   draftSaveSoon();
   if(supa && cloudQuoteId){
-    try{ await cloudSaveQuote(); }catch(err){ flagSaved("Not synced — retrying", true); }
+    try{ await cloudSaveQuote(); quoteSaveTrouble=false; }catch(err){ quoteSaveTrouble=true; flagSaved("Not synced — retrying", true); }
+    checkUnsaved();
   }
 }
 window.addEventListener("online", ()=>{ if(supa) cloudSaveQuote().catch(()=>{}); });
@@ -20661,6 +20678,49 @@ document.addEventListener("wheel", e=>{
   const el=document.activeElement;
   if(el && el.tagName==="INPUT" && el.type==="number" && el===e.target) el.blur();
 }, {passive:true});
+/* ============================================================
+   NOTHING UNSAVED WITHOUT SAYING SO
+   Work in this tab that has not reached the server is shown across the top
+   of the screen, with a button to try again — not as a word in the corner
+   that fades. A catalogue change counts as unsaved once it has waited
+   longer than the save normally takes.
+   ============================================================ */
+let catPendingSince=0;
+function catalogueUnsaved(){
+  return !!supa && draftRev!==null && (!!draftConflict || catalogueSig()!==draftSavedSig);
+}
+function checkUnsaved(){
+  if(inShareMode()) return;
+  const cat=catalogueUnsaved();
+  if(cat){ if(!catPendingSince) catPendingSince=Date.now(); } else catPendingSince=0;
+  const catLate = cat && (catSaveTrouble || !!draftConflict || Date.now()-catPendingSince>10000);
+  const quoteLate = !!supa && !!cloudQuoteId && (quoteSaveTrouble || cloudConflictPaused);
+  let bar=document.getElementById("unsavedBar");
+  document.body.classList.toggle("has-unsaved", !!(catLate||quoteLate));
+  if(!catLate && !quoteLate){ if(bar) bar.remove(); return; }
+  if(!bar){
+    bar=document.createElement("div"); bar.id="unsavedBar"; bar.className="no-print";
+    document.body.appendChild(bar);
+  }
+  const what = catLate && quoteLate ? "Catalogue and quotation changes are" : catLate ? "Catalogue changes are" : "Quotation changes are";
+  bar.innerHTML=`<span class="ubicon">!</span><b>${what} not saved to the server yet.</b>
+    <span>Keep this tab open ${navigator.onLine===false?"&mdash; you are offline":"&mdash; trying again"}.</span>
+    <button class="btn sm" type="button" id="unsavedRetry">Save now</button>`;
+  bar.querySelector("#unsavedRetry").onclick=async()=>{
+    if(catLate){ clearTimeout(draftTimer); saveDraftWithRetry(); }
+    if(quoteLate){ try{ await cloudSaveQuote(); quoteSaveTrouble=false; }catch(err){ quoteSaveTrouble=true; } }
+    setTimeout(checkUnsaved, 1500);
+  };
+}
+/* the watch only shows; sending again is its own, slower step, and never while a send or a retry is under way */
+setInterval(()=>{
+  if(document.hidden) return;
+  checkUnsaved();
+  if(catPendingSince && !draftConflict && !draftSaving && !draftRetryWaiting && Date.now()-catPendingSince>6000){
+    draftRetryWaiting=true; clearTimeout(draftTimer); draftTimer=setTimeout(saveDraftWithRetry, 0);
+  }
+}, 4000);
+window.addEventListener("online", ()=>{ if(catalogueUnsaved()) saveDraftWithRetry(); if(quoteSaveTrouble) saveSoon(); });
 /* last-chance flush so an edit made in the final 400ms isn't lost */
 window.addEventListener("beforeunload", (e)=>{
   clearTimeout(saveTimer); saveNow();
@@ -20676,10 +20736,19 @@ window.addEventListener("beforeunload", (e)=>{
     e.returnValue="You have unpublished catalogue changes.";
     return e.returnValue;
   }
-  /* but a draft edit still inside its 1.5s debounce would be lost */
+  /* but a draft edit still inside its 1.5s debounce would be lost: send it,
+     and ask, because a page that is going cannot wait for the answer */
   if(draftRev!==null && !draftConflict && catalogueSig()!==draftSavedSig){
     clearTimeout(draftTimer);
     cloudSaveCatalogueDraft().catch(()=>{});
+    e.preventDefault();
+    e.returnValue="Catalogue changes are still being saved.";
+    return e.returnValue;
+  }
+  if(supa && cloudQuoteId && (quoteSaveTrouble || cloudConflictPaused)){
+    e.preventDefault();
+    e.returnValue="Quotation changes are not saved yet.";
+    return e.returnValue;
   }
 });
 document.addEventListener("visibilitychange", ()=>{ if(document.hidden){ clearTimeout(saveTimer); saveNow(); } });
