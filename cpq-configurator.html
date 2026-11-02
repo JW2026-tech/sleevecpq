@@ -19780,7 +19780,11 @@ function shareSummaryCardHtml(frac){
   const blocks=shareStepBlocks(frac);
   const grand=investmentGrandTotal();
   const t=activeTemplate();
-  const svcTotal=serviceRowsTotal(buildPriceRows(docDetail()));
+  /* tariffs are a duty passed on, not a service of ours: a line of their own */
+  const svcRowsAll=buildPriceRows(docDetail());
+  const tariffRow=svcRowsAll.find(r=>!r.hide && !r.gone && r.node && r.node.o && r.node.o.id==="__svc_tariff");
+  const tariffAmt=tariffRow ? (+tariffRow.price||0) : 0;
+  const svcTotal=serviceRowsTotal(svcRowsAll)-tariffAmt;
   /* What the customer added himself, on a line of its own. It was folded
      into the machine it bolts onto — "Applicator HSSA2000 $117,064.43,
      incl. Sleeve ejector" — so the one figure he had just changed was the
@@ -19828,6 +19832,7 @@ function shareSummaryCardHtml(frac){
           <b>${takenTotal?fmt(takenTotal):"—"}</b>
         </div>`:""}
         ${svcTotal?`<div class="sharesummaryrow"><span>Installation &amp; services</span><b>${fmt(svcTotal)}</b></div>`:""}
+        ${tariffAmt?`<div class="sharesummaryrow"><span>${esc(tariffRow.node.o.name||"Tariffs")}</span><b>${fmt(tariffAmt)}</b></div>`:""}
         ${(()=>{ const rs=buildPriceRows(docDetail()), d=discountAmount(priceRowsTotal(rs)-serviceRowsTotal(rs));
           return d ? `<div class="sharesummaryrow is-disc"><span>Incl. ${(frac*100).toFixed(1)}% discount</span><b>&minus; ${fmt(d)}</b></div>` : ""; })()}
         </div>
