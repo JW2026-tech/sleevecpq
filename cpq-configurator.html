@@ -2143,6 +2143,7 @@
   .netpill{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:9px;background:#e7f6ec;color:#1d7a3e;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;vertical-align:middle}
   .sharesectionhead .sharenetnote{flex:1 1 100%;margin:6px 0 0}
   .pcurpart{display:block;margin-bottom:4px}
+  body.share-mode img{cursor:zoom-in}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -20305,6 +20306,25 @@ window.addEventListener("scroll", ()=>{
       document.documentElement.style.setProperty("--sharenavh", h);
   });
 }, {passive:true});
+/* On the customer's page a picture opens large in a tab of its own. The pictures
+   are often data URLs, which a browser will not open as a page, so the tab gets
+   a small page of its own with the picture in it. The tab is opened on the click
+   itself, or a popup blocker stops it. */
+document.addEventListener("click", e=>{
+  if(!document.body.classList.contains("share-mode")) return;
+  const img=e.target.closest && e.target.closest("img");
+  if(!img || img.closest("a,button") || !img.src) return;
+  e.preventDefault(); e.stopPropagation();
+  const w=window.open("", "_blank");
+  if(!w) return;
+  const title=img.alt || "Picture";
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
+    <style>html,body{margin:0;height:100%;background:#111}body{display:flex;align-items:center;justify-content:center}
+    img{max-width:100%;max-height:100vh;object-fit:contain;background:#fff}</style></head>
+    <body><img alt="${esc(title)}"></body></html>`);
+  w.document.close();
+  w.document.querySelector("img").src=img.currentSrc||img.src;
+}, true);
 /* one section at a time, like separate pages, instead of one long scroll —
    the nav bar and prev/next both just change shareSectionIdx and re-render */
 function renderShareMode(){
