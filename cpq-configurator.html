@@ -12527,7 +12527,7 @@ const I18N_ES_RULES=[
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
   [/^All prices below are net — your ([d.]+)% discount is already taken off.$/, "Todos los precios son netos — su descuento del $1% ya está aplicado."],
-  [/^✓ (d+) of (d+) included$/, "✓ $1 de $2 incluidos"],
+  [/^\u2713 (\d+) included(?: \u2013 (.+))?$/, (m,q,a)=>"\u2713 "+q+" incluido"+(q==="1"?"":"s")+(a?" \u2013 "+a:"")],
   [/^Why choose this?$/, "¿Por qué elegirlo?"],
   [/^All prices below are net — your ([d.]+)% discount is already taken off. Service is not discounted.$/, "Todos los precios son netos — su descuento del $1% ya está aplicado. El servicio no tiene descuento."],
   [/^All prices below are net — your ([d.]+)% discount is already taken off, so they compare directly with the investment.$/, "Todos los precios son netos — su descuento del $1% ya está aplicado, así que se comparan directamente con la inversión."],
@@ -19566,6 +19566,11 @@ function sharePropTables(frac){
    Held only in this browser: it is a way of looking, not a decision, so it
    never reaches the quote. On paper they are all out. */
 const sharePropOpen=new Set();
+/* how many positions have a type, and what that comes to net */
+function propIncl(q, v, net, cls){
+  const d=net(v&&v.unitPrice)*q;
+  return `<span class="pcur${cls||""}">&#10003; ${q} included${d>0?" &ndash; "+fmt(d):""}</span>`;
+}
 function sharePropTablesHtml(frac){
   const list=sharePropTables(frac);
   const net=n=>(+n||0)*(1-(+frac||0));          // a type's own price, at the discount everything else on the page has
@@ -19610,14 +19615,10 @@ function sharePropTablesHtml(frac){
             const totaal=t.rows.reduce((n,r)=>n+r.qty,0);
             const cel=v=>{
               const cellen=t.rows.map(r=>r.cells.find(x=>x.vid===v.id)).filter(Boolean);
-              if(cellen.every(c=>c.current))
-                return `<span class="pcur">&#10003; ${(()=>{
-                  /* what the type comes to in all: its price each, for every position it is fitted to */
-                  const d=net(v.unitPrice)*totaal;
-                  return d>0?"included &ndash; "+fmt(d):"included";})()}</span>`;
+              if(cellen.every(c=>c.current)) return propIncl(totaal, v, net);
               /* some machines have it and some do not: say how many, so the folded line is not a row of dashes */
               const curQty=t.rows.reduce((n2,r)=>{ const c=r.cells.find(x=>x.vid===v.id); return n2+((c&&c.current)?r.qty:0); },0);
-              const part=curQty>0 ? `<span class="pcur pcurpart">&#10003; ${curQty} of ${totaal} included</span>` : "";
+              const part=curQty>0 ? propIncl(curQty, v, net, " pcurpart") : "";
               const kan=cellen.filter(c=>!c.blocked && c.offered);
               if(!kan.length) return part || `<span class="pna">&mdash;</span>`;
               const som=kan.reduce((n,c)=>n+(+c.delta||0),0);
@@ -19628,7 +19629,6 @@ function sharePropTablesHtml(frac){
             };
             return `<tr class="pall">
             <td class="pmach">${t.rows.length>1?"All machines":esc(t.rows[0]?t.rows[0].machine:"")}
-              <span class="pqty">${totaal}&times;</span>
               ${(t.rows.length>1||t.locked.length)?`<button class="pmachfold no-print" data-proptfold="${esc(t.p.id)}"
                 title="${open?"Back to one line for the whole line":"Show what each machine has, so one of them can be set on its own"}">${
                 open?"&#9662; hide the machines":`&#9656; per machine (${t.rows.length}${t.locked.length?` + ${t.locked.length} alternative${t.locked.length>1?"s":""}`:""})`}</button>`:""}</td>
@@ -19638,7 +19638,7 @@ function sharePropTablesHtml(frac){
             <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>${
               r.mixed?`<span class="pmixed">not all the same &mdash; pick one to align them</span>`:""}</td>
             ${r.cells.map(x=>`<td>${x.current
-              ? `<span class="pcur">&#10003; ${(()=>{const tv=t.types.find(y=>y.id===x.vid); const d=net(tv&&tv.unitPrice)*r.qty; return d>0?"included &ndash; "+fmt(d):"included";})()}</span>`
+              ? propIncl(r.qty, t.types.find(y=>y.id===x.vid), net)
               : (x.blocked
                  ? (x.blocked.enabler
                     ? `<span class="pwaits" title="This machine can only have it together with ${esc(x.blocked.enabler.v.name)}, which is offered above.">
