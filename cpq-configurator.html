@@ -15189,9 +15189,11 @@ function renderNotices(){
   if(quotePutAway){
     rows.push(`<div class="notice is-cat">
       <span class="catdot"></span>
-      <span class="catmsg"><b>${quotePutAway.number?`Quotation ${esc(quotePutAway.number)} is put away.`:"The quotation is put away."}</b>
+      <span class="catmsg">${quotePutAway.none
+        ? `<b>No quotation open.</b> Open one from Quotes, or start a new one.`
+        : `<b>${quotePutAway.number?`Quotation ${esc(quotePutAway.number)} is put away.`:"The quotation is put away."}</b>
         You are in the live catalogue, so you are editing the catalogue, not configuring.
-        It was saved, and opening it again brings its own catalogue back with it.</span>
+        It was saved, and opening it again brings its own catalogue back with it.`}</span>
       ${quotePutAway.id?`<button class="btn sm" id="ntReopen">Open it again</button>`:""}
       <button class="btn sm" id="ntPutAwayNew">Start a new quotation</button>
     </div>`);
@@ -17752,7 +17754,8 @@ async function reattachCloudQuote(){
    quotation that carries none — a genuinely new one, since New quote clears
    it on purpose — makes a row. */
 async function reattachByNumber(){
-  if(!supa || cloudQuoteId || restoredQuoteId) return false;
+  /* not when nothing was open: the number on screen is then the example one */
+  if(!supa || cloudQuoteId || restoredQuoteId || (quotePutAway && quotePutAway.none)) return false;
   const nr=String(CONFIG.quoteNumber||"").trim();
   if(!nr) return false;
   try{
@@ -21081,6 +21084,10 @@ async function boot(){
      await afterSignIn(session);` here in place of the block below, and run
      the REVERT statements at the bottom of supabase-schema-testmode.sql. */
   bootLocalOnly();
+  /* Nothing to pick back up: no quotation is open, so the screens that need
+     one stay shut and the app starts where one is chosen. Configure used to
+     open on the built-in example catalogue, which looked like a quotation. */
+  if(!restoredQuoteId){ quotePutAway={id:null, number:"", none:true}; setMode("quotes"); }
   /* Catalogue comes from the cloud regardless of sign-in state (see
      supabase-schema-testmode.sql) — the old S-drive auto-load is gone.
      But NOT over the top of unpublished Admin edits: this used to run
@@ -21125,6 +21132,12 @@ async function boot(){
   /* One check right away: a tab left open overnight, or one opened after a
      colleague published, should say so before you start quoting from it. */
   checkCatalogueUpstream();
+  if(cloudQuoteId && quotePutAway && quotePutAway.none) quotePutAway=null;
+  if(!cloudQuoteId && !quotePutAway){
+    quotePutAway={id:null, number:"", none:true};
+    if(mode!=="admin") setMode("quotes");
+  }
+  syncQuoteTabs(); renderNotices();
   bootDone=true;
   const {data:{session}}=await supa.auth.getSession();
   if(session){
