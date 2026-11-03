@@ -1301,6 +1301,11 @@
   .sharevalidity svg{flex:0 0 auto;color:#28338A}
   /* the website's own assurances, next to the price where the buyer is
      weighing it — see SHARE_ASSURANCES */
+  .sharewarranty{display:flex;gap:14px;align-items:center;border:1px solid #e3e6f0;border-radius:14px;padding:14px 16px;background:#fff}
+  .sharewarranty .swbadge{flex:0 0 56px;width:56px;height:63px}
+  .sharewarranty .swtext{display:flex;flex-direction:column;gap:3px;font-size:13px;line-height:1.4;color:#555}
+  .sharewarranty .swtext b{font-size:15px;color:#1f2a5c}
+  .sharewarranty .swlink{color:#2f6fe4;font-weight:600;text-decoration:underline;margin-top:2px}
   .shareassure{border:1px solid #e3e6f0;border-radius:14px;padding:14px 16px;background:#f7f8fc}
   .shareassurerow{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#444;padding:4px 0}
   .shareassurerow svg{flex:0 0 auto;color:#EF7B0B;margin-top:2px}
@@ -12479,7 +12484,9 @@ const I18N_ES={
   "Strong on the inside. Built to perform on the outside.":"Fuerte por dentro. Hecha para rendir por fuera.",
   "Operational machines":"M\u00e1quinas en operaci\u00f3n", "Countries":"Pa\u00edses", "Years of experience":"A\u00f1os de experiencia",
   "Generations, our family business":"Generaciones, nuestra empresa familiar",
-  "Investment summary":"Resumen de la inversi\u00f3n", "Installation & services":"Instalaci\u00f3n y servicios",
+  "Investment summary":"Resumen de la inversi\u00f3n", "5-year warranty":"Garant\u00eda de 5 a\u00f1os",
+  "Two years standard, extendable annually up to 5 years with an annual inspection.":"Dos a\u00f1os de serie, ampliable cada a\u00f1o hasta 5 a\u00f1os con una inspecci\u00f3n anual.",
+  "Warranty terms":"Condiciones de garant\u00eda", "YEAR":"A\u00d1OS", "WARRANTY":"GARANT\u00cdA", "Installation & services":"Instalaci\u00f3n y servicios",
   "Total investment":"Inversi\u00f3n total", "This proposal is valid for":"Esta propuesta es v\u00e1lida por",
   "Guaranteed \u2265 98% efficiency":"Eficiencia garantizada \u2265 98%", "Worldwide supply of spare parts":"Suministro mundial de refacciones",
   "Excellent service and support":"Excelente servicio y soporte", "Machines built entirely in-house":"M\u00e1quinas fabricadas totalmente en casa",
@@ -19272,6 +19279,26 @@ const SHARE_PROOF = [
   {n:"35",   l:"Years of experience"},
   {n:"2",    l:"Generations, our family business"}
 ];
+/* The warranty, as a badge beside the investment: two years standard, extended a
+   year at a time up to five with an annual inspection. The link opens the terms
+   at the warranty clause; without terms in the quotation there is nowhere to go,
+   so the link is taken away once the page is drawn (the sections are not known
+   yet while this is built: it is part of them). */
+function shareWarrantyHtml(){
+  return `<div class="sharewarranty">
+    <svg class="swbadge" viewBox="0 0 64 72" aria-hidden="true">
+      <path d="M32 2 60 18v36L32 70 4 54V18z" fill="#EF7B0B"/>
+      <text x="32" y="38" text-anchor="middle" font-size="26" font-weight="800" fill="#fff">5</text>
+      <text x="32" y="50" text-anchor="middle" font-size="6.5" font-weight="700" fill="#fff" letter-spacing=".4">YEAR</text>
+      <text x="32" y="58" text-anchor="middle" font-size="6.5" font-weight="700" fill="#fff" letter-spacing=".4">WARRANTY</text>
+    </svg>
+    <div class="swtext">
+      <b>5-year warranty</b>
+      <span>Two years standard, extendable annually up to 5 years with an annual inspection.</span>
+      <a href="#" class="swlink" data-warrantylink="1"><span>Warranty terms</span> &rarr;</a>
+    </div>
+  </div>`;
+}
 const SHARE_ASSURANCES = [
   "Guaranteed ≥ 98% efficiency",
   "Worldwide supply of spare parts",
@@ -19940,6 +19967,7 @@ function shareSummaryCardHtml(frac){
           <span>This proposal is valid for <b>${esc(CONFIG.validity||ensureCommercial().validity||"30 days from the date above")}</b>.</span></div>
       </div>
     </div>
+    ${shareWarrantyHtml()}
     <div class="shareassure">${SHARE_ASSURANCES.map(a=>
       `<div class="shareassurerow">${shareCheckIconSvg()}<span>${esc(a)}</span></div>`).join("")}</div>
     <div class="sharequestions">
@@ -20485,6 +20513,21 @@ function renderShareMode(){
     renderShareMode();
   };
   el.querySelectorAll("[data-shareidx]").forEach(b=>{ b.onclick=()=>goTo(+b.dataset.shareidx); });
+  el.querySelectorAll("[data-warrantylink]").forEach(a=>{
+    if(!sections.some(x=>x.id==="terms")){ a.remove(); return; }
+    a.onclick=e=>{
+    e.preventDefault();
+    const i=sections.findIndex(x=>x.id==="terms");
+    if(i<0) return;
+    goTo(i);
+    const body=document.getElementById("shareBody");
+    const h=body && [...body.querySelectorAll("h1,h2,h3,h4,h5,h6,b,strong")].find(x=>/warrant|garant/i.test(x.textContent||""));
+    /* after the page has settled, and clear of the bar that stays on top */
+    if(h) setTimeout(()=>{
+      const nav=parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sharenavh"))||0;
+      window.scrollTo({top:h.getBoundingClientRect().top+window.scrollY-nav-16});
+    }, 250);
+  }; });
   const prev=document.getElementById("sharePrev"); if(prev) prev.onclick=()=>goTo(shareSectionIdx-1);
   const next=document.getElementById("shareNext"); if(next) next.onclick=()=>goTo(shareSectionIdx+1);
   /* on a phone the full section list only opens on tap (see the matching
