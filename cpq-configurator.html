@@ -14809,6 +14809,29 @@ function markCataloguePublished(){ _sigCache={at:0,sig:null}; publishedSig=catal
 /* null publishedSig means we never had a baseline (no cloud, first run), and
    claiming "unpublished changes" then would cry wolf on every load */
 function catalogueChanged(){ return !!publishedSig && catalogueSig()!==publishedSig; }
+/* Is the live catalogue as loaded the same as the newest published version?
+   The browser used to remember this as a fingerprint taken at the last
+   publish; a browser that could not keep it (full storage, a new computer)
+   had none, and with none the Publish button never appeared at all. So the
+   database is asked: the newest version, compared with the live catalogue
+   as it was loaded. The same: this is the published state. Different: there
+   is something to publish. */
+async function syncPublishedState(draftData, sigAtLoad){
+  if(!supa) return;
+  try{
+    const {data}=await supa.from("catalogue_versions").select("version,data")
+      .order("version",{ascending:false}).limit(1).maybeSingle();
+    if(draftRev===null) return;                     // left the live catalogue meanwhile
+    const strip=v=>stableStringify(JSON.parse(JSON.stringify(v||{}, (k,x)=>PERQUOTE_OPTION_FIELDS.has(k)?undefined:x)));
+    if(data && data.data && strip(data.data)===strip(draftData)){
+      publishedSig=sigAtLoad;                       // edits made since still count as unpublished
+    } else {
+      publishedSig="(differs from v"+((data&&data.version)||"?")+")";   // matches no fingerprint: Publish is offered
+    }
+    if(data && data.version) publishedVersion=data.version;
+    renderCatalogueBar();
+  }catch(err){}
+}
 /* Set when boot() finds unpublished edits and therefore refuses to pull the
    team catalogue over them. Holds the version it did not load, so the bar can
    offer to take it after publishing (or instead of it). */
@@ -17146,6 +17169,8 @@ async function cloudLoadCatalogueDraft(){
     if(!applyCatalogue({catalogue:incoming})) return false;
     draftRev=data.rev;
     traceCat("LIVE draft loaded");
+    _sigCache={at:0,sig:null};
+    syncPublishedState(data.data, catalogueSig());   // the fingerprint of the catalogue as it was loaded
     watchDraft();                 // from here on, their changes come to us
     catKnownRev=data.rev;         // this screen matches that revision
     loadedCatalogueVersion=null;  // working from the draft, not a version
