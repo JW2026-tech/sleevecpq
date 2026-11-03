@@ -17462,7 +17462,20 @@ function scopeFlagsFromCatalogue(cat){
   return out;
 }
 let cloudSavedSig=null;      // content last written to the quotes row
-async function cloudSaveQuote(){
+/* One save of the quote at a time. Two that left together — a timer and a
+   flush, a tab losing focus while a save was on its way — both carried the
+   same revision: the first landed and moved it on, the second found its
+   revision gone and called it a colleague's save, which put every change
+   in this tab on hold. A save asked for while one is under way now waits
+   for it and goes after, with the revision that one brought back. */
+let quoteSaving=null;
+function cloudSaveQuote(){
+  /* behind the one under way; a save with nothing new in it costs nothing (see the signature check) */
+  if(quoteSaving) return quoteSaving.catch(()=>{}).then(()=>cloudSaveQuote());
+  const run=quoteSaving=cloudSaveQuoteOnce().finally(()=>{ if(quoteSaving===run) quoteSaving=null; });
+  return run;
+}
+async function cloudSaveQuoteOnce(){
   if(!supa || !cloudQuoteId || cloudConflictPaused) return null;
   /* Writing an unchanged quote is not free: the trigger stamps updated_at
      and files a row in quote_versions, so switching tabs used to age the
