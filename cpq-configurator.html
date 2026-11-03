@@ -1302,7 +1302,7 @@
   /* the website's own assurances, next to the price where the buyer is
      weighing it — see SHARE_ASSURANCES */
   .sharewarranty{display:flex;gap:14px;align-items:center;border:1px solid #e3e6f0;border-radius:14px;padding:14px 16px;background:#fff}
-  .sharewarranty .swbadge{flex:0 0 56px;width:56px;height:63px}
+  .sharewarranty .swbadge{flex:0 0 69px;width:69px;height:69px}
   .sharewarranty .swtext{display:flex;flex-direction:column;gap:3px;font-size:13px;line-height:1.4;color:#555}
   .sharewarranty .swtext b{font-size:15px;color:#1f2a5c}
   .sharewarranty .swlink{color:#2f6fe4;font-weight:600;text-decoration:underline;margin-top:2px}
@@ -19288,11 +19288,11 @@ const SHARE_PROOF = [
    yet while this is built: it is part of them). */
 function shareWarrantyHtml(){
   return `<div class="sharewarranty">
-    <svg class="swbadge" viewBox="0 0 64 72" aria-hidden="true">
-      <path d="M32 2 60 18v36L32 70 4 54V18z" fill="#EF7B0B"/>
-      <text x="32" y="38" text-anchor="middle" font-size="26" font-weight="800" fill="#fff">5</text>
-      <text x="32" y="50" text-anchor="middle" font-size="6.5" font-weight="700" fill="#fff" letter-spacing=".4">YEAR</text>
-      <text x="32" y="58" text-anchor="middle" font-size="6.5" font-weight="700" fill="#fff" letter-spacing=".4">WARRANTY</text>
+    <svg class="swbadge" viewBox="0 0 72 72" aria-hidden="true">
+      <path d="M36 2 70 36 36 70 2 36z" fill="#EF7B0B" stroke="#EF7B0B" stroke-width="3" stroke-linejoin="round"/>
+      <text x="36" y="37" text-anchor="middle" font-size="24" font-weight="800" fill="#fff">5</text>
+      <text x="36" y="46" text-anchor="middle" font-size="6" font-weight="700" fill="#fff" letter-spacing=".4">YEAR</text>
+      <text x="36" y="52" text-anchor="middle" font-size="5.4" font-weight="700" fill="#fff" letter-spacing=".3">WARRANTY</text>
     </svg>
     <div class="swtext">
       <b>5-year warranty</b>
