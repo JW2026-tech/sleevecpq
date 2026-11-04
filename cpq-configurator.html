@@ -2174,6 +2174,9 @@
   .specnote{margin-top:10px;font-size:13px;line-height:1.5}
   .specnote ul{margin:4px 0 0 18px;padding:0}
   .adminlock.is-own.is-locked{background:#fff4e5;border-color:#EF7B0B}
+  .sputil{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--txt-dim);white-space:nowrap}
+  .specedit td .sotimes{font-weight:600;margin-right:6px;white-space:nowrap}
+  .specedit td:has(.sotimes){display:flex;align-items:center}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -9645,6 +9648,7 @@ function renderAdminCore(){
               ${(o.specs||[]).map((sp,si)=>`<div class="specrow" data-spi="${si}">
                 <input class="in" value="${esc(sp.label||"")}" data-sp="label" placeholder="e.g. Steam consumption">
                 <input class="in" value="${esc(sp.value||"")}" data-sp="value" placeholder="e.g. 40 kg/h">
+                <label class="sputil" title="A utility the machine needs (steam, air, power, consumption): with the machine offered more than once, the quotation says how many — 2 × 40 kg/h"><input type="checkbox" data-sputil="1" ${sp.utility?"checked":""}> utility</label>
                 <button class="btn sm" data-spact="up" ${si===0?"disabled":""} title="Move up">&#9650;</button>
                 <button class="btn sm" data-spact="down" ${si===(o.specs.length-1)?"disabled":""} title="Move down">&#9660;</button>
                 <button class="x" data-spact="del" title="Remove line">&times;</button>
@@ -11212,6 +11216,11 @@ function wireEditor(m,list,idx){
     const o=m.options[+inp.closest(".ocard").dataset.oi];
     const sp=(o.specs||[])[+inp.closest(".specrow").dataset.spi];
     if(sp) inp.oninput=()=>{ sp[inp.dataset.sp]=inp.value; renderConfigureQuiet(); };
+  });
+  ed.querySelectorAll("[data-sputil]").forEach(cb=>{
+    const o=m.options[+cb.closest(".ocard").dataset.oi];
+    const sp=(o.specs||[])[+cb.closest(".specrow").dataset.spi];
+    if(sp) cb.onchange=()=>{ if(cb.checked) sp.utility=true; else delete sp.utility; saveSoon(); renderConfigureQuiet(); };
   });
   ed.querySelectorAll("[data-speccopy]").forEach(sel9=>{
     const o=m.options[+sel9.closest(".ocard").dataset.oi];
@@ -14432,18 +14441,21 @@ function configuredSpecRows(){
        reads "CR6-220", not the step it happens to sit in */
     for(const o of chosen){
       const lines=[];
+      /* a machine offered more than once needs its utilities that many times */
+      const q=+(o.qty||0)||optQty(o)||1;
       (o.specs||[]).forEach((sp,si)=>{
         if(!((sp.label||"").trim()||(sp.value||"").trim())) return;
         const key=specKey(o, sp, si);
         const ovr=specOverride(key)||{};
+        const value=ovr.value!==undefined ? ovr.value : fillSupply(sp.value||"");
         lines.push({key,
           label: ovr.label!==undefined ? ovr.label : fillSupply(sp.label||""),
-          value: ovr.value!==undefined ? ovr.value : fillSupply(sp.value||""),
+          value, times: (sp.utility && q>1 && String(value).trim()) ? q : 0,
           stdLabel: fillSupply(sp.label||""), stdValue: fillSupply(sp.value||""),
           edited: ovr.label!==undefined || ovr.value!==undefined});
       });
       if(!lines.length) continue;
-      out.push({head:true, label:o.name||"", step:m.title||""});
+      out.push({head:true, label:(q>1?q+"× ":"")+(o.name||""), step:m.title||""});
       out.push(...lines);
     }
   }
@@ -14455,7 +14467,7 @@ function configuredSpecTableHtml(){
   return `<tr><th colspan="2" class="secthead">Configuration</th></tr>` +
     rows.map(r=>r.head
       ? `<tr class="spechead2"><td class="flabel" colspan="2">${esc(r.label)}${(r.step&&r.step!==r.label)?` <span class="snote">— ${esc(r.step)}</span>`:""}</td></tr>`
-      : `<tr><td class="flabel">${esc(r.label)}</td><td>${esc(r.value)}</td></tr>`).join("");
+      : `<tr><td class="flabel">${esc(r.label)}</td><td>${r.times?r.times+" &times; ":""}${esc(r.value)}</td></tr>`).join("");
 }
 /* the tab: the same rows, but every line can be reworded for this quote */
 function renderMachineSpecs(el){
@@ -14470,7 +14482,7 @@ function renderMachineSpecs(el){
         ? `<tr class="spechead2"><td class="flabel" colspan="3">${esc(r.label)}${(r.step&&r.step!==r.label)?` <span class="snote">— ${esc(r.step)}</span>`:""}</td></tr>`
         : `<tr data-sk="${esc(r.key)}" class="${r.edited?"isedited":""}">
              <td class="flabel"><input class="in" value="${esc(r.label)}" data-so="label"></td>
-             <td><input class="in" value="${esc(r.value)}" data-so="value"></td>
+             <td>${r.times?`<span class="sotimes" title="Utility, and the machine is offered ${r.times} times">${r.times} &times;</span>`:""}<input class="in" value="${esc(r.value)}" data-so="value"></td>
              <td class="no-print sores">${r.edited?`<button class="x" data-soreset="1" title="Back to the standard text">&#8634;</button>`:""}</td>
            </tr>`).join("")}
     </table></div>`
