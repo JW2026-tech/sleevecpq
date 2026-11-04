@@ -5749,7 +5749,7 @@ function propsLabel(o){
     .filter(p=>!propSkipped(p) && propQtyOf(o,p.id)>0)
     /* a type that means nothing is fitted (ticked "none" in Admin) is not named */
     .filter(p=>{ const v=(p.variants||[]).find(x=>x.id===assignedVariantId(p,o.id)); return !(v && v.none); })
-    .map(p=>{ const q=propQtyOf(o,p.id); return `${q}× ${esc(propItemName(p,o,q))}`; })
+    .map(p=>{ const q=propQtyOf(o,p.id); return `${+q.toFixed(2)}${p.unit?" "+esc(p.unit):"×"} ${esc(propItemName(p,o,q))}`; })
     .join(", ");
 }
 /* Everything one property adds up to, per type: what is supplied ("in"),
@@ -6563,7 +6563,7 @@ function propTypeLabel(options, deep, want){
       const v=(p.variants||[]).find(x=>x.id===vid);
       if(v && v.none) continue;
       const key=v?p.id+"|"+v.id:p.id;
-      const e=acc.get(key)||{name: v ? (v.name||propName(p,q)) : propName(p,q), q:0};
+      const e=acc.get(key)||{name: v ? (v.name||propName(p,q)) : propName(p,q), q:0, unit:p.unit||""};
       e.q+=q; acc.set(key,e);
     }
     if(deep) for(const m of (o.children||[])){
@@ -6572,7 +6572,8 @@ function propTypeLabel(options, deep, want){
     }
   };
   for(const o of options) visit(o);
-  return [...acc.values()].map(e=>`${e.q}× ${esc(e.name)}`).join(", ");
+  /* counted in a unit (a drip tray in metres) it reads "0.5 mtr Driptray", not "0.5×" */
+  return [...acc.values()].map(e=>`${+e.q.toFixed(2)}${e.unit?" "+esc(e.unit):"×"} ${esc(e.name)}`).join(", ");
 }
 /* "2× Adjustments, 4× Feet" from a {propId:qty} map */
 function propsMapLabel(map){
