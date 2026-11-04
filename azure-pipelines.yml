@@ -6,7 +6,7 @@
 # the server). The settings (.env, with the keys) stay on the server in
 # /opt/sleeve-cpq and never go through the pipeline.
 #
-# Only the CPQ containers (sleeve-cpq, sleeve-cpq-caddy) are rebuilt; the CPQ's
+# Only the CPQ container (sleeve-cpq) is rebuilt; Caddy, the CPQ's
 # Supabase and the planning tool are left alone.
 
 trigger:
@@ -34,7 +34,7 @@ stages:
                     set -euo pipefail
                     test -f /opt/sleeve-cpq/.env || { echo "Missing /opt/sleeve-cpq/.env — see DEPLOY.md"; exit 1; }
                     cp /opt/sleeve-cpq/.env .env
-                    docker compose -p sleeve-cpq up -d --build cpq caddy
+                    docker compose -p sleeve-cpq up -d --build cpq
                   displayName: docker compose up
                   workingDirectory: $(Build.SourcesDirectory)
                 - script: |

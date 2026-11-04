@@ -1,0 +1,59 @@
+# The CPQ's two entrances — add these blocks to the Caddyfile of the Caddy that is
+# already on the server (planningstool-caddy). That Caddy listens on both addresses
+# (10.16.12.4 and 10.16.12.5) and must be on the network cpq-net:
+#   - in the planning tool's compose, under that Caddy:   networks: [default, cpq-net]
+#   - and at the bottom:                                   networks: { cpq-net: { external: true } }
+# Then: docker exec planningstool-caddy caddy reload --config /etc/caddy/Caddyfile
+#
+# IMPORTANT — 10.16.12.5 is open to the whole internet (NSG rule 125), and one Caddy
+# answers every name on every address. So anything meant for Sleeve only must be
+# locked in Caddy itself, not only in the NSG: the internal CPQ entrance below, and
+# the planning tool's own block too (see the end of this file).
+# The addresses are those of NSG rules 121-123; keep them in step.
+
+(alleen_sleeve) {
+	@notsleeve not remote_ip 195.110.54.78/32 217.123.164.85/32 92.64.84.98/32
+	respond @notsleeve 403
+}
+
+# --- public entrance, for customers ---------------------------------------------
+cpq.sleevetechnology.com {
+	encode gzip
+	# the database: only the four functions behind a shared quotation
+	handle_path /sb/* {
+		@customer path /rest/v1/rpc/get_shared_quote /rest/v1/rpc/update_shared_quote /rest/v1/rpc/reset_shared_quote /rest/v1/rpc/log_share_activity
+		handle @customer {
+			reverse_proxy cpq-supabase-kong:8000
+		}
+		respond 403
+	}
+	# the app; the PDF renderer can take a while on a large quotation
+	handle {
+		reverse_proxy sleeve-cpq:3000 {
+			transport http {
+				read_timeout 120s
+			}
+		}
+	}
+}
+
+# --- internal entrance, for colleagues: the whole CPQ and its database ------------
+cpq-intern.sleevetechnology.com {
+	import alleen_sleeve
+	encode gzip
+	handle_path /sb/* {
+		reverse_proxy cpq-supabase-kong:8000
+	}
+	handle {
+		reverse_proxy sleeve-cpq:3000 {
+			transport http {
+				read_timeout 120s
+			}
+		}
+	}
+}
+
+# --- and in the planning tool's own block, as its first line: ----------------------
+#	import alleen_sleeve
+# Without it the planning tool can be reached by anyone through 10.16.12.5 by asking
+# for its name, as soon as the CPQ's public address is open.

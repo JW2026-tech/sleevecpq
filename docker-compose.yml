@@ -1,11 +1,10 @@
 # Sleeve Technology CPQ on the planning server (SLT-NE-PRODPLAN01).
 #
-# Three parts (the internal entrance for colleagues lives in the planning tool's Caddy):
-#   - cpq    : the app (page, Odoo lookup, PDF)
-#   - caddy  : the public entrance (customers), HTTPS on the CPQ's own IP (CPQ_BIND_IP, 10.16.12.5);
-#              colleagues use the internal entrance in the planning tool's Caddy (deploy/Caddyfile.intern)
-#   - the CPQ's own Supabase, in supabase/ (its own compose project), reached
-#     over the network cpq-net
+# The CPQ itself: one container. HTTPS is done by the Caddy that is already on the
+# server (planningstool-caddy), on both addresses: the public entrance for
+# customers (cpq.…, 10.16.12.5) and the internal one for colleagues (cpq-intern.…).
+# Its blocks are in deploy/Caddyfile.cpq; Caddy reaches this container, and the
+# CPQ's own Supabase (supabase/), over the network cpq-net.
 # Step by step: DEPLOY.md.
 
 services:
@@ -24,30 +23,7 @@ services:
     networks:
       - cpq-net
 
-  caddy:
-    image: caddy:2.11.7
-    container_name: sleeve-cpq-caddy
-    restart: unless-stopped
-    depends_on:
-      - cpq
-    environment:
-      CPQ_DOMAIN: ${CPQ_DOMAIN}
-    ports:
-      - "${CPQ_BIND_IP}:80:80"
-      - "${CPQ_BIND_IP}:443:443"
-      - "${CPQ_BIND_IP}:443:443/udp"
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - cpq-net
-
 networks:
-  # created once: docker network create cpq-net (DEPLOY.md, step 3)
+  # created once: docker network create cpq-net (DEPLOY.md)
   cpq-net:
     external: true
-
-volumes:
-  caddy_data:
-  caddy_config:

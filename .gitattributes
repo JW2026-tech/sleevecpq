@@ -2,6 +2,6 @@
 *.sh text eol=lf
 *.yml text eol=lf
 Dockerfile text eol=lf
-deploy/Caddyfile text eol=lf
+
 .env.example text eol=lf
-deploy/Caddyfile.intern text eol=lf
+deploy/Caddyfile.cpq text eol=lf
