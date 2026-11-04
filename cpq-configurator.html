@@ -5802,6 +5802,12 @@ function flattenD(list, depth=0, trail=[], numPath=[], rootId=null, ancestorOpti
   return seq;
 }
 const flatten = list => flattenD(list).map(x=>x.m);
+/* The steps you walk through in Configure. What sits under an alternative is
+   left out: an alternative is quoted with the same configuration as the item
+   in scope (carried across when it is chosen, see altCarry), so its own
+   sub-steps are not a second set of questions — they only made the quote
+   look unfinished ("1 step still unanswered"). Pricing still sees them. */
+const configSteps = () => flattenD(activeModules()).filter(nd=>!nd.altAncestor);
 /* a module plus every descendant currently revealed under it (used for
    rollup totals) */
 const subtreeOf = m => flatten([m]);
@@ -6178,7 +6184,7 @@ function configTreeHtml(visD, cursorIdx){
    the choices above it, so it is easy to leave behind — this is what the
    tree badges and the pre-send warning both count. */
 function openSteps(){
-  return flattenD(activeModules())
+  return configSteps()
     .filter(nd=>!stepDone(nd.m) && (nd.m.generated || (nd.m.options||[]).length))
     .map(nd=>({m:nd.m, trail:nd.trail, depth:nd.depth}));
 }
@@ -8388,7 +8394,7 @@ function navFoldKeysUnder(visD, i){
    only exists once its parent option is selected, so it can easily be
    hiding inside a folded node the moment it appears. */
 function goToStep(id){
-  const visD=flattenD(activeModules());
+  const visD=configSteps();
   const i=visD.findIndex(x=>x.m.id===id);
   if(i<0) return;
   let want=visD[i].depth;
@@ -8398,7 +8404,7 @@ function goToStep(id){
   cursor=i; renderConfigure(); window.scrollTo({top:0,behavior:"smooth"});
 }
 function go(d){
-  const vis=flatten(activeModules());
+  const vis=configSteps();
   cursor=Math.max(0,Math.min(vis.length-1,cursor+d));
   renderConfigure(); window.scrollTo({top:0,behavior:"smooth"});
 }
@@ -8485,7 +8491,7 @@ function renderConfigure(){
     if(copy){ cursor=0; renderConfigure(); try{ goToStep(copy.id); }catch(err){} }
   };
 
-  const visD=flattenD(activeModules());
+  const visD=configSteps();
   /* with everything collapsed by default the step under the cursor could
      sit inside a shut branch — open its ancestors so it stays reachable */
   if(visD[cursor]){
