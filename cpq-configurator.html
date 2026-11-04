@@ -2980,10 +2980,16 @@
     body.print-all .sharepropt,
     body.print-all .shareupcard,
     body.print-all .sharehero,
-    body.print-all .sharealtgroup,
     body.print-all .sharealtcard,
     body.print-all .sharesummary,
     body.print-all .propsum{break-inside:avoid}
+    /* An alternative with its comparison is often taller than what is left under the
+       chapter title — kept whole, it left that page empty and started on the next.
+       So it may run on over a page, cut between its rows, never through one; its
+       own heading stays with what follows. */
+    body.print-all .sharealtgroup{break-inside:auto}
+    body.print-all .sharecmpgrid>div,body.print-all .sharealtgrouplbl{break-inside:avoid}
+    body.print-all .sharealtgrouplbl{break-after:avoid}
     /* and a section title never stands at the foot of a page on its own */
     body.print-all .sharesectionhead{break-after:avoid;break-inside:avoid}
     body.print-all .sharebreakdown{margin-top:6mm;padding:1mm 4mm 4mm;break-before:page}
