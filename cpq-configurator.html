@@ -14400,13 +14400,15 @@ function contactPageHtml(){
   const bank = (t.bank&&t.bank.length)
     ? `<div class="cblock"><h4>Our bank details</h4>${t.bank.map(l=>l?`<div>${esc(l)}</div>`:'<div>&nbsp;</div>').join("")}</div>`
     : `<div class="cblock"></div>`;
-  const cu=ensureCustomer(), pc=primaryContact();
+  const cu=ensureCustomer();
+  /* every contact person on the Customer tab, not only the first */
+  const people=(cu.contacts||[]).filter(k=>String(k.name||"").trim());
   const addressed = customerLines().length ? `<div class="addrblock">
       <h4>Quotation for</h4>
       ${customerLines().map(l=>`<div>${esc(l)}</div>`).join("")}
       ${cu.vat?`<div class="csp"></div><div>VAT ${esc(cu.vat)}</div>`:""}
-      ${pc?`<div class="csp"></div><div><b>${esc(pc.name)}</b>${pc.role?` — ${esc(pc.role)}`:""}</div>
-            ${pc.email?`<div>${esc(pc.email)}</div>`:""}${pc.phone?`<div>${esc(pc.phone)}</div>`:""}`:""}
+      ${people.map(pc=>`<div class="csp"></div><div><b>${esc(pc.name)}</b>${pc.role?` — ${esc(pc.role)}`:""}</div>
+            ${pc.email?`<div>${esc(pc.email)}</div>`:""}${pc.phone?`<div>${esc(pc.phone)}</div>`:""}`).join("")}
     </div>` : "";
   const site = siteLines().length ? `<div class="addrblock">
       <h4>End user &middot; installation site</h4>
