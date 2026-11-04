@@ -13673,7 +13673,7 @@ function formatScopeHtml(wantOptional){
       .filter(r=>!!r.opt===want);
     if(!parts.length) return "";
     const q=Math.max(1,+pr.qty||1);
-    return `<div class="grouphead"><div class="ghmain"><div class="ghtitle">${esc(productName(pr,i))}${q>1?` — ${q}×`:""}</div></div></div>`
+    return `<div class="grouphead"><div class="ghmain"><div class="ghtitle">${esc(unitSpacing(productName(pr,i)))}${q>1?` &times; ${q} machines`:""}</div></div></div>`
       + parts.map(r=>`<div class="scopeline lvl1${r.opt?" is-optional":""}" style="padding-left:18px">
           <span class="bullet"></span>
           <div class="stitle">${(q>1&&!r.shared)?`<span class="qty">${q}&times;</span> `:""}${esc(r.x.desc)}${
@@ -14894,7 +14894,7 @@ function standardMemoHtml(){
   }).filter(Boolean);
   const entity=t.entity||"Sleeve Technology";
   return `<p>Dear ${names.length?esc(joinNames(names)):"Sir, Madam"},</p>
-<p>Thank you very much for your kind request for offer${forLine?` for a new line for ${esc(forLine)}`:""}. The complete system is a proven concept of ${esc(entity)} and based on many years of experience in the industry.</p>
+<p>Thank you very much for your kind request for quotation${forLine?` for a new line for ${esc(forLine)}`:""}. The complete system is a proven concept of ${esc(entity)} and based on many years of experience in the industry.</p>
 ${offered.length?`<p>In this quotation we offer:</p><ul>${offered.map(x=>`<li>${x}</li>`).join("")}</ul>`:""}
 ${products.length?`<p>The machine${offered.length>1?"s are":" is"} offered for the following products:</p><ul>${products.map(x=>`<li>${x}</li>`).join("")}</ul>`:""}
 <p>Machine software and capabilities:</p>
@@ -14914,9 +14914,9 @@ ${products.length?`<p>The machine${offered.length>1?"s are":" is"} offered for t
 </ul>
 <p>Regarding the Service and Parts capabilities:</p>
 <ul>
-<li>All spare and wear parts are in stock deliverable within 1-2 days (depending on location). All consumables are on stock.</li>
+<li>All spare and wear parts are in stock deliverable within 1-2 days (depending on location). All consumables are in stock.</li>
 <li>Sleeve Technology's response time is within 48 hours when we have to be at the client’s location.</li>
-<li>24/7 hot lines for emergency service. Also during holidays.</li>
+<li>24/7 emergency service hotline, also during holidays.</li>
 <li>Service contracts are available as an option</li>
 <li>Remote control via VPN is a standard. Our machines are equipped with a remote-control modem which enables us to access the machine when the customer gives us access.</li>
 <li>99% of the problems can already be resolved by our 24/7 service team in Cincinnati, Mexico or in the Netherlands.</li>
@@ -14935,9 +14935,28 @@ function memoText(){
 /* No em dash in what the customer reads (the PDF and his link): a dash between
    words becomes a plain hyphen, one standing alone for "nothing" too. The
    screens we work in keep theirs. */
+/* a number and its unit apart, the way they are printed: "1500 ml", "250 mm",
+   "3 × 415 V". Only on text the reader sees, never inside a tag, a style or a script. */
+function unitSpacing(t){
+  return String(t==null?"":t)
+    .replace(/\b(\d)\s*[x\u00d7]\s*(\d{3})\s*V\b/g, "$1 \u00d7 $2 V")
+    .replace(/\b(\d+(?:[.,]\d+)?) ?ML\b/g, "$1 ml")
+    .replace(/\b(\d+(?:[.,]\d+)?)(ml|mm|cm|kW|kVA|Hz|V)\b/g, "$1 $2");
+}
+function unitSpacingHtml(html){
+  let skip=false;
+  return String(html==null?"":html).split(/(<[^>]*>)/).map(p=>{
+    if(p.charAt(0)==="<"){
+      if(/^<(style|script)\b/i.test(p)) skip=true;
+      else if(/^<\/(style|script)\b/i.test(p)) skip=false;
+      return p;
+    }
+    return skip?p:unitSpacing(p);
+  }).join("");
+}
 function noEmDash(html){
   const D=/[ \t]*(?:\u2014|&mdash;|&#8212;|&#x2014;)[ \t]*/gi;
-  return String(html==null?"":html).replace(D, (m, off, str)=>{
+  return unitSpacingHtml(html).replace(D, (m, off, str)=>{
     const before=str.slice(0,off).replace(/<[^>]*>$/,"").slice(-1), after=str.slice(off+m.length).charAt(0);
     /* a sentence that carries on ("offered with this quotation — not included")
        gets a comma; between names, or standing for "nothing", a plain hyphen */
