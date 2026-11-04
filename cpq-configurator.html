@@ -12685,6 +12685,11 @@ function siteLines(){
   const s=endSite(); if(!s) return [];
   return [s.company, ...String(s.address||"").split("\n"), s.city, s.country].map(x=>String(x||"").trim()).filter(Boolean);
 }
+/* the cover's "Attention of": every contact person on the Customer tab, one per line */
+function attentionRowHtml(){
+  const people=(ensureCustomer().contacts||[]).filter(k=>String(k.name||"").trim());
+  return people.length ? `<tr><td>Attention of</td><td>${people.map(pc=>`${esc(pc.name)}${pc.role?`, ${esc(pc.role)}`:""}`).join("<br>")}</td></tr>` : "";
+}
 function primaryContact(){
   const c=ensureCustomer();
   return c.contacts.find(x=>(x.name||"").trim()) || null;
@@ -14499,7 +14504,7 @@ function coverPageHtml(){
       <table class="covermeta">
         ${cust?`<tr><td>For</td><td>${esc(cust)}</td></tr>`:""}
         ${(()=>{const s=endSite();return (s&&s.company.trim())?`<tr><td>End user</td><td>${esc(s.company)}${s.city.trim()||s.country.trim()?`, ${esc([s.city,s.country].map(x=>x.trim()).filter(Boolean).join(", "))}`:""}</td></tr>`:"";})()}
-        ${(()=>{const pc=primaryContact();return pc?`<tr><td>Attention of</td><td>${esc(pc.name)}${pc.role?`, ${esc(pc.role)}`:""}</td></tr>`:"";})()}
+        ${attentionRowHtml()}
         ${ensureCustomer().reference?`<tr><td>Your reference</td><td>${esc(CONFIG.customerInfo.reference)}</td></tr>`:""}
         <tr><td>Quotation number</td><td>${esc(CONFIG.quoteNumber||"")}</td></tr>
         <tr><td>Date</td><td>${quoteDate()}</td></tr>
@@ -20880,7 +20885,7 @@ function shareCoverHtml(){
     <div class="sharecoversub">${esc(CONFIG.model||"")}</div>
     <table class="sharecovermeta">
       ${cust?`<tr><td>For</td><td>${esc(cust)}</td></tr>`:""}
-      ${(()=>{const pc=primaryContact();return pc?`<tr><td>Attention of</td><td>${esc(pc.name)}${pc.role?`, ${esc(pc.role)}`:""}</td></tr>`:"";})()}
+      ${attentionRowHtml()}
       <tr><td>Quotation number</td><td>${esc(shareQuoteNumber())}</td></tr>
       <tr><td>Date</td><td>${quoteDate()}</td></tr>
       <tr><td>Validity</td><td>${esc(CONFIG.validity||ensureCommercial().validity)}</td></tr>
