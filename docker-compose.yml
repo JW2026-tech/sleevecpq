@@ -1,8 +1,10 @@
 # Sleeve Technology CPQ on the planning server (SLT-NE-PRODPLAN01).
 #
-# The CPQ has its own IP address on the server (CPQ_BIND_IP, 10.16.12.5) and its
-# own Caddy on it, for HTTPS and the certificate. The planning tool keeps its
-# Caddy on the other address (10.16.12.4) — the two share nothing.
+# Three parts, none shared with the planning tool:
+#   - cpq    : the app (page, Odoo lookup, PDF)
+#   - caddy  : HTTPS on the CPQ's own IP address (CPQ_BIND_IP, 10.16.12.5)
+#   - the CPQ's own Supabase, in supabase/ (its own compose project), reached
+#     over the network cpq-net
 # Step by step: DEPLOY.md.
 
 services:
@@ -18,6 +20,8 @@ services:
     ports:
       - "127.0.0.1:3100:3000"
     mem_limit: 1g
+    networks:
+      - cpq-net
 
   caddy:
     image: caddy:2.11.7
@@ -27,6 +31,7 @@ services:
       - cpq
     environment:
       CPQ_DOMAIN: ${CPQ_DOMAIN}
+      STAFF_IPS: ${STAFF_IPS:-private_ranges}
     ports:
       - "${CPQ_BIND_IP}:80:80"
       - "${CPQ_BIND_IP}:443:443"
@@ -35,6 +40,13 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - cpq-net
+
+networks:
+  # created once: docker network create cpq-net (DEPLOY.md, step 3)
+  cpq-net:
+    external: true
 
 volumes:
   caddy_data:

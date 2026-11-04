@@ -6,3 +6,5 @@ docker-compose.yml
 .env.example
 DEPLOY.md
 deploy
+supabase
+azure-pipelines.yml

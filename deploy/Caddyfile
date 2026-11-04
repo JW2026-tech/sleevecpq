@@ -4,10 +4,30 @@
 
 {$CPQ_DOMAIN} {
 	encode gzip
-	# the PDF renderer can take a while on a large quotation
-	reverse_proxy cpq:3000 {
-		transport http {
-			read_timeout 120s
+
+	# The CPQ's database (its own Supabase, via Kong) at /sb/…
+	# From the internet only what a customer's link needs: the four functions
+	# behind a shared quotation. Everything else — tables, login, realtime — only
+	# for colleagues (STAFF_IPS in .env: the office and VPN addresses; default
+	# the private ranges, i.e. from inside the network).
+	handle_path /sb/* {
+		@customer path /rest/v1/rpc/get_shared_quote /rest/v1/rpc/update_shared_quote /rest/v1/rpc/reset_shared_quote /rest/v1/rpc/log_share_activity
+		@staff remote_ip {$STAFF_IPS}
+		handle @customer {
+			reverse_proxy cpq-supabase-kong:8000
+		}
+		handle @staff {
+			reverse_proxy cpq-supabase-kong:8000
+		}
+		respond 403
+	}
+
+	# the app; the PDF renderer can take a while on a large quotation
+	handle {
+		reverse_proxy cpq:3000 {
+			transport http {
+				read_timeout 120s
+			}
 		}
 	}
 }

@@ -1,0 +1,40 @@
+# The CPQ's own Supabase, beside the planning tool's — see DEPLOY.md, step 4.
+#
+# This sits next to a copy of the planning tool's own Supabase compose files (the
+# docker-compose.yml, .env and volumes/ it was set up with — that set already runs
+# exactly these seven services on this server). It changes only what must differ
+# so the two never meet:
+#   - every container a name of its own (container names are unique per server)
+#   - no port on the server, except Postgres and Studio on 127.0.0.1 for the admin
+#   - Kong also on the network cpq-net, so the CPQ and its Caddy can reach it
+# Start only the services the CPQ uses:
+#   docker compose up -d db kong auth rest realtime meta studio
+
+services:
+  db:
+    container_name: cpq-supabase-db
+    ports: !override
+      - "127.0.0.1:5433:5432"
+  kong:
+    container_name: cpq-supabase-kong
+    ports: !override []
+    networks:
+      - default
+      - cpq-net
+  auth:
+    container_name: cpq-supabase-auth
+  rest:
+    container_name: cpq-supabase-rest
+  realtime:
+    # the first part of this name is the realtime tenant; kong.yml points at it
+    container_name: realtime-dev.cpq-supabase-realtime
+  meta:
+    container_name: cpq-supabase-meta
+  studio:
+    container_name: cpq-supabase-studio
+    ports: !override
+      - "127.0.0.1:3101:3000"
+
+networks:
+  cpq-net:
+    external: true

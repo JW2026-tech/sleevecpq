@@ -4,6 +4,9 @@
 // res.send() — and this gives them the same, so one code base runs on both.
 //
 // Environment: PORT (default 3000) and everything api/ reads — see .env.example.
+// PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY, when set, replace the
+// database address and public key written in the page: on the VM the page
+// talks to the CPQ's own Supabase, on Vercel to the cloud one, from one file.
 
 const http = require('http');
 const fs = require('fs');
@@ -12,6 +15,21 @@ const path = require('path');
 const PORT = +process.env.PORT || 3000;
 const ROOT = __dirname;
 const PAGE = path.join(ROOT, 'cpq-configurator.html');
+
+// the page, read once, with this server's database filled in
+function pageHtml() {
+  let html = fs.readFileSync(PAGE, 'utf8');
+  const put = (name, value) => {
+    if (!value) return;
+    const re = new RegExp('const ' + name + ' = "[^"]*";');
+    if (!re.test(html)) throw new Error(name + ' not found in the page');
+    html = html.replace(re, 'const ' + name + ' = ' + JSON.stringify(value) + ';');
+  };
+  put('SUPABASE_URL', process.env.PUBLIC_SUPABASE_URL);
+  put('SUPABASE_ANON_KEY', process.env.PUBLIC_SUPABASE_ANON_KEY);
+  return html;
+}
+const PAGE_HTML = pageHtml();
 
 // the functions, loaded on first use so a missing dependency of one does not stop the other
 const API = {
@@ -66,7 +84,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache');
     if (req.method === 'HEAD') return res.end();
-    fs.createReadStream(PAGE).on('error', () => res.status(500).end('Page missing')).pipe(res);
+    res.end(PAGE_HTML);
   } catch (err) {
     console.error(new Date().toISOString(), req.method, url.pathname, err);
     if (!res.headersSent) res.status(500).json({ error: 'Server error' });

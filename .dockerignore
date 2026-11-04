@@ -2,7 +2,9 @@
 .env
 node_modules
 sql
+supabase
 *.md
 docker-compose.yml
 Dockerfile
 deploy
+azure-pipelines.yml

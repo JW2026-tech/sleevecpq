@@ -1,0 +1,47 @@
+# Azure DevOps: every push to main rebuilds the CPQ on the planning server.
+#
+# The server runs an Azure Pipelines agent, registered as the VM resource of the
+# environment "cpq-prod" (DevOps → Pipelines → Environments → cpq-prod → Add
+# resource → Virtual machines → Linux; run the registration script it gives on
+# the server). The settings (.env, with the keys) stay on the server in
+# /opt/sleeve-cpq and never go through the pipeline.
+#
+# Only the CPQ containers (sleeve-cpq, sleeve-cpq-caddy) are rebuilt; the CPQ's
+# Supabase and the planning tool are left alone.
+
+trigger:
+  branches:
+    include: [main]
+
+pr: none
+
+stages:
+  - stage: deploy
+    displayName: Deploy to SLT-NE-PRODPLAN01
+    jobs:
+      - deployment: cpq
+        displayName: Build and restart the CPQ
+        environment:
+          name: cpq-prod
+          resourceType: VirtualMachine
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  clean: true
+                - script: |
+                    set -euo pipefail
+                    test -f /opt/sleeve-cpq/.env || { echo "Missing /opt/sleeve-cpq/.env — see DEPLOY.md"; exit 1; }
+                    cp /opt/sleeve-cpq/.env .env
+                    sudo docker compose -p sleeve-cpq up -d --build cpq caddy
+                    sudo docker image prune -f
+                  displayName: docker compose up
+                  workingDirectory: $(Build.SourcesDirectory)
+                - script: |
+                    for i in $(seq 1 30); do
+                      curl -fsS http://127.0.0.1:3100/healthz && exit 0
+                      sleep 2
+                    done
+                    echo "The CPQ did not become healthy"; sudo docker logs --tail 50 sleeve-cpq; exit 1
+                  displayName: Health check
