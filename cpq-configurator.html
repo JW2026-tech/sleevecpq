@@ -865,6 +865,11 @@
   .ocard .defrow .in{flex:1;min-width:0}
   .ocard .proprow{margin-top:11px}
   .ocard .proprow .deflabel{font-size:10px;text-transform:uppercase;letter-spacing:.7px}
+  /* the quantities in tidy columns: three across, two on a narrow screen; the heading and the class on their own line */
+  .ocard .proprow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 18px;align-items:center}
+  .ocard .proprow>.deflabel,.ocard .proprow>.clspick{grid-column:1/-1}
+  .ocard .proprow>.clspick{justify-self:start}
+  @media (max-width:900px){ .ocard .proprow{grid-template-columns:repeat(2,minmax(0,1fr))} }
   .sub{margin-top:11px;padding-top:10px;border-top:1px solid var(--line-soft);display:flex;align-items:center;gap:10px}
   .subpill{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--accent);background:var(--accent-soft);padding:5px 11px;border-radius:20px;cursor:pointer;border:1px solid transparent}
   .subpill:hover{border-color:var(--accent)}
