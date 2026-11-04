@@ -2173,6 +2173,7 @@
   .chk.siteon{display:flex;gap:8px;align-items:flex-start;margin:4px 0 10px;font-size:13px}
   .specnote{margin-top:10px;font-size:13px;line-height:1.5}
   .specnote ul{margin:4px 0 0 18px;padding:0}
+  .adminlock.is-own.is-locked{background:#fff4e5;border-color:#EF7B0B}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -9272,39 +9273,68 @@ function applyNavSearch(visD){
 const catalogueIsLocked = () => !!loadedCatalogueVersion && draftRev===null && !quoteCatVersion && !cloudQuoteId;
 /* what can still be used on a locked version: looking, filtering, opening a step */
 const LOCK_KEEPS='#priceSearch,#priceCsv,.pathgo,[data-prigo],[data-adminlock-keep]';
+/* A quotation's own catalogue is locked as well, until it is unlocked on purpose.
+   Changes meant for the live catalogue kept landing in a quotation's copy of a
+   version: the screens look the same, and the one line saying which catalogue
+   it was is easy to read past. Unlocking holds for this quotation until it is
+   closed, the page is reloaded, or it is locked again. */
+let ownUnlockedFor=null;
+const ownLockKey=()=>String(cloudQuoteId||"")+"@"+String(quoteCatVersion||"");
+const ownCatalogueLocked=()=>quoteOwnContext() && ownUnlockedFor!==ownLockKey();
 function applyAdminLock(){
   const ed=document.getElementById("editor");
   const old=document.getElementById("adminlock"); if(old) old.remove();
   const add=document.getElementById("addModule");
-  const locked=catalogueIsLocked();
+  const ownLocked=ownCatalogueLocked();
+  const locked=catalogueIsLocked() || ownLocked;
   if(add) add.disabled=locked;
   const ownOld=document.getElementById("adminown"); if(ownOld) ownOld.remove();
   if(ed && quoteOwnContext()){
     const own=ownCatalogueNow(), n=own?own.patches.length:0;
+    const nr=(CONFIG.quoteNumber||"").trim();
+    const whose=nr?`quotation ${esc(nr)}`:"this quotation";
+    const v=esc(String(quoteCatVersion));
+    const changed = n
+      ? `${n} change${n===1?" applies":"s apply"} to this quote only; other quotes on version ${v} are not affected.
+         <button class="btn sm" id="adminownReset" data-adminlock-keep>Back to version ${v}</button>
+         <details class="ownlist" data-adminlock-keep><summary>what changed</summary>${describeOwnChanges(own,12).map(t=>"<div>"+esc(t)+"</div>").join("")}${n>12?"<div>… and "+(n-12)+" more</div>":""}</details>`
+      : "";
     const bar2=document.createElement("div");
-    bar2.id="adminown"; bar2.className="adminlock is-own";
-    bar2.innerHTML = n
-      ? `<b>Version ${esc(String(quoteCatVersion))}, changed for this quote.</b>
-         ${n} change${n===1?" applies":"s apply"} to this quote only; other quotes on version ${esc(String(quoteCatVersion))} are not affected.
-         <button class="btn sm" id="adminownReset" data-adminlock-keep>Back to version ${esc(String(quoteCatVersion))}</button>
-         <details class="ownlist"><summary>what changed</summary>${describeOwnChanges(own,12).map(t=>"<div>"+esc(t)+"</div>").join("")}${n>12?"<div>… and "+(n-12)+" more</div>":""}</details>`
-      : `<b>You are working in the catalogue of this quote (version ${esc(String(quoteCatVersion))}).</b>
-         Changes you make here apply to this quote only.`;
+    bar2.id="adminown"; bar2.className="adminlock is-own"+(ownLocked?" is-locked":"");
+    bar2.innerHTML = ownLocked
+      ? `<b>&#128274; This is the catalogue of ${whose} (version ${v}), not the live catalogue.</b>
+         It is locked, so nothing here changes by accident. To change the catalogue for everyone, go to the live catalogue.
+         <button class="btn sm primary" id="adminownLive" data-adminlock-keep>Go to the live catalogue</button>
+         <button class="btn sm" id="adminownUnlock" data-adminlock-keep>Unlock — change it for this quote only</button>
+         ${changed}`
+      : `<b>Unlocked: you are changing the catalogue of ${whose} (version ${v}).</b>
+         Changes here apply to this quote only, not to the live catalogue.
+         <button class="btn sm" id="adminownLock" data-adminlock-keep>Lock again</button>
+         ${changed}`;
     if(ed.firstChild) ed.insertBefore(bar2, ed.firstChild); else ed.appendChild(bar2);
     const rs=document.getElementById("adminownReset"); if(rs) rs.onclick=()=>resetOwnCatalogue();
+    const lv=document.getElementById("adminownLive"); if(lv) lv.onclick=()=>goToLiveCatalogue();
+    const un=document.getElementById("adminownUnlock");
+    if(un) un.onclick=()=>{
+      if(!confirm(`Unlock the catalogue of ${nr?"quotation "+nr:"this quotation"} (version ${quoteCatVersion})?\n\nWhat you change then applies to this quote only — the live catalogue and the other quotations do not get it.\n\nMeant to change the catalogue for everyone? Choose Cancel and use "Go to the live catalogue".`)) return;
+      ownUnlockedFor=ownLockKey(); renderAdmin();
+    };
+    const lk=document.getElementById("adminownLock");
+    if(lk) lk.onclick=()=>{ ownUnlockedFor=null; renderAdmin(); };
   }
   if(!ed || !locked) return;
+  ed.querySelectorAll("input,select,textarea,button").forEach(el=>{
+    if(el.matches(LOCK_KEEPS) || el.closest("#adminown")) return;
+    el.disabled=true;
+  });
+  ed.querySelectorAll("[contenteditable]").forEach(el=>el.setAttribute("contenteditable","false"));
+  if(ownLocked && !catalogueIsLocked()) return;   // the quotation's own bar says it all
   const bar=document.createElement("div");
   bar.id="adminlock"; bar.className="adminlock";
   bar.innerHTML=`<b>Version ${esc(String(loadedCatalogueVersion))} is published and cannot be changed.</b>
     Quotations are written on it. Make the change in the Live catalogue and publish it as a new version.
     <button class="btn sm" id="adminlockLive" data-adminlock-keep>Go to the Live catalogue</button>`;
   ed.insertBefore(bar, ed.firstChild);
-  ed.querySelectorAll("input,select,textarea,button").forEach(el=>{
-    if(el.matches(LOCK_KEEPS)) return;
-    el.disabled=true;
-  });
-  ed.querySelectorAll("[contenteditable]").forEach(el=>el.setAttribute("contenteditable","false"));
   const go=document.getElementById("adminlockLive");
   if(go) go.onclick=()=>goToLiveCatalogue();
 }
@@ -9315,7 +9345,9 @@ function renderAdmin(){ renderAdminCore(); applyAdminLock(); }
   const ed=document.getElementById("editor");
   if(!ed || typeof MutationObserver==="undefined") return;
   new MutationObserver(()=>{
-    if((catalogueIsLocked() && !document.getElementById("adminlock")) || (quoteOwnContext() && !document.getElementById("adminown"))) applyAdminLock();
+    if((catalogueIsLocked() && !document.getElementById("adminlock")) || (quoteOwnContext() && !document.getElementById("adminown"))
+       || (ownCatalogueLocked() && [...document.querySelectorAll("#editor input:not([disabled]),#editor select:not([disabled]),#editor textarea:not([disabled])")]
+             .some(el=>!el.matches(LOCK_KEEPS) && !el.closest("#adminown")))) applyAdminLock();
   })
     .observe(ed,{childList:true});
 })();
