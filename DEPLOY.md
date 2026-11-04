@@ -76,7 +76,8 @@ geheimen, starten, controleren, gegevens overzetten, back-up).
 ## 5. Instellingen van de CPQ
 ```bash
 cd /opt/sleeve-cpq
-sudo cp <repo>/.env.example .env && sudo nano .env && sudo chmod 600 .env
+sudo cp <repo>/.env.example .env && sudo nano .env
+sudo chown <agent-gebruiker>: .env && sudo chmod 600 .env   # de pipeline draait als die gebruiker en moet .env kunnen lezen
 ```
 - `PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`: uit stap 5 van het stappenplan
 - `ODOO_API_KEY`: uit de Vercel-instellingen (Jeroen)
@@ -85,7 +86,8 @@ sudo cp <repo>/.env.example .env && sudo nano .env && sudo chmod 600 .env
 1. **Repo**: *Repos → Import repository* → `https://github.com/JW2026-tech/sleevecpq.git`.
 2. **Agent op de server**: *Pipelines → Environments → New environment* `cpq-prod` →
    *Add resource → Virtual machines → Linux* → het getoonde script op de server draaien.
-   De agent-gebruiker moet `sudo docker` zonder wachtwoord mogen (of in de groep `docker`).
+   De agent draait onder een eigen gebruiker die in de groep `docker` zit; de pipeline gebruikt
+   geen `sudo`. Die gebruiker moet `/opt/sleeve-cpq/.env` kunnen lezen (stap 5).
 3. **Pipeline**: *Pipelines → New pipeline → Azure Repos Git → de repo → Existing YAML* →
    `azure-pipelines.yml`. De eerste run bouwt en start `sleeve-cpq` en `sleeve-cpq-caddy`.
 
