@@ -12105,6 +12105,30 @@ function altWhyHtml(opt){
 /* suggestions saved in the catalogue, plus the ones saved in this session (a quote on an
    older catalogue version does not see the live catalogue's newest additions otherwise) */
 const altSugCache={};                 // targetId -> {altId: entry | null (removed)}
+/* A suggestion is saved in the live catalogue; a quotation on an older version
+   has not got it in its own catalogue, so after a reload the screen offered to
+   save what was already saved. The live catalogue's suggestions are read once
+   per session and count as known, under whatever this session saved itself. */
+let liveAltSugState=null;              // null: not asked yet; "busy"; "done"
+async function loadLiveAltSuggestions(){
+  if(liveAltSugState || !supa || draftRev!==null) return;   // on the live catalogue it is in memory already
+  liveAltSugState="busy";
+  try{
+    const {data}=await supa.from("catalogue_draft").select("data").eq("id",1).maybeSingle();
+    let found=false;
+    (function walk(list){
+      for(const m of (list||[])) for(const o of (m.options||[])){
+        if(o.altSuggest && typeof o.altSuggest==="object"){
+          const mine=altSugCache[o.id]||(altSugCache[o.id]={});
+          for(const [k,v] of Object.entries(o.altSuggest)) if(!(k in mine)){ mine[k]=v; found=true; }
+        }
+        walk(o.children);
+      }
+    })(data && data.data && data.data.modules);
+    liveAltSugState="done";
+    if(found && mode==="alts") renderAltsView();
+  }catch(err){ liveAltSugState=null; }
+}
 function altSuggestionsFor(targetId){
   const o=optionById(targetId);
   const out=Object.assign({}, (o&&o.altSuggest&&typeof o.altSuggest==="object")?o.altSuggest:{});
@@ -12361,6 +12385,7 @@ function altsScreenHtml(){
 }
 function renderAltsView(){
   const el=document.getElementById("altBody");
+  loadLiveAltSuggestions();
   /* the types: an alternative with none of its own gets the ones the item in scope has */
   let typed=false;
   for(const x of optionCatalogue()) if(optionScope(x.id)==="alt"){ const o=optionById(x.id); if(o && o.altFor && matchAltProps(o.altFor, x.id)) typed=true; }
