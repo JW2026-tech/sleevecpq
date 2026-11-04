@@ -13975,9 +13975,16 @@ function renderDocsCore(){
   CONFIG.docs=CONFIG.docs||{};
   const memoEs=(docsTab==="memo" && docLanguage()==="es");
   const key=memoEs?"memo~es":docsTab;
-  const val=CONFIG.docs[key]||"";
+  let val=CONFIG.docs[key]||"";
+  /* an English memo that is still empty starts as the standard letter */
+  if(docsTab==="memo" && !memoEs && !String(val).replace(/<[^>]*>/g,"").trim()){
+    val=CONFIG.docs.memo=standardMemoHtml(); saveSoon();
+  }
   el.innerHTML=`<h2>${esc(meta.label)}${memoEs?" (Spanish)":""}</h2>
     <div class="docsub">${memoEs?"This quotation is in Spanish, so the customer reads this text. Left empty, he reads the English memo.":"Type or paste text, tables, images — format it like a Word document with the toolbar below. Saved with the configuration."}</div>
+    ${(docsTab==="memo" && !memoEs)?`<div class="actions no-print" style="margin:10px 0 6px">
+      <button class="btn sm" id="memoRewrite" title="Build the standard letter again from the contact persons, the machines in scope and the products as they are now">Write the standard memo again</button>
+      <span class="meta">from the contact persons, the machines in scope and the products on this quote</span></div>`:""}
     ${richToolbarHtml()}
     <div class="freetext" contenteditable="true" data-key="${docsTab}">${val||`<p class="ph">Nothing here yet — click to add ${esc(meta.label.toLowerCase())}…</p>`}</div>`;
   const ft=el.querySelector(".freetext");
@@ -13985,6 +13992,11 @@ function renderDocsCore(){
   ft.addEventListener("focus",()=>{ if(ft.querySelector(".ph")) ft.innerHTML=""; });
   ft.addEventListener("input",()=>{ CONFIG.docs[key]=ft.innerHTML; });
   ft.addEventListener("blur",()=>{ if(!ft.textContent.trim()){ CONFIG.docs[key]=""; renderDocs(); } });
+  const rw=el.querySelector("#memoRewrite");
+  if(rw) rw.onclick=()=>{
+    if(!confirm("Replace the memo with the standard letter, written again from this quote?\n\nWhat you changed in the memo yourself is lost.")) return;
+    CONFIG.docs.memo=standardMemoHtml(); saveSoon(); renderDocs();
+  };
 }
 
 /* Terms & Conditions shows one text block per language/country. Which
@@ -14539,6 +14551,86 @@ function termsChapterHtml(no){
     <div class="freetext termstext">${renumberedTerms(no?no+".":"")}</div>`;
 }
 /* the header memo: the Spanish text when the quotation is in Spanish and has one, otherwise the English */
+/* ============================================================
+   THE STANDARD HEADER MEMO
+   The letter that opens a quotation, as it was being typed into each one:
+   to whom (the contact persons on the Customer tab), for which line (the
+   end user when there is one, otherwise the customer), what is offered (the
+   machines in scope) and for which products (the Products & sleeve
+   specifications), then the standard paragraphs on software and service.
+   Written once into the memo, where it can be edited like any other text;
+   "Write it again" rebuilds it from the quote as it stands.
+   ============================================================ */
+function joinNames(list){
+  return list.length<2 ? (list[0]||"") : list.slice(0,-1).join(", ")+" and "+list[list.length-1];
+}
+function standardMemoHtml(){
+  const c=ensureCustomer(), t=activeTemplate();
+  const names=c.contacts.map(k=>String(k.name||"").trim()).filter(Boolean);
+  const site=endSite();
+  const forWho=(site && site.company.trim()) ? site : c;
+  const forLine=[String(forWho.company||"").trim(), String(forWho.country||"").trim()].filter(Boolean).join(", ");
+  /* the machines in scope: the chosen, quoted options of the top-level steps */
+  /* a question ("Shrinking", "Film feed") is not the machine: what was chosen in its first sub-step is */
+  const chosen=m=>{ const sel=[].concat(state[m.id]===undefined?[]:state[m.id]);
+    return (m.options||[]).filter(o=>sel.includes(o.id) && !o.optional && !o.alt); };
+  const machinesOf=(o,depth)=>(o.kind==="question" && (o.children||[]).length && depth<4)
+    ? chosen(o.children[0]).flatMap(x=>machinesOf(x,depth+1)) : [o];
+  const offered=[];
+  for(const m of activeModules()){
+    if(m.generated || m.service || m.custom || m.formats) continue;
+    for(const o of chosen(m)) for(const x of machinesOf(o,0)){
+      const q=+optQty(x)||1;
+      offered.push((q>1?q+" &times; ":"")+esc(x.name||""));
+    }
+  }
+  /* the products, with the speed asked for each */
+  const fields=((CONFIG.specFields||{}).product)||[];
+  const unitOf=id=>{ const fl=fields.find(x=>x.id===id); return (fl&&fl.unit)||""; };
+  const vals=((CONFIG.specValues||{}).product)||{};
+  const products=(CONFIG.specColumns||[]).map(col=>{
+    const v=vals[col.id]||{};
+    const name=String(col.name||"").trim();
+    if(!name || /^Product \d+$/.test(name)) return "";
+    const speed=String(v.speed||"").trim();
+    const extra=[String(v.material||"").trim(), speed ? (/[a-z]/i.test(speed)?speed:speed+" "+unitOf("speed")) : ""].filter(Boolean);
+    return esc(name)+(extra.length?" ("+esc(extra.join(", "))+")":"");
+  }).filter(Boolean);
+  const entity=t.entity||"Sleeve Technology";
+  return `<p>Dear ${names.length?esc(joinNames(names)):"Sir, Madam"},</p>
+<p>Thank you very much for your kind request for offer${forLine?` for a new line for ${esc(forLine)}`:""}. The complete system is a proven concept of ${esc(entity)} and based on many years of experience in the industry.</p>
+${offered.length?`<p>In this quotation we offer:</p><ul>${offered.map(x=>`<li>${x}</li>`).join("")}</ul>`:""}
+${products.length?`<p>The machine${offered.length>1?"s are":" is"} offered for the following products:</p><ul>${products.map(x=>`<li>${x}</li>`).join("")}</ul>`:""}
+<p>Machine software and capabilities:</p>
+<ul>
+<li>Software is in PackML</li>
+<li>HMI includes user access management (every parameter every button can be set to a certain level)</li>
+<li>HMI includes audit trail. (all actions of all users are logged and saved)</li>
+<li>HMI includes performance of the machine (how long has it been in what PackML state)</li>
+<li>HMI includes performance of reject station. (how many rejects and what reason)</li>
+<li>HMI includes performance of the machine. (how many sleeves has it shot)</li>
+<li>All data can be made available to a main PLC or main PC. (TPC/IP, OPC/UA protocols are both possible)</li>
+<li>All fault codes can be made available to a main PLC or main PC.</li>
+<li>Our machine can be controlled by a main PLC or main PC. (start/stop/pause)</li>
+<li>All machine settings (parameters) can be made available to a main PLC or main PC.</li>
+<li>HMI includes a PDF reader so any data (electrical schemes, manuals) can be stored into the HMI.</li>
+<li>Each page of parameters includes instructions and explanation.</li>
+</ul>
+<p>Regarding the Service and Parts capabilities:</p>
+<ul>
+<li>All spare and wear parts are in stock deliverable within 1-2 days (depending on location). All consumables are on stock.</li>
+<li>Sleeve Technology responds time is within 48 hours when we have to be at the client’s location.</li>
+<li>24/7 hot lines for emergency service. Also during holidays.</li>
+<li>Service contracts are available as an option</li>
+<li>Remote control via VPN is a standard. Our machines are equipped with a remote-control modem which enables us to access the machine when the customer gives us access.</li>
+<li>99% of the problems can already be resolved by our 24/7 service team in Cincinnati, Mexico or in the Netherlands.</li>
+<li>When an “urgent” problem occurs, and it can be solved remotely it will be free of charge.</li>
+<li>Software will be supplied to a PC/laptop of the company.</li>
+</ul>
+<p>I hope that this quote suits your needs. If you have more questions, please do not hesitate to contact us.</p>
+<p>With kind regards,</p>
+<p>${esc(entity)}</p>`;
+}
 function memoText(){
   const d=CONFIG.docs||{};
   if(docLanguage()==="es" && String(d["memo~es"]||"").replace(/<[^>]*>/g,"").trim()) return String(d["memo~es"]).trim();
