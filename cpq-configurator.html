@@ -12821,7 +12821,6 @@ const I18N_ES_RULES=[
   [/^Generated (\S+)$/, "Generado el $1"],
   [/^(\d+)\. (.+)$/, (m,n,rest)=>n+". "+trEs(rest)],
   [/^(\d+(?:\.\d+)+) (.+)$/, (m,n,rest)=>n+" "+trEs(rest)],
-  [/^Investment: (.+)$/, (m,a)=>"Inversi\u00f3n: "+a],
   [/^(\d+) optional items? for this module$/, (m,n)=>n+(+n===1?" art\u00edculo opcional":" art\u00edculos opcionales")+" para este m\u00f3dulo"],
   [/^Discount (.+)$/, "Descuento $1"], [/^Discount$/, "Descuento"],
   [/^(.+) each$/, "$1 c/u"], [/^\((.+) each\)$/, "($1 c/u)"],
@@ -20437,7 +20436,7 @@ function shareHeroCardHtml(block, first, frac){
                screen carried two prices for one machine: 123,688.04 here and
                118,688.04 beside it, five thousand apart with nothing saying
                why. Now both say 118,688.04 and both name the 5,000. */""}
-          <div class="sharebaselbl">Investment: ${qtyPrefix(o)}${esc(o.name||"")}</div>
+          <div class="sharebaselbl">${qtyPrefix(o)}${esc(o.name||"")}</div>
           <div class="sharebaseprice">${blockBase?fmt(blockBase):"—"}</div>
           ${(frac && blockBase)?`<div class="sharebasenet">Net price &mdash; your ${(frac*100).toFixed(1)}% discount is included</div>`:""}
           ${(block.also||[]).length?`<div class="sharebaseincl">${
