@@ -20202,6 +20202,24 @@ function blockPicture(block){
   })(optionTree());
   return found || (step?stepPicture(step):"");
 }
+/* How many machines a block stands for. Its own option may be a question
+   ("Shrinking", "Film feed") with the machine chosen one step below it — the
+   2 then sits on the Steam Tunnel, not on the question, and the card and the
+   summary said nothing. Followed down while each step has one machine chosen. */
+function blockQty(o){
+  let cur=o;
+  for(let depth=0; cur && depth<4; depth++){
+    const own=+(cur.qty||0)||optQty(cur)||1;
+    if(own>1 || cur.kind!=="question" || !(cur.children||[]).length) return own;
+    const m=cur.children[0];
+    const sel=[].concat(state[m.id]===undefined?[]:state[m.id]);
+    const picked=(m.options||[]).filter(x=>sel.includes(x.id) && !x.optional && !x.alt);
+    if(picked.length!==1) return own;
+    cur=picked[0];
+  }
+  return 1;
+}
+const qtyPrefix=o=>{ const q=blockQty(o); return q>1?`${q}&times; `:""; };
 function shareHeroCardHtml(block, first, frac){
   const o=block.o, pic=blockPicture(block);
   /* worked out exactly as shareSummaryCardHtml does, so the two cannot
@@ -20221,7 +20239,7 @@ function shareHeroCardHtml(block, first, frac){
       ? featuresOf(o).map(f=>({label:f.label, value:f.value||"yes"}))
       : (o.specs||[]).map(sp=>({label:fillSupply(sp.label||""), value:fillSupply(sp.value||"")})))
     .filter(x=>x.label&&x.value).slice(0,4);
-  const qty=+(o.qty||0)||optQty(o);
+  const qty=blockQty(o);
   return `<div class="sharehero${pic?" has-pic":""}">
     ${pic?`<div class="shareheropic"><img class="shareheroimg" src="${pic}" alt="${esc(o.name||"")}"></div>`:""}
     <div class="shareherobody">
@@ -20240,7 +20258,7 @@ function shareHeroCardHtml(block, first, frac){
                screen carried two prices for one machine: 123,688.04 here and
                118,688.04 beside it, five thousand apart with nothing saying
                why. Now both say 118,688.04 and both name the 5,000. */""}
-          <div class="sharebaselbl">${esc(o.name||"")} — investment</div>
+          <div class="sharebaselbl">${qtyPrefix(o)}${esc(o.name||"")} — investment</div>
           <div class="sharebaseprice">${blockBase?fmt(blockBase):"—"}</div>
           ${(frac && blockBase)?`<div class="sharebasenet">Net price &mdash; your ${(frac*100).toFixed(1)}% discount is included</div>`:""}
           ${(block.also||[]).length?`<div class="sharebaseincl">${
@@ -20327,7 +20345,7 @@ function shareSummaryCardHtml(frac){
              number he was choosing against went. */""}
         <div class="sharesummaryrows">
         ${blocks.length?blocks.map(b=>`<div class="sharesummaryrow">
-          <span>${esc(b.o.name||"")}</span>
+          <span>${qtyPrefix(b.o)}${esc(b.o.name||"")}</span>
           <b>${b.price?fmt(b.price):"—"}</b>
         </div>`).join("")
         :`<div class="sharesummaryrow"><span>Nothing in scope yet</span><b>—</b></div>`}
