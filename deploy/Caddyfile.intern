@@ -1,16 +1,23 @@
 # The INTERNAL entrance, for colleagues — add this block to the Caddyfile of the
 # planning tool's Caddy (planningstool-caddy). It is reached on the planning tool's
-# public IP, which is only open from Sleeve; through it the CPQ and its whole
-# database are available. See DEPLOY.md, step 2.
+# public IP, which the NSG only opens on 443 for Sleeve, Ted Spaik and TCC Tilburg;
+# through it the CPQ and its whole database are available. See DEPLOY.md, step 2.
 #
 # planningstool-caddy must also be on the network cpq-net:
 #   - in the planning tool's compose, under that Caddy:   networks: [default, cpq-net]
 #   - and at the bottom:                                   networks: { cpq-net: { external: true } }
 #
-# The certificate is fetched the way the planning tool's own certificate is.
+# The certificate is fetched the way the planning tool's own is (port 80 is open to all).
 
 cpq-intern.sleevetechnology.com {
 	encode gzip
+
+	# A second lock behind the NSG: the same three addresses as NSG rules 121-123.
+	# Should a rule there ever be widened, the CPQ's internal entrance stays shut.
+	# Keep this list in step with the NSG.
+	@notsleeve not remote_ip 195.110.54.78/32 217.123.164.85/32 92.64.84.98/32
+	respond @notsleeve 403
+
 	handle_path /sb/* {
 		reverse_proxy cpq-supabase-kong:8000
 	}

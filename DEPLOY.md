@@ -53,8 +53,20 @@ Controle na herstart van die Caddy: `sudo ss -tlnp | grep -E ':(80|443) '` → a
    gaat zoals dat van de planningstool zelf.
 
 ## 3. DNS en Azure voor de publieke ingang
-- **DNS**: `cpq.sleevetechnology.com` → het publieke IP van de **CPQ** (naar 10.16.12.5).
-- **Inkomend** op dat IP: 443 en 80 (80 voor het certificaat), voor iedereen.
+- **DNS**: `cpq.sleevetechnology.com` → het tweede publieke IP, dat naar **10.16.12.5** gaat.
+- **NSG — één nieuwe inbound-regel**:
+
+  | Prioriteit | Naam | Poort | Protocol | Bron | Bestemming | Actie |
+  |---|---|---|---|---|---|---|
+  | 125 | Allow-HTTPS-Any-CPQ | 443 | TCP | Any | **10.16.12.5** | Allow |
+
+  Bestemming **10.16.12.5**, niet *Any*: met *Any* staat ook de planningstool (10.16.12.4) voor de
+  hele wereld open op 443. De NSG kijkt naar het interne adres na het publieke IP.
+- Wat al goed staat: 443 vanuit Sleeve / Ted Spaik / TCC Tilburg (121–123) geldt voor beide adressen,
+  dus de interne ingang `cpq-intern.…` is alleen voor hen bereikbaar; 80 open voor iedereen (130),
+  nodig voor de certificaten van beide Caddy's.
+- **Let op**: `deploy/Caddyfile.intern` laat dezelfde drie adressen toe als regels 121–123 (een tweede
+  slot achter de NSG). Komt er in de NSG een adres bij voor de interne ingang, zet het daar ook bij.
 - **Uitgaand**: 443 naar `*.odoo.com` (en tijdens de overstap `*.supabase.co`).
 
 ## 4. De eigen Supabase
