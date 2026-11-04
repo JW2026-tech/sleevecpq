@@ -1504,6 +1504,18 @@
   .shareprotable .btn.sm{white-space:nowrap;padding:6px 12px;font-size:12.5px}
   .shareprotable tr.plocked td{color:#aaa;background:#fafafc}
   .shareprotable tr.plocked td.pmach{color:#888}
+  /* Each type is a column of its own: a light head, a thin rule between the
+     columns, and the type centred over what it says — the machine column on
+     the left stays left. Read across, a row no longer runs into the next column. */
+  .shareprotable{border-collapse:separate;border-spacing:0;border:1px solid #e9ebf3;border-radius:10px;overflow:hidden}
+  .shareprotable th{background:#f7f8fc;padding:12px 12px 10px;border-bottom:1px solid #e9ebf3;text-align:center}
+  .shareprotable th.pmach{text-align:left;background:#f7f8fc}
+  .shareprotable th:not(.pmach),.shareprotable td:not(.pmach){border-left:1px solid #eef0f6;text-align:center}
+  .shareprotable td{padding:10px 12px}
+  .shareprotable td.pmach{padding-left:14px}
+  .shareprotable th .tpic{margin:0 auto 8px}
+  .shareprotable .pqty{white-space:nowrap}
+  .shareprotable tr.pall td{background:#fcfcfe}
   /* It sat under the machine name at 10px in near-white italics — the one
      line on the row that says why the row cannot be used, and the hardest
      thing on it to read. It goes beside the name, at the size of the rest
@@ -2770,6 +2782,19 @@
     .sharepropt .tnote{font-size:10.5px!important}
     .shareprotable th,.shareprotable td{padding-right:8px!important}
     .shareprotable col.pmachcol{width:22%!important}
+    .sharepropt{padding:3mm 3.5mm!important;margin-bottom:4mm!important;border-radius:3mm!important}
+    .shareproptname{font-size:9pt!important;margin-bottom:2mm!important}
+    .shareprotable th{padding:2.2mm 2.5mm 2mm!important}
+    .shareprotable td{padding:1.8mm 2.5mm!important;font-size:8.5pt!important}
+    .shareprotable td.pmach{font-size:8.5pt!important;padding-left:3mm!important}
+    .shareprotable th .tname{font-size:9pt!important}
+    .shareprotable th .trate{font-size:7.5pt!important}
+    .sharepropt .tnote{font-size:7.5pt!important;line-height:1.35!important}
+    .sharepropt .tpic{width:auto!important;max-width:100%!important;height:20mm!important;margin:0 auto 1.5mm!important}
+    .shareprotable .pqty{font-size:7.5pt!important}
+    .shareprotable .pcur{font-size:8.5pt!important}
+    .shareprotable button[data-propall],.shareprotable button[data-cmpswap]{font-size:8.5pt!important}
+    .sharepropt .sharelockednote{font-size:7.5pt!important}
     /* The buttons that set a type are hidden on paper, and with them the one
        thing the cell has to say: what that type would cost. Kept as plain text. */
     .shareprotable button[data-propall],.shareprotable button[data-cmpswap]{
