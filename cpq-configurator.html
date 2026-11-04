@@ -12860,7 +12860,8 @@ const I18N_ES_RULES=[
   [/Offered on top of the scope above and not counted in the total investment\./, "Ofrecidos adicionalmente al alcance anterior y no incluidos en la inversión total."],
   [/The prices below already have the same ([\d.]+)% discount taken off\./, "Los precios siguientes ya tienen aplicado el mismo descuento de $1%."],
   [/^All prices below are net — your ([d.]+)% discount is already taken off.$/, "Todos los precios son netos — su descuento del $1% ya está aplicado."],
-  [/^\u2713 (\d+) included(?: \u2013 (.+))?$/, (m,q,a)=>"\u2713 "+q+" incluido"+(q==="1"?"":"s")+(a?" \u2013 "+a:"")],
+  [/^\u2713 ([\d.]+)( [a-z]+)? included(?: \u2013 (.+))?$/i, (m,q,u,a)=>"\u2713 "+q+(u||"")+" incluido"+(q==="1"?"":"s")+(a?" \u2013 "+a:"")],
+  [/^per ([a-z]+)$/i, (m,u)=>"por "+u],
   [/^Why choose this?$/, "¿Por qué elegirlo?"],
   [/^All prices below are net — your ([d.]+)% discount is already taken off. Service is not discounted.$/, "Todos los precios son netos — su descuento del $1% ya está aplicado. El servicio no tiene descuento."],
   [/^All prices below are net — your ([d.]+)% discount is already taken off, so they compare directly with the investment.$/, "Todos los precios son netos — su descuento del $1% ya está aplicado, así que se comparan directamente con la inversión."],
@@ -20254,10 +20255,12 @@ function sharePropTables(frac){
    never reaches the quote. On paper they are all out. */
 const sharePropOpen=new Set();
 /* how many positions have a type, and what that comes to net */
-function propIncl(q, v, net, cls){
+function propIncl(q, v, net, cls, unit){
   const d=net(v&&v.unitPrice)*q;
-  return `<span class="pcur${cls||""}">&#10003; ${q} included${d>0?" &ndash; "+fmt(d):""}</span>`;
+  return `<span class="pcur${cls||""}">&#10003; ${+(+q).toFixed(2)}${unit?" "+esc(unit):""} included${d>0?" &ndash; "+fmt(d):""}</span>`;
 }
+/* a quantity in this table: "18×", or "18 mtr" when the property is counted in a unit */
+const propQtyTag=(q,p)=>`${+(+q).toFixed(2)}${p&&p.unit?" "+esc(p.unit):"&times;"}`;
 function sharePropTablesHtml(frac){
   const list=sharePropTables(frac);
   const net=n=>(+n||0)*(1-(+frac||0));          // a type's own price, at the discount everything else on the page has
@@ -20288,7 +20291,7 @@ function sharePropTablesHtml(frac){
         <thead><tr><th class="pmach"></th>
           ${t.types.map(v=>`<th>${v.image?`<img class="tpic" src="${v.image}" alt="">`:""}
             <span class="tname">${esc(v.name)}</span>${
-            +v.unitPrice?`<span class="trate">${fmt(net(v.unitPrice))} each${frac?'<span class="netpill">net</span>':""}</span>`:`<span class="trate">included</span>`}${
+            +v.unitPrice?`<span class="trate">${fmt(net(v.unitPrice))} ${t.p.unit?"per "+esc(t.p.unit):"each"}${frac?'<span class="netpill">net</span>':""}</span>`:`<span class="trate">included</span>`}${
             v.note?`<span class="tnote">${esc(v.note)}</span>`:""}</th>`).join("")}
         </tr></thead>
         <tbody>
@@ -20302,10 +20305,10 @@ function sharePropTablesHtml(frac){
             const totaal=t.rows.reduce((n,r)=>n+r.qty,0);
             const cel=v=>{
               const cellen=t.rows.map(r=>r.cells.find(x=>x.vid===v.id)).filter(Boolean);
-              if(cellen.every(c=>c.current)) return propIncl(totaal, v, net);
+              if(cellen.every(c=>c.current)) return propIncl(totaal, v, net, "", t.p.unit);
               /* some machines have it and some do not: say how many, so the folded line is not a row of dashes */
               const curQty=t.rows.reduce((n2,r)=>{ const c=r.cells.find(x=>x.vid===v.id); return n2+((c&&c.current)?r.qty:0); },0);
-              const part=curQty>0 ? propIncl(curQty, v, net, " pcurpart") : "";
+              const part=curQty>0 ? propIncl(curQty, v, net, " pcurpart", t.p.unit) : "";
               const kan=cellen.filter(c=>!c.blocked && c.offered);
               if(!kan.length) return part || `<span class="pna">&mdash;</span>`;
               const som=kan.reduce((n,c)=>n+(+c.delta||0),0);
@@ -20316,17 +20319,17 @@ function sharePropTablesHtml(frac){
             };
             return `<tr class="pall">
             ${/* one machine and nothing beside it: this line is that machine, so it says its name and number, and no second line repeats it */""}
-            <td class="pmach">${(t.rows.length>1||t.locked.length)?"All machines":`${esc(t.rows[0]?t.rows[0].machine:"")}${t.rows[0]?`<span class="pqty">${t.rows[0].qty}&times;</span>`:""}`}
+            <td class="pmach">${(t.rows.length>1||t.locked.length)?"All machines":`${esc(t.rows[0]?t.rows[0].machine:"")}${t.rows[0]?`<span class="pqty">${propQtyTag(t.rows[0].qty, t.p)}</span>`:""}`}
               ${(t.rows.length>1||t.locked.length)?`<button class="pmachfold no-print" data-proptfold="${esc(t.p.id)}"
                 title="${open?"Back to one line for the whole line":"Show what each machine has, so one of them can be set on its own"}">${
                 open?"&#9662; hide the machines":`&#9656; per machine (${t.rows.length}${t.locked.length?` + ${t.locked.length} alternative${t.locked.length>1?"s":""}`:""})`}</button>`:""}</td>
             ${t.types.map(v=>`<td>${cel(v)}</td>`).join("")}
           </tr>`;})()}
           ${(t.rows.length>1||t.locked.length?t.rows:[]).map(r=>`<tr class="pmachrow">
-            <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>${
+            <td class="pmach">${esc(r.machine)}<span class="pqty">${propQtyTag(r.qty, t.p)}</span>${
               r.mixed?`<span class="pmixed">not all the same &mdash; pick one to align them</span>`:""}</td>
             ${r.cells.map(x=>`<td>${x.current
-              ? propIncl(r.qty, t.types.find(y=>y.id===x.vid), net)
+              ? propIncl(r.qty, t.types.find(y=>y.id===x.vid), net, "", t.p.unit)
               : (x.blocked
                  ? (x.blocked.enabler
                     ? `<span class="pwaits" title="This machine can only have it together with ${esc(x.blocked.enabler.v.name)}, which is offered above.">
@@ -20340,7 +20343,7 @@ function sharePropTablesHtml(frac){
                     : `<span class="pna">&mdash;</span>`))}</td>`).join("")}
           </tr>`).join("")}
           ${t.locked.map(r=>`<tr class="plocked">
-            <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>
+            <td class="pmach">${esc(r.machine)}<span class="pqty">${propQtyTag(r.qty, t.p)}</span>
               <span class="plockwhy">becomes available if this alternative is chosen</span></td>
             ${r.cells.map(x=>`<td>${x.current?`included`:(x.delta?`+ ${fmt(x.delta)}`:"&mdash;")}</td>`).join("")}
           </tr>`).join("")}
