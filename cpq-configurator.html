@@ -2166,6 +2166,8 @@
   #unsavedBar .btn{background:#fff;color:#b3261e;border-color:#fff;font-weight:600}
   .qcalt{display:block;font-size:12px;font-weight:500;color:#777}
   .chk.siteon{display:flex;gap:8px;align-items:flex-start;margin:4px 0 10px;font-size:13px}
+  .specnote{margin-top:10px;font-size:13px;line-height:1.5}
+  .specnote ul{margin:4px 0 0 18px;padding:0}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -12572,7 +12574,10 @@ const I18N_ES={
   "Strong on the inside. Built to perform on the outside.":"Fuerte por dentro. Hecha para rendir por fuera.",
   "Operational machines":"M\u00e1quinas en operaci\u00f3n", "Countries":"Pa\u00edses", "Years of experience":"A\u00f1os de experiencia",
   "Generations, our family business":"Generaciones, nuestra empresa familiar",
-  "Investment summary":"Resumen de la inversi\u00f3n", "End user":"Usuario final",
+  "Investment summary":"Resumen de la inversi\u00f3n", "Attention:":"Atenci\u00f3n:",
+  "We advise you to use an inner core with a diameter of 250 mm, to prevent warping of the sleeve. The core is the pressed cylinder of carton on which the sleeve is rolled. Please confirm the inner core size prior to the written purchase order.":"Le recomendamos utilizar un n\u00facleo interior con un di\u00e1metro de 250 mm, para evitar la deformaci\u00f3n de la manga. El n\u00facleo es el cilindro de cart\u00f3n prensado sobre el que se enrolla la manga. Confirme el tama\u00f1o del n\u00facleo interior antes de la orden de compra por escrito.",
+  "When sleeve with >25% transparent is used, it is recommended to use a slip lacquer.":"Cuando se utiliza una manga con m\u00e1s del 25% de transparencia, se recomienda utilizar un barniz deslizante.",
+  "Condensed or wet products cause application problems, the water acts as an adhesive between product and sleeve. Therefore the products are required to be dry and clean.":"Los productos condensados o h\u00famedos causan problemas de aplicaci\u00f3n: el agua act\u00faa como adhesivo entre el producto y la manga. Por lo tanto, los productos deben estar secos y limpios.", "End user":"Usuario final",
   "End user \u00b7 installation site":"Usuario final \u00b7 lugar de instalaci\u00f3n", "5-year warranty":"Garant\u00eda de 5 a\u00f1os",
   "Two years standard, extendable annually up to 5 years with an annual inspection.":"Dos a\u00f1os de serie, ampliable cada a\u00f1o hasta 5 a\u00f1os con una inspecci\u00f3n anual.",
   "Warranty terms":"Condiciones de garant\u00eda", "YEAR":"A\u00d1OS", "WARRANTY":"GARANT\u00cdA", "Installation & services":"Instalaci\u00f3n y servicios",
@@ -14111,12 +14116,38 @@ function productsSpecHtml(){
     <div id="recBox">${recommendWarnHtml(true)}</div>
     ${specTableHtml("product","Product properties")}
     ${specTableHtml("sleeve","Sleeve properties")}
-    <button class="btn no-print" id="addSpecColumn">+ Add product</button>`;
+    <button class="btn no-print" id="addSpecColumn">+ Add product</button>
+    <h4 class="custhead">Note under the specifications</h4>
+    <div class="docsub">Printed under the sleeve table. Edit it for this quote, or empty it to leave it out.
+      <button class="btn sm" id="specNoteReset" style="margin-left:8px">Back to the standard text</button></div>
+    ${richToolbarHtml()}
+    <div class="freetext specnote" contenteditable="true">${specNoteHtml()||'<p class="ph">No note on this quote — type one, or use the standard text.</p>'}</div>`;
+}
+/* The note under the sleeve table, as every quotation made by hand had it.
+   Kept per quote in CONFIG.docs.specNote; a quote that never touched it reads
+   the standard text, and one emptied on purpose prints nothing. */
+const SPEC_NOTE_STANDARD=`<p><b>Attention:</b></p>
+<ul>
+<li>We advise you to use an inner core with a diameter of 250 mm, to prevent warping of the sleeve. The core is the pressed cylinder of carton on which the sleeve is rolled. Please confirm the inner core size prior to the written purchase order.</li>
+<li>When sleeve with &gt;25% transparent is used, it is recommended to use a slip lacquer.</li>
+<li>Condensed or wet products cause application problems, the water acts as an adhesive between product and sleeve. Therefore the products are required to be dry and clean.</li>
+</ul>`;
+function specNoteHtml(){
+  const d=CONFIG.docs||{};
+  return (typeof d.specNote==="string") ? d.specNote : SPEC_NOTE_STANDARD;
 }
 function renderProductSpecs(el){
   ensureSpecs(); syncProductsFormats();
   el.innerHTML=productsSpecHtml();
   wireSpecTable(el);
+  const sn=el.querySelector(".freetext.specnote");
+  if(sn){
+    wireRichText(sn, sn.previousElementSibling && sn.previousElementSibling.classList.contains("rtbar") ? sn.previousElementSibling : el.querySelector(".rtbar"));
+    sn.addEventListener("focus",()=>{ if(sn.querySelector(".ph")) sn.innerHTML=""; });
+    sn.addEventListener("input",()=>{ CONFIG.docs=CONFIG.docs||{}; CONFIG.docs.specNote=sn.textContent.trim()?sn.innerHTML:""; saveSoon(); });
+  }
+  const rs=el.querySelector("#specNoteReset");
+  if(rs) rs.onclick=()=>{ CONFIG.docs=CONFIG.docs||{}; delete CONFIG.docs.specNote; saveSoon(); renderDocs(); };
 }
 function wireSpecTable(el){
   el.querySelectorAll(".colname").forEach(inp=>{
@@ -14515,7 +14546,8 @@ function printSpecsHtml(){
   return `<h2>2. Product and sleeve specifications</h2>
     <p>This quotation is based on the following information:</p>
     ${specTableHtml("product","Product properties",true)}
-    ${specTableHtml("sleeve","Sleeve properties",true)}`;
+    ${specTableHtml("sleeve","Sleeve properties",true)}
+    ${specNoteHtml().replace(/<[^>]*>/g,"").trim()?`<div class="specnote">${specNoteHtml()}</div>`:""}`;
 }
 
 /* ============================================================
