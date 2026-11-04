@@ -1,0 +1,13 @@
+# The CPQ's own Caddy (container sleeve-cpq-caddy), on the CPQ's own IP address.
+# The address comes from CPQ_DOMAIN in .env. Caddy fetches the certificate itself;
+# for that, port 80 and 443 of this IP must be reachable from the internet.
+
+{$CPQ_DOMAIN} {
+	encode gzip
+	# the PDF renderer can take a while on a large quotation
+	reverse_proxy cpq:3000 {
+		transport http {
+			read_timeout 120s
+		}
+	}
+}

@@ -1,46 +1,55 @@
 # CPQ op de planningsserver (Docker Compose)
 
-De CPQ draait als één extra container op **SLT-NE-PRODPLAN01**, naast de planningstool.
-Er verandert niets aan de planningstool of aan de Supabase op die server: de CPQ
-gebruikt zijn eigen Supabase in de cloud.
+De CPQ draait op **SLT-NE-PRODPLAN01**, naast de planningstool, maar met een **eigen IP-adres**
+en een **eigen Caddy**. Ze delen niets: geen config, geen certificaat, geen netwerk.
+De CPQ gebruikt zijn eigen Supabase in de cloud; de Supabase op deze server blijft erbuiten.
 
 ```
-internet ──443──▶ planningstool-caddy ──┬── planning.…  ──▶ planningstool-app:3000   (bestaand)
-                                        └── cpq.…       ──▶ sleeve-cpq:3000          (nieuw)
+10.16.12.4 :80/:443 ──▶ planningstool-caddy ──▶ planningstool-app      (bestaand, alleen intern)
+10.16.12.5 :80/:443 ──▶ sleeve-cpq-caddy    ──▶ sleeve-cpq:3000        (nieuw, ook voor klanten)
 ```
 
-De CPQ-container opent **geen** poort naar buiten (alleen `127.0.0.1:3100` om op de
-server zelf te testen). Caddy stuurt het verkeer voor het CPQ-adres via een gedeeld
-Docker-netwerk door; het certificaat regelt Caddy zelf.
-
-## Wat er in de container zit
+## Wat er in de CPQ-container zit
 
 | Pad | Wat |
 |---|---|
 | `/` | de app (`cpq-configurator.html`), ook voor klantlinks `/?share=…` |
-| `/api/odoo-contacts` | zoekt klanten en contactpersonen in Odoo (alleen lezen) |
+| `/api/odoo-contacts` | zoekt klanten en contactpersonen in Odoo (alleen lezen, uitgaand naar `*.odoo.com`) |
 | `/api/render-pdf` | maakt de PDF met de Chromium in de container |
 | `/healthz` | voor de health check |
 
 ## Stappen
 
-### 1. DNS
-Maak een A-record `cpq.sleevetechnology.com` (of de naam die jullie kiezen) naar het
-publieke IP van de VM. Zelfde IP als de planningstool.
-
-### 2. Het netwerk van Caddy opzoeken
-```bash
-sudo docker inspect planningstool-caddy --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+### 1. De planningstool-Caddy alleen op 10.16.12.4
+Nu luistert `planningstool-caddy` op `0.0.0.0:80/443`, dus op beide adressen. Zet in de
+`docker-compose.yml` van de planningstool de poorten van die Caddy op het eigen adres:
+```yaml
+    ports:
+      - "10.16.12.4:80:80"
+      - "10.16.12.4:443:443"
+      - "10.16.12.4:443:443/udp"
 ```
-Die naam (bijvoorbeeld `planningstool_default`) komt in `.env` bij `PROXY_NETWORK`.
-Staat Caddy op meerdere netwerken, neem dan het netwerk waar ook `planningstool-app` op staat.
+en start alleen die container opnieuw (de planningstool is een paar seconden weg):
+```bash
+cd <map van de planningstool>
+sudo docker compose up -d planningstool-caddy    # of de servicenaam van die Caddy
+sudo ss -tlnp | grep -E ':(80|443) '             # 80/443 nu alleen op 10.16.12.4
+```
+
+### 2. DNS en Azure
+- **DNS**: `cpq.sleevetechnology.com` (of de gekozen naam) → het publieke IP dat naar **10.16.12.5** wijst.
+- **Azure (NSG / firewall / NAT)**: publiek **443** en **80** → `10.16.12.5`. Poort 80 is nodig zodat
+  Caddy het certificaat kan halen en http doorstuurt naar https.
+- De planningstool (`10.16.12.4`) niet vanaf internet openzetten.
+- **Uitgaand** 443 naar `*.supabase.co` en `*.odoo.com` moet open staan (meestal al zo).
+- SSH alleen vanaf kantoor/VPN/Bastion.
 
 ### 3. Code en instellingen
 ```bash
 sudo git clone https://github.com/JW2026-tech/sleevecpq.git /opt/sleeve-cpq
 cd /opt/sleeve-cpq
 sudo cp .env.example .env
-sudo nano .env          # PROXY_NETWORK, APP_URL, SUPABASE_*, ODOO_*
+sudo nano .env          # CPQ_BIND_IP, CPQ_DOMAIN, APP_URL, SUPABASE_*, ODOO_*
 sudo chmod 600 .env
 ```
 De sleutels staan nu in de Vercel-omgeving (Project → Settings → Environment Variables);
@@ -49,43 +58,31 @@ Jeroen kan ze daar overnemen. `.env` komt nooit in git.
 ### 4. Bouwen en starten
 ```bash
 sudo docker compose up -d --build
-sudo docker compose ps                         # STATUS: healthy
+sudo docker compose ps                         # beide: Up, cpq: healthy
 curl -s http://127.0.0.1:3100/healthz          # {"ok":true}
 curl -s "http://127.0.0.1:3100/api/render-pdf?check=1"   # kijkt of Supabase en de render-pagina antwoorden
+sudo docker compose logs caddy | grep -i certificate     # certificaat binnen?
 ```
-
-### 5. Caddy
-Voeg het blok uit `deploy/Caddyfile.cpq` toe aan de Caddyfile van de planningstool en
-laad Caddy opnieuw (zonder herstart, de planningstool merkt er niets van):
-```bash
-sudo docker exec planningstool-caddy caddy reload --config /etc/caddy/Caddyfile
-```
-(pas het pad aan als de Caddyfile in die container ergens anders staat)
-
 Daarna: `https://cpq.sleevetechnology.com` opent de app.
 
-### 6. Firewall (Azure NSG)
-- Inkomend alleen **443** en **80** (80 is nodig voor het certificaat en de doorverwijzing).
-- **22/SSH** alleen vanaf het kantoor-IP of via VPN/Bastion.
-- 3000, 3100, 5432, 8000 staan op `127.0.0.1` en zijn van buiten niet bereikbaar; laat dat zo.
-- Advies: de **planningstool** alleen voor kantoor/VPN openzetten (zie het voorbeeld onderaan
-  `deploy/Caddyfile.cpq`), want vanaf nu antwoordt deze server ook aan klanten.
-
-### 7. Updates
+### 5. Updates
 ```bash
 cd /opt/sleeve-cpq
 sudo git pull
 sudo docker compose up -d --build
 ```
-Dit vervangt alleen de CPQ-container. (Vercel zet bij een push automatisch live; hier
-gebeurt dat pas na deze twee regels.)
+Dit vervangt alleen de CPQ-containers; de planningstool merkt er niets van. (Vercel zet bij
+een push automatisch live; hier gebeurt dat pas na deze twee regels.)
 
 ## Om rekening mee te houden
+- **Certificaat**: Caddy haalt het zelf bij Let's Encrypt via poort 80 van `10.16.12.5`. Komt het
+  verkeer via Azure Front Door of een Application Gateway die zelf https afhandelt, laat het dan weten:
+  dan wordt `deploy/Caddyfile` een gewone http-doorgifte.
 - **Klantlinks die al verstuurd zijn** wijzen naar `cpq-configurator.vercel.app`. Laat Vercel
   draaien tot die verlopen zijn; links die op het nieuwe adres worden gemaakt, wijzen vanzelf
   naar het nieuwe adres.
 - **Geheugen**: een PDF maken kost Chromium een paar honderd MB. De container mag maximaal 1 GB
   (`mem_limit` in `docker-compose.yml`).
-- **Logboek**: `sudo docker compose logs -f cpq`
+- **Logboek**: `sudo docker compose logs -f cpq` en `sudo docker compose logs -f caddy`
 - Na het inloggen (Microsoft/Azure) moet het nieuwe adres ook als redirect-URL in Azure en in
   Supabase → Authentication → URL Configuration staan.
