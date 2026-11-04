@@ -14133,7 +14133,8 @@ function specTableHtml(group, title, readonly){
     const unit = f.unit ? `<span class="funit">${esc(f.unit)}</span>` : "";
     const cells = cols.map(c=>{
       const val = ((CONFIG.specValues[group][c.id])||{})[f.id] || "";
-      if(readonly) return `<td><div class="fcell"><span class="fval">${esc(val)}</span>${val?unit:""}</div></td>`;
+      /* "720 bpm PPM": the value said its unit already, or is a word ("TBD"); the field's unit only follows a bare number */
+      if(readonly) return `<td><div class="fcell"><span class="fval">${esc(val)}</span>${(val && !/[a-z]/i.test(val))?unit:""}</div></td>`;
       /* Type anything, or pick from the list with the arrow. The list is a
          real <select> sitting over the right-hand edge, because a bare
          datalist is easy to miss and awkward to open. */
@@ -14561,20 +14562,33 @@ function renumberedTerms(prefix){
   if(!String(raw).trim()) return "";
   const box=document.createElement("div");
   box.innerHTML=raw;
-  const map=new Map(), counters=[];
+  /* Each heading gets its own number from its place in the outline. The map
+     of old to new is only for the cross-references in the text: a text that
+     used one number twice (two clauses "7.13") printed both as the same new
+     number and skipped one, so the headings are numbered one by one and the
+     map keeps the first clause that carried an old number. */
+  const map=new Map(), counters=[], heads=new Map();
   box.querySelectorAll("h2,h3,h4,h5,h6").forEach(h=>{
     const m=String(h.textContent||"").match(/^\s*(\d+(?:\.\d+)+)\s/);
     if(!m) return;
     const old=m[1], depth=old.split(".").length-1;   // 7.1 is one level down
     counters.length=depth;                           // anything deeper starts over
     counters[depth-1]=(counters[depth-1]||0)+1;
-    map.set(old, prefix+counters.map(n=>n||1).join("."));
+    const now=prefix+counters.map(n=>n||1).join(".");
+    heads.set(h, {old, now});
+    if(!map.has(old)) map.set(old, now);
   });
   if(!map.size) return raw;
   const walk=document.createTreeWalker(box, NodeFilter.SHOW_TEXT), nodes=[];
   let n; while((n=walk.nextNode())) nodes.push(n);
   nodes.forEach(t=>{
-    t.nodeValue=t.nodeValue.replace(/\d+(?:\.\d+)+/g, x=>map.has(x)?map.get(x):x);
+    const h=t.parentElement && t.parentElement.closest("h2,h3,h4,h5,h6");
+    const own=h && heads.get(h);
+    let first=!!own;
+    t.nodeValue=t.nodeValue.replace(/\d+(?:\.\d+)+/g, x=>{
+      if(first && x===own.old){ first=false; return own.now; }   // the heading's own number
+      return map.has(x)?map.get(x):x;
+    });
   });
   /* a whole clause reads "1. PRICES" the way a sub-clause reads "4.1
      Warranty Coverage" — the dot only went missing with the chapter number
@@ -14709,7 +14723,7 @@ ${products.length?`<p>The machine${offered.length>1?"s are":" is"} offered for t
 <li>HMI includes performance of the machine (how long has it been in what PackML state)</li>
 <li>HMI includes performance of reject station. (how many rejects and what reason)</li>
 <li>HMI includes performance of the machine. (how many sleeves has it shot)</li>
-<li>All data can be made available to a main PLC or main PC. (TPC/IP, OPC/UA protocols are both possible)</li>
+<li>All data can be made available to a main PLC or main PC. (TCP/IP, OPC/UA protocols are both possible)</li>
 <li>All fault codes can be made available to a main PLC or main PC.</li>
 <li>Our machine can be controlled by a main PLC or main PC. (start/stop/pause)</li>
 <li>All machine settings (parameters) can be made available to a main PLC or main PC.</li>
@@ -14719,7 +14733,7 @@ ${products.length?`<p>The machine${offered.length>1?"s are":" is"} offered for t
 <p>Regarding the Service and Parts capabilities:</p>
 <ul>
 <li>All spare and wear parts are in stock deliverable within 1-2 days (depending on location). All consumables are on stock.</li>
-<li>Sleeve Technology responds time is within 48 hours when we have to be at the client’s location.</li>
+<li>Sleeve Technology's response time is within 48 hours when we have to be at the client’s location.</li>
 <li>24/7 hot lines for emergency service. Also during holidays.</li>
 <li>Service contracts are available as an option</li>
 <li>Remote control via VPN is a standard. Our machines are equipped with a remote-control modem which enables us to access the machine when the customer gives us access.</li>
