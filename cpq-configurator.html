@@ -518,6 +518,8 @@
     border-left-width:1.5px}
   /* the descriptions run the whole width, under the two columns */
   #allDocsBody .pg-scope .descsection-title{font-size:1em;margin:1.2em 0 .3em;padding-top:.5em;break-after:avoid;break-inside:avoid}
+  #allDocsBody .descgroupstart{break-inside:avoid}
+  #allDocsBody .descgrouphead{break-after:avoid}
   #allDocsBody .descsection-title, #allDocsBody .descitem .ditle, #allDocsBody .descrow .ditle,
   #allDocsBody h2, #allDocsBody h3, #allDocsBody h4{break-after:avoid}
   #allDocsBody .pg-scope .descitem, #allDocsBody .pg-scope .descrow{margin:0 0 .5em;break-inside:avoid}
@@ -1743,7 +1745,7 @@
   .descgrouphead{font-size:14px;font-weight:600;color:var(--txt);
     padding:0 0 8px;border-bottom:1px solid var(--line)}
   .descrow{display:flex;gap:22px;align-items:flex-start;padding:14px 0;max-width:none}
-  .descrow+.descrow{border-top:1px solid var(--line-soft)}
+  .descrow+.descrow,.descgroupstart+.descrow{border-top:1px solid var(--line-soft)}
   .descpiccol{flex:0 0 150px;width:150px}
   .descpiccol .optpic{width:150px;flex-basis:150px;max-height:120px;margin:0}
   .desctext{flex:1;min-width:0}
@@ -13718,11 +13720,18 @@ function scopeDescriptionsHtml(){
       const mo=g.machine?g.machine.o:null;
       const mq=mo?(mo.qty||optQty(mo)):0;
       const title=mo ? (mq>1?`${mq}× ${mo.name}`:mo.name) : (g.title||"");
+      /* the heading and the first text under it in one block that a page may not
+         split: on paper the title stood alone at the foot of a page and its text
+         started on the next */
+      const first = g.head ? descRowHtml(g.head, {unnamed:true}) : (g.rows[0] ? descRowHtml(g.rows[0]) : "");
+      const rest = (g.head ? g.rows : g.rows.slice(1)).map(nd=>descRowHtml(nd)).join("");
       return `<div class="descgroup">
-        <div class="descgrouphead">${esc(title)}${
-          mo&&mo.optional?' <span class="optpill">optional</span>':""}</div>
-        ${g.head?descRowHtml(g.head, {unnamed:true}):""}
-        ${g.rows.map(nd=>descRowHtml(nd)).join("")}
+        <div class="descgroupstart">
+          <div class="descgrouphead">${esc(title)}${
+            mo&&mo.optional?' <span class="optpill">optional</span>':""}</div>
+          ${first}
+        </div>
+        ${rest}
       </div>`;
     }).join("")}</div>`;
 }
