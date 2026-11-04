@@ -2165,6 +2165,7 @@
   #unsavedBar .ubicon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#fff;color:#b3261e;font-weight:800}
   #unsavedBar .btn{background:#fff;color:#b3261e;border-color:#fff;font-weight:600}
   .qcalt{display:block;font-size:12px;font-weight:500;color:#777}
+  .chk.siteon{display:flex;gap:8px;align-items:flex-start;margin:4px 0 10px;font-size:13px}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -5207,7 +5208,8 @@ function electricalFor(country){
 /* the supply this quote runs on, and whether it was actually matched */
 function quoteElectrical(){
   ensureCustomer();
-  const c=(CONFIG.customerInfo.country||"").trim();
+  const site=endSite();
+  const c=((site && site.country.trim()) ? site.country : (CONFIG.customerInfo.country||"")).trim();
   const hit=electricalFor(c);
   const e=ensureElectrical();
   return {country:c, matched:!!hit,
@@ -5386,7 +5388,8 @@ function worksPlace(){ return ensureCommercial().incotermPlace; }
 /* Where the customer is, from the Customer tab. */
 function customerPlace(){
   ensureCustomer();
-  const c=CONFIG.customerInfo;
+  const site=endSite();
+  const c=(site && (site.city.trim()||site.country.trim())) ? site : CONFIG.customerInfo;
   return [ (c.city||"").trim(), (c.country||"").trim() ].filter(Boolean).join(", ")
       || (c.company||"").trim();
 }
@@ -12450,6 +12453,10 @@ function ensureCustomer(){
   if(typeof c.company!=="string") c.company = CONFIG.customer || "";
   ["address","city","country","vat","reference","oemDiscount"].forEach(k=>{ if(typeof c[k]!=="string") c[k]=""; });
   if(!Array.isArray(c.contacts)) c.contacts=[];
+  /* where the machine goes, when that is not the customer: an integrator buys
+     it, the end user runs it. Off unless it is switched on. */
+  if(!c.site || typeof c.site!=="object") c.site={on:false};
+  ["company","address","city","country"].forEach(k=>{ if(typeof c.site[k]!=="string") c.site[k]=""; });
   if(!c.contacts.length) c.contacts.push({name:"",role:"",email:"",phone:""});
   /* the company name lives here; CONFIG.customer is the mirror the cover
      page reads. A name typed straight into CONFIG.customer (the shortcut
@@ -12464,6 +12471,15 @@ function customerLines(){
   return [c.company, ...String(c.address||"").split("\n"), c.city, c.country]
     .map(x=>String(x||"").trim()).filter(Boolean);
 }
+/* the installation site, when the quote has one that differs from the customer */
+function endSite(){
+  const s=ensureCustomer().site;
+  return (s && s.on && [s.company,s.address,s.city,s.country].some(x=>String(x||"").trim())) ? s : null;
+}
+function siteLines(){
+  const s=endSite(); if(!s) return [];
+  return [s.company, ...String(s.address||"").split("\n"), s.city, s.country].map(x=>String(x||"").trim()).filter(Boolean);
+}
 function primaryContact(){
   const c=ensureCustomer();
   return c.contacts.find(x=>(x.name||"").trim()) || null;
@@ -12477,6 +12493,7 @@ function primaryContact(){
    that holds the key, reads only, and answers with the few fields the form
    needs. Nothing is written back to Odoo.
    ============================================================ */
+const odooPeopleCache={};       // company id -> its contact persons, for the pull-down
 async function odooGet(params){
   if(!/^https?:$/.test(location.protocol)) throw new Error("The Odoo lookup works from the web version of the app.");
   const r=await fetch("/api/odoo-contacts?"+new URLSearchParams(params));
@@ -12530,7 +12547,8 @@ const I18N_ES={
   "Strong on the inside. Built to perform on the outside.":"Fuerte por dentro. Hecha para rendir por fuera.",
   "Operational machines":"M\u00e1quinas en operaci\u00f3n", "Countries":"Pa\u00edses", "Years of experience":"A\u00f1os de experiencia",
   "Generations, our family business":"Generaciones, nuestra empresa familiar",
-  "Investment summary":"Resumen de la inversi\u00f3n", "5-year warranty":"Garant\u00eda de 5 a\u00f1os",
+  "Investment summary":"Resumen de la inversi\u00f3n", "End user":"Usuario final",
+  "End user \u00b7 installation site":"Usuario final \u00b7 lugar de instalaci\u00f3n", "5-year warranty":"Garant\u00eda de 5 a\u00f1os",
   "Two years standard, extendable annually up to 5 years with an annual inspection.":"Dos a\u00f1os de serie, ampliable cada a\u00f1o hasta 5 a\u00f1os con una inspecci\u00f3n anual.",
   "Warranty terms":"Condiciones de garant\u00eda", "YEAR":"A\u00d1OS", "WARRANTY":"GARANT\u00cdA", "Installation & services":"Instalaci\u00f3n y servicios",
   "Total investment":"Inversi\u00f3n total", "This proposal is valid for":"Esta propuesta es v\u00e1lida por",
@@ -12924,7 +12942,7 @@ function customerFormHtml(){
       <label class="wide">Address<textarea class="in" data-cf="address" rows="3" placeholder="Street and number&#10;PO box">${esc(c.address)}</textarea></label>
       <label>City / postcode<input class="in" data-cf="city" value="${esc(c.city)}" placeholder="1234 AB Zaltbommel"></label>
       <label>Country<input class="in" data-cf="country" value="${esc(c.country)}" placeholder="Netherlands" list="elecountries">
-        <span class="cfnote">${(()=>{const q=quoteElectrical();
+        <span class="cfnote">${endSite()&&endSite().country.trim()?"Mains follow the installation site below":(()=>{const q=quoteElectrical();
           return q.voltage||q.frequency
             ? `Mains ${esc([q.voltage,q.frequency].filter(Boolean).join(", "))}${q.matched?"":" — country not listed, standard supply used"}`
             : "No electrical supply set for this country";})()}</span>
@@ -12946,9 +12964,29 @@ function customerFormHtml(){
           return p>0 ? `${p}% off the equipment, with the OEM sentence above the discount line` : "No OEM discount on this quote";})()}</span>
       </label>
     </div>
+    <h4 class="custhead">End user &middot; installation site</h4>
+    <label class="chk siteon"><input type="checkbox" id="siteOn" ${c.site.on?"checked":""}> The machine goes to another company or place than the customer &mdash; for instance when an integrator buys it</label>
+    ${c.site.on?`<div class="odoobox no-print">
+        <label class="wide">Look up the end user in Odoo<input class="in" id="odooSQ" autocomplete="off" placeholder="Type at least three letters of a company name"></label>
+        <div id="odooSRes" class="odoores"></div>
+      </div>
+      <div class="custgrid">
+        <label class="wide">End user<input class="in" data-sf="company" value="${esc(c.site.company)}" placeholder="The company that runs the machine"></label>
+        <label class="wide">Address<textarea class="in" data-sf="address" rows="3" placeholder="Street and number">${esc(c.site.address)}</textarea></label>
+        <label>City / postcode<input class="in" data-sf="city" value="${esc(c.site.city)}"></label>
+        <label>Country<input class="in" data-sf="country" value="${esc(c.site.country)}" list="elecountries">
+          <span class="cfnote">${(()=>{const q=quoteElectrical();
+            return q.voltage||q.frequency
+              ? `Mains ${esc([q.voltage,q.frequency].filter(Boolean).join(", "))}${q.matched?"":" — country not listed, standard supply used"}`
+              : "No electrical supply set for this country";})()}</span></label>
+      </div>`:""}
     <h4 class="custhead">Contact persons</h4>
+    ${c.odooId?`<div class="odoobox no-print">
+      <label class="wide">Contact persons of ${esc(c.company||"this company")} in Odoo
+        <select class="in" id="odooPSel"><option value="">Loading…</option></select></label>
+    </div>`:""}
     <div class="odoobox no-print">
-      <label class="wide">Look up a contact person in Odoo<input class="in" id="odooPQ" autocomplete="off" placeholder="Type at least three letters of a name or e-mail address"></label>
+      <label class="wide">${c.odooId?"Or look up someone else in Odoo":"Look up a contact person in Odoo"}<input class="in" id="odooPQ" autocomplete="off" placeholder="Type at least three letters of a name or e-mail address"></label>
       ${c.odooId?`<label class="chk odoolimit"><input type="checkbox" id="odooPOnly" checked> only people of ${esc(c.company||"this company")}</label>`:""}
       <div id="odooPRes" class="odoores"></div>
     </div>
@@ -12984,6 +13022,71 @@ function renderCustomer(el){
   document.getElementById("addContact").onclick=()=>{
     c.contacts.push({name:"",role:"",email:"",phone:""}); renderDocs();
   };
+  /* the installation site */
+  const son=el.querySelector("#siteOn");
+  if(son) son.onchange=()=>{ c.site.on=son.checked; saveSoon(); renderDocs(); };
+  el.querySelectorAll("[data-sf]").forEach(inp=>{
+    inp.oninput=()=>{ c.site[inp.dataset.sf]=inp.value; saveSoon(); };
+    if(inp.dataset.sf==="country") inp.onchange=()=>renderDocs();   // the mains line follows
+  });
+  const sq=el.querySelector("#odooSQ"), sres=el.querySelector("#odooSRes");
+  if(sq && sres){
+    const say=t=>{ sres.innerHTML=`<div class="odoomsg">${esc(t)}</div>`; };
+    let timer=null, last="";
+    sq.oninput=()=>{
+      clearTimeout(timer);
+      const q=sq.value.trim();
+      if(q.length<3){ sres.innerHTML=""; last=""; return; }
+      timer=setTimeout(async ()=>{
+        last=q; say("Looking\u2026");
+        try{
+          const j=await odooGet({q});
+          if(sq.value.trim()!==last) return;
+          const list=j.results||[];
+          if(!list.length){ say("Nothing found in Odoo for \u201c"+q+"\u201d."); return; }
+          sres.innerHTML=list.map((p,i)=>`<button class="odoorow" data-sr="${i}">
+              <b>${esc(p.name)}</b>
+              <span>${p.isCompany?"company":esc(p.company||"contact")}${p.city?" \u00b7 "+esc(p.city):""}${p.country?", "+esc(p.country):""}</span>
+            </button>`).join("");
+          sres.querySelectorAll("[data-sr]").forEach(b=>b.onclick=async ()=>{
+            const p=list[+b.dataset.sr];
+            say("Reading from Odoo\u2026");
+            try{
+              let comp=p;
+              if(!p.isCompany && p.companyId){ const r=await odooGet({id:p.companyId}); if(r.partner) comp=r.partner; }
+              c.site.company=comp.company||comp.name||c.site.company;
+              c.site.odooId=comp.companyId||comp.id||c.site.odooId;
+              c.site.address=comp.address||""; c.site.city=comp.city||""; c.site.country=comp.country||"";
+              saveSoon(); renderDocs();
+            }catch(err){ say(err.message||"The Odoo lookup failed."); }
+          });
+        }catch(err){ say(err.message||"The Odoo lookup failed."); }
+      }, 350);
+    };
+  }
+  /* the company's people, as a pull-down */
+  const psel=el.querySelector("#odooPSel");
+  if(psel && c.odooId){
+    const fill=list=>{
+      const have=new Set(c.contacts.map(x=>String(x.email||x.name||"").trim().toLowerCase()).filter(Boolean));
+      const free=list.filter(p=>!have.has(String(p.email||p.name||"").trim().toLowerCase()));
+      psel.innerHTML = list.length
+        ? `<option value="">${free.length?`Choose a contact person (${free.length})…`:"Everyone is already on the quotation"}</option>`
+          + free.map(p=>`<option value="${p.id}">${esc(p.name)}${p.role?" \u2014 "+esc(p.role):""}${p.email?" \u00b7 "+esc(p.email):""}</option>`).join("")
+        : `<option value="">No contact persons in Odoo for this company</option>`;
+      psel.onchange=()=>{
+        const p=list.find(x=>String(x.id)===psel.value);
+        if(!p) return;
+        odooAddContact(Object.assign({}, p, {company:c.company}));
+        saveSoon(); renderDocs();
+      };
+    };
+    const cached=odooPeopleCache[c.odooId];
+    if(cached) fill(cached);
+    else odooGet({company:c.odooId})
+      .then(r=>{ odooPeopleCache[c.odooId]=r.persons||[]; if(psel.isConnected) fill(odooPeopleCache[c.odooId]); })
+      .catch(err=>{ psel.innerHTML=`<option value="">${esc(err.message||"The Odoo lookup failed.")}</option>`; });
+  }
   /* the Odoo lookup */
   const oq=el.querySelector("#odooQ"), ores=el.querySelector("#odooRes");
   if(oq && ores){
@@ -14142,6 +14245,7 @@ function coverPageHtml(){
       <div class="coversub">${esc(CONFIG.model||"")}</div>
       <table class="covermeta">
         ${cust?`<tr><td>For</td><td>${esc(cust)}</td></tr>`:""}
+        ${(()=>{const s=endSite();return (s&&s.company.trim())?`<tr><td>End user</td><td>${esc(s.company)}${s.city.trim()||s.country.trim()?`, ${esc([s.city,s.country].map(x=>x.trim()).filter(Boolean).join(", "))}`:""}</td></tr>`:"";})()}
         ${(()=>{const pc=primaryContact();return pc?`<tr><td>Attention of</td><td>${esc(pc.name)}${pc.role?`, ${esc(pc.role)}`:""}</td></tr>`:"";})()}
         ${ensureCustomer().reference?`<tr><td>Your reference</td><td>${esc(CONFIG.customerInfo.reference)}</td></tr>`:""}
         <tr><td>Quotation number</td><td>${esc(CONFIG.quoteNumber||"")}</td></tr>
@@ -14165,7 +14269,11 @@ function contactPageHtml(){
       ${pc?`<div class="csp"></div><div><b>${esc(pc.name)}</b>${pc.role?` — ${esc(pc.role)}`:""}</div>
             ${pc.email?`<div>${esc(pc.email)}</div>`:""}${pc.phone?`<div>${esc(pc.phone)}</div>`:""}`:""}
     </div>` : "";
-  return `${addressed}${bank}
+  const site = siteLines().length ? `<div class="addrblock">
+      <h4>End user &middot; installation site</h4>
+      ${siteLines().map(l=>`<div>${esc(l)}</div>`).join("")}
+    </div>` : "";
+  return `${addressed}${site}${bank}
     <div class="cblock right"><h4>Our contact details</h4>
       <div><b>${esc(t.entity||"")}</b></div>
       ${(t.address||[]).map(l=>`<div>${esc(l)}</div>`).join("")}
