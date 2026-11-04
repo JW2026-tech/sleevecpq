@@ -493,6 +493,16 @@
   #allDocsBody .pg-scope .scopeline .stitle{font-size:1em;line-height:1.25}
   #allDocsBody .pg-scope .scopeline .bullet{margin-top:.35em}
   #allDocsBody .pg-scope .scopeline.fmtchild .stitle{font-size:.92em}
+  /* What the customer reads (the PDF, his link): one round dot on every line, at
+     every level, and no bold — four shapes and two weights read as a hierarchy
+     he does not need. Optional lines keep their orange dot. */
+  #allDocsBody .scopeline.lvl0, body.share-mode .scopeline.lvl0{font-weight:400}
+  #allDocsBody .scopeline .bullet, body.share-mode .scopeline .bullet{
+    flex:0 0 6px!important;width:6px!important;height:6px!important;min-height:6px!important;
+    border:0!important;border-radius:50%!important;background:#28338A!important;opacity:1!important;
+    align-self:flex-start;margin-top:.45em!important}
+  #allDocsBody .scopeline.is-optional .bullet, body.share-mode .scopeline.is-optional .bullet{background:#EF7B0B!important}
+  #allDocsBody .scopeline .stitle b, #allDocsBody .scopeline .stitle strong{font-weight:400}
   #allDocsBody .pg-scope .grouphead{margin:.5em 0 .15em;padding-top:.35em;break-after:avoid}
   #allDocsBody .pg-scope .grouphead:first-child{margin-top:0}
   #allDocsBody .pg-scope .grouphead .ghtitle{font-size:.86em;letter-spacing:.4px}
@@ -12675,7 +12685,7 @@ const I18N_ES={
   "This quotation is based on the following information:":"Esta cotizaci\u00f3n se basa en la siguiente informaci\u00f3n:",
   "Product properties":"Propiedades del producto", "Sleeve properties":"Propiedades de la manga",
   "General":"General", "Production speed":"Velocidad de producci\u00f3n", "Configuration":"Configuraci\u00f3n",
-  "offered with this quotation \u2014 not included in the scope above":"ofrecidos con esta cotizaci\u00f3n \u2014 no incluidos en el alcance anterior",
+  "offered with this quotation, not included in the scope above":"ofrecidos con esta cotizaci\u00f3n, no incluidos en el alcance anterior",
   /* the investment */
   "Detailed breakdown":"Desglose detallado",
   "Every item in the scope of this quotation, with its price.":"Cada art\u00edculo del alcance de esta cotizaci\u00f3n, con su precio.",
@@ -12719,7 +12729,7 @@ const I18N_ES_RULES=[
   [/^Generated (\S+)$/, "Generado el $1"],
   [/^(\d+)\. (.+)$/, (m,n,rest)=>n+". "+trEs(rest)],
   [/^(\d+(?:\.\d+)+) (.+)$/, (m,n,rest)=>n+" "+trEs(rest)],
-  [/^(.+) \u2014 investment$/, (m,a)=>a+" \u2014 inversi\u00f3n"],
+  [/^Investment: (.+)$/, (m,a)=>"Inversi\u00f3n: "+a],
   [/^(\d+) optional items? for this module$/, (m,n)=>n+(+n===1?" art\u00edculo opcional":" art\u00edculos opcionales")+" para este m\u00f3dulo"],
   [/^Discount (.+)$/, "Descuento $1"], [/^Discount$/, "Descuento"],
   [/^(.+) each$/, "$1 c/u"], [/^\((.+) each\)$/, "($1 c/u)"],
@@ -13765,7 +13775,7 @@ function scopeHtml(){
   const offeredHtml=(offered.length||offeredParts)
     ? `<div class="scopeopt">
         <div class="scopeopthead">Optional items
-          <span>offered with this quotation &mdash; not included in the scope above</span></div>
+          <span>offered with this quotation, not included in the scope above</span></div>
         ${(()=>{ const st={lastRoot:null}; return offered.map(nd=>scopeLineHtml(nd,st)).join(""); })()}
         ${propSummaryHtml("opt",false)}
         ${offeredParts}
@@ -14792,7 +14802,13 @@ function memoText(){
    words becomes a plain hyphen, one standing alone for "nothing" too. The
    screens we work in keep theirs. */
 function noEmDash(html){
-  return String(html==null?"":html).replace(/[ \t]*(?:\u2014|&mdash;|&#8212;|&#x2014;)[ \t]*/gi, " - ");
+  const D=/[ \t]*(?:\u2014|&mdash;|&#8212;|&#x2014;)[ \t]*/gi;
+  return String(html==null?"":html).replace(D, (m, off, str)=>{
+    const before=str.slice(0,off).replace(/<[^>]*>$/,"").slice(-1), after=str.slice(off+m.length).charAt(0);
+    /* a sentence that carries on ("offered with this quotation — not included")
+       gets a comma; between names, or standing for "nothing", a plain hyphen */
+    return (/[a-z0-9)%.]/i.test(before) && /[a-z\u00e0-\u00ff]/.test(after)) ? ", " : " - ";
+  });
 }
 function buildAllDocsHtml(){
   allDocsBuilding=true;                  // the printed documents: what the customer gets
@@ -20322,7 +20338,7 @@ function shareHeroCardHtml(block, first, frac){
                screen carried two prices for one machine: 123,688.04 here and
                118,688.04 beside it, five thousand apart with nothing saying
                why. Now both say 118,688.04 and both name the 5,000. */""}
-          <div class="sharebaselbl">${qtyPrefix(o)}${esc(o.name||"")} — investment</div>
+          <div class="sharebaselbl">Investment: ${qtyPrefix(o)}${esc(o.name||"")}</div>
           <div class="sharebaseprice">${blockBase?fmt(blockBase):"—"}</div>
           ${(frac && blockBase)?`<div class="sharebasenet">Net price &mdash; your ${(frac*100).toFixed(1)}% discount is included</div>`:""}
           ${(block.also||[]).length?`<div class="sharebaseincl">${
