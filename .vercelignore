@@ -1,0 +1,8 @@
+# Only for running on our own server (DEPLOY.md) — not published on Vercel
+server.js
+Dockerfile
+docker-compose.yml
+.dockerignore
+.env.example
+DEPLOY.md
+deploy

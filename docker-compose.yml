@@ -1,0 +1,28 @@
+# Sleeve Technology CPQ on the planning server (SLT-NE-PRODPLAN01).
+#
+# The container opens no port to the outside world. The Caddy that already
+# runs there (planningstool-caddy, on 80/443) passes the CPQ's own address
+# to it over a shared Docker network; the planning tool is not touched.
+# Step by step: DEPLOY.md.
+
+services:
+  cpq:
+    build: .
+    image: sleeve-cpq:latest
+    container_name: sleeve-cpq
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "3000"
+    # for a quick check from the server itself: curl http://127.0.0.1:3100/healthz
+    ports:
+      - "127.0.0.1:3100:3000"
+    mem_limit: 1g
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
+    # the network planningstool-caddy is on — set PROXY_NETWORK in .env (see DEPLOY.md, step 2)
+    name: ${PROXY_NETWORK}

@@ -1,0 +1,20 @@
+# Add this block to the Caddyfile of planningstool-caddy (next to the planning
+# tool's own block, which stays as it is). Caddy fetches the certificate for
+# the address itself, as it does for the planning tool.
+
+cpq.sleevetechnology.com {
+	encode gzip
+	# the PDF renderer can take a while on a large quotation
+	reverse_proxy sleeve-cpq:3000 {
+		transport http {
+			read_timeout 120s
+		}
+	}
+}
+
+# Recommended for the planning tool's block: only the office and the VPN, as
+# from now on the server also answers customers. Replace the addresses with
+# your own and put these lines inside that block, before its reverse_proxy:
+#
+#	@buiten not remote_ip 203.0.113.10/32 10.0.0.0/8
+#	respond @buiten 403

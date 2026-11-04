@@ -11,9 +11,33 @@
 // Required environment variables (set in the Vercel project, never in the
 // HTML): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, APP_URL.
 
+//
+// Also runs in Docker on our own server (see server.js and DEPLOY.md). There
+// two more are set: CHROME_PATH, the Chromium installed in the image (instead
+// of the Vercel build of it), and RENDER_URL, where this container reaches
+// the app itself (http://127.0.0.1:3000) rather than going out to the public
+// address and back in.
+
 const { createClient } = require('@supabase/supabase-js');
-const chromium = require('@sparticuz/chromium');
 const puppeteer = require('puppeteer-core');
+
+// the browser that prints: the image's own Chromium in Docker, the Vercel build on Vercel
+async function launchBrowser() {
+  if (process.env.CHROME_PATH) {
+    return puppeteer.launch({
+      executablePath: process.env.CHROME_PATH,
+      headless: true,
+      args: ['--no-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none'],
+    });
+  }
+  const chromium = require('@sparticuz/chromium');
+  return puppeteer.launch({
+    args: chromium.args,
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless,
+  });
+}
+const renderUrl = () => `${process.env.RENDER_URL || process.env.APP_URL}/?render=1`;
 
 module.exports = async (req, res) => {
   // A way to ask this function what is wrong with it. Every failure used to
@@ -75,13 +99,9 @@ module.exports = async (req, res) => {
       const t0 = Date.now();
       let browser;
       try {
-        browser = await puppeteer.launch({
-          args: chromium.args,
-          executablePath: await chromium.executablePath(),
-          headless: chromium.headless,
-        });
+        browser = await launchBrowser();
         const page = await browser.newPage();
-        await page.goto(`${process.env.APP_URL}/?render=1`, { waitUntil: 'networkidle0' });
+        await page.goto(renderUrl(), { waitUntil: 'networkidle0' });
         await page.waitForFunction('typeof window.__cpqRenderQuote === "function"', { timeout: 20000 });
         const pdf = await page.pdf({ format: 'A4', printBackground: true });
         out.browser = { ok: true, seconds: Math.round((Date.now() - t0) / 100) / 10,
@@ -168,13 +188,9 @@ module.exports = async (req, res) => {
 
   let browser;
   try {
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-    });
+    browser = await launchBrowser();
     const page = await browser.newPage();
-    await page.goto(`${process.env.APP_URL}/?render=1`, { waitUntil: 'networkidle0' });
+    await page.goto(renderUrl(), { waitUntil: 'networkidle0' });
     await page.waitForFunction('typeof window.__cpqRenderQuote === "function"');
     await page.evaluate((p) => window.__cpqRenderQuote(p), payload);
     await page.waitForFunction('window.__cpqRenderReady === true', { timeout: 20000 });
