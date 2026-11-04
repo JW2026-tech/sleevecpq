@@ -35,7 +35,6 @@ stages:
                     test -f /opt/sleeve-cpq/.env || { echo "Missing /opt/sleeve-cpq/.env — see DEPLOY.md"; exit 1; }
                     cp /opt/sleeve-cpq/.env .env
                     docker compose -p sleeve-cpq up -d --build cpq caddy
-                    docker image prune -f
                   displayName: docker compose up
                   workingDirectory: $(Build.SourcesDirectory)
                 - script: |
