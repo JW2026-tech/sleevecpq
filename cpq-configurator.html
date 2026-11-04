@@ -20149,13 +20149,14 @@ function sharePropTablesHtml(frac){
                 kan.length<t.rows.length?`<span class="ponsome">on ${kan.length} of ${t.rows.length}</span>`:""}`;
             };
             return `<tr class="pall">
-            <td class="pmach">${t.rows.length>1?"All machines":esc(t.rows[0]?t.rows[0].machine:"")}
+            ${/* one machine and nothing beside it: this line is that machine, so it says its name and number, and no second line repeats it */""}
+            <td class="pmach">${(t.rows.length>1||t.locked.length)?"All machines":`${esc(t.rows[0]?t.rows[0].machine:"")}${t.rows[0]?`<span class="pqty">${t.rows[0].qty}&times;</span>`:""}`}
               ${(t.rows.length>1||t.locked.length)?`<button class="pmachfold no-print" data-proptfold="${esc(t.p.id)}"
                 title="${open?"Back to one line for the whole line":"Show what each machine has, so one of them can be set on its own"}">${
                 open?"&#9662; hide the machines":`&#9656; per machine (${t.rows.length}${t.locked.length?` + ${t.locked.length} alternative${t.locked.length>1?"s":""}`:""})`}</button>`:""}</td>
             ${t.types.map(v=>`<td>${cel(v)}</td>`).join("")}
           </tr>`;})()}
-          ${t.rows.map(r=>`<tr class="pmachrow">
+          ${(t.rows.length>1||t.locked.length?t.rows:[]).map(r=>`<tr class="pmachrow">
             <td class="pmach">${esc(r.machine)}<span class="pqty">${r.qty}&times;</span>${
               r.mixed?`<span class="pmixed">not all the same &mdash; pick one to align them</span>`:""}</td>
             ${r.cells.map(x=>`<td>${x.current
