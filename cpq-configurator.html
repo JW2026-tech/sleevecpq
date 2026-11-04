@@ -3326,7 +3326,7 @@ let draftTimer = null, draftSaving = false;
    language, no show conditions — the tree shape IS the logic.
 ============================================================================ */
 const DEFAULT_CONFIG = {
-  model: "Modular sleeving & labelling line",
+  model: "",
   currency: "EUR",
   quoteNumber: "202837",
   /* Where the shared files live. A browser can't open a path by itself —
@@ -8599,7 +8599,7 @@ function renderConfigure(){
     }
   }
   const vis=visD.map(x=>x.m);
-  document.getElementById("modelName").textContent=CONFIG.model||"";
+  document.getElementById("modelName").textContent="";   // the machine name is no longer shown anywhere
   if(!vis.length){
     document.getElementById("main").innerHTML='<div class="empty">No steps configured yet. Switch to Admin to add one.</div>';
     document.getElementById("nav").innerHTML=""; document.getElementById("summary").innerHTML="";
@@ -13887,7 +13887,6 @@ function scopeHtml(){
       </div>`
     : "";
   return `${openStepsHtml()}<h2>Scope of supply</h2>
-    <div class="docsub">${esc(CONFIG.model||"")}</div>
     <div class="docmeta">Generated ${new Date().toLocaleDateString()} &middot; ${nodes.length} configured item${nodes.length===1?"":"s"}${
       offered.length?` &middot; ${offered.length} offered separately`:""}</div>
     <div class="scopelist">
@@ -14018,7 +14017,6 @@ function proposalHtml(opts){
   const fxNote = (hasAltCur() && t.altCur.note)
     ? `<div class="fxnote">${esc(t.altCur.note)}</div>` : "";
   return `${openStepsHtml()}${o_.skipHeader?"":`<h2>Investment proposal</h2>
-    <div class="docsub">${esc(CONFIG.model||"")}</div>
     <div class="docmeta">Generated ${new Date().toLocaleDateString()}</div>`}
     ${disc?`<div class="discnote">All prices are net — your ${(frac*100).toFixed(1)}% discount is already included.</div>`:""}
     ${colHead}
@@ -14502,7 +14500,6 @@ function coverPageHtml(){
       <div class="covertag">The partner for tight solutions</div>
       <div class="coverrule"></div>
       <div class="covertitle">Quotation</div>
-      <div class="coversub">${esc(CONFIG.model||"")}</div>
       <table class="covermeta">
         ${cust?`<tr><td>For</td><td>${esc(cust)}</td></tr>`:""}
         ${(()=>{const s=endSite();return (s&&s.company.trim())?`<tr><td>End user</td><td>${esc(s.company)}${s.city.trim()||s.country.trim()?`, ${esc([s.city,s.country].map(x=>x.trim()).filter(Boolean).join(", "))}`:""}</td></tr>`:"";})()}
@@ -18462,7 +18459,7 @@ function saveNow(){
         if(!newQuoteAsked && !confirm(
           `This screen is not saved as a quote yet.\n\n`+
           `${(CONFIG.customer||CONFIG.customerInfo&&CONFIG.customerInfo.company||"No customer name")} — `+
-          `${(CONFIG.model||"no model")}\n\nSave it as a new quote? It gets a number of its own.`)){
+          `${(CONFIG.quoteNumber||"no number")}\n\nSave it as a new quote? It gets a number of its own.`)){
           userEdited=false;            // asked and declined: do not ask again on the next keystroke
           return null;
         }
@@ -20886,7 +20883,6 @@ function shareCoverHtml(){
     <div class="sharecovertag2">The partner for tight solutions</div>
     <div class="sharecoverrule"></div>
     <div class="sharecovertitle">Quotation</div>
-    <div class="sharecoversub">${esc(CONFIG.model||"")}</div>
     <table class="sharecovermeta">
       ${cust?`<tr><td>For</td><td>${esc(cust)}</td></tr>`:""}
       ${attentionRowHtml()}
@@ -20912,7 +20908,6 @@ function shareLetterheadHtml(inner, pageTitle){
       <div>
         ${cust?`<div class="shareeyebrow">For ${esc(cust)}</div>`:""}
         <div class="sharetitle">${esc(pageTitle||"")}</div>
-        ${CONFIG.model?`<div class="sharesub">${esc(CONFIG.model)}</div>`:""}
       </div>
       <div class="sharemetaboxes">
         <div class="sharemetabox">${shareDocIconSvg()}<div><div>Quotation number</div><b>${esc(shareQuoteNumber())}</b></div></div>
@@ -21566,7 +21561,7 @@ document.getElementById("btnEmailPdf").onclick=async ()=>{
       method:"POST",
       headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
       body: JSON.stringify({saveToSentItems:true, message:{
-        subject:`Quotation ${CONFIG.quoteNumber||""} — ${CONFIG.model||""}`,
+        subject:`Quotation ${CONFIG.quoteNumber||""}${(CONFIG.customer||"").trim()?" - "+CONFIG.customer.trim():""}`,
         body:{contentType:"Text", content:"Please find the quotation attached."},
         toRecipients: to,
         attachments:[{"@odata.type":"#microsoft.graph.fileAttachment", name: out.filename, contentBytes: out.pdfBase64}]
