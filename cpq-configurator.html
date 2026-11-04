@@ -2191,6 +2191,8 @@
   .sputil{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--txt-dim);white-space:nowrap}
   .specedit td .sotimes{font-weight:600;margin-right:6px;white-space:nowrap}
   .specedit td:has(.sotimes){display:flex;align-items:center}
+  .fmtsetswarn{margin:0 0 8px;padding:8px 10px;border:1px solid var(--warn);background:#fff6ec;border-radius:8px;font-size:12.5px;color:#7a3d00;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .fmtsetswarn.top{margin:10px 0}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -11656,6 +11658,36 @@ function formatScreenHtml(){
    alternative stays on the property step; the "an alternative carries types
    nobody has offered" warning catches it if that is forgotten.
    ============================================================ */
+/* How many sets of a product's format parts the machines need: every part in
+   scope hangs on a machine (its "requires"), and a machine offered twice needs
+   its own set on each. The largest number among them, and which machine. */
+function formatSetsNeeded(pr){
+  let need=1, by=null;
+  for(const x of partsMatching(pr)){
+    const mode=effectivePick(x, pickMode(pr,x.id));
+    if(mode!=="in") continue;
+    for(const id of (x.requires||[])){
+      if(optionScope(id)!=="in") continue;
+      const o=optionById(id); if(!o) continue;
+      const q=+(o.qty||0)||optQty(o)||1;
+      if(q>need){ need=q; by=o; }
+    }
+  }
+  /* parts that name no machine (mandrel, transfer part, feedscrew set) go on the
+     line's first machine — the applicator: as many sets as it is offered times */
+  if(!by && partsMatching(pr).some(x=>effectivePick(x, pickMode(pr,x.id))==="in")){
+    for(const m of activeModules()){
+      if(m.generated || m.service || m.custom || m.formats) continue;
+      const sel=[].concat(state[m.id]===undefined?[]:state[m.id]);
+      const o=(m.options||[]).find(x=>sel.includes(x.id) && !x.optional && !x.alt);
+      if(!o) continue;
+      const q=blockQty(o);
+      if(q>need){ need=q; by=o; }
+      break;
+    }
+  }
+  return {need, by};
+}
 function renderFormatsView(){
   ensureParts();
   const el=document.getElementById("fmtBody");
@@ -11705,10 +11737,16 @@ function renderFormatsView(){
     </tr>
   </table></div>`;
 
+  const short=[];
   const cards=prods.map((pr,i)=>{
     const parts=partsForProduct(pr);
     const q=Math.max(1,+pr.qty||1);
+    const sets=formatSetsNeeded(pr);
+    const tooFew=!pr.optional && sets.by && q<sets.need;
+    if(tooFew) short.push({name:productName(pr,i), q, need:sets.need, by:sets.by.name});
     return `<div class="fmtcard ${pr.optional?"is-optional":""}">
+      ${tooFew?`<div class="fmtsetswarn"><b>${sets.need}&times; ${esc(sets.by.name)}</b> is offered, but there ${q===1?"is 1 set":`are ${q} sets`} of format parts for this product. Each machine needs its own set.
+        <button class="btn sm" data-setsets="${i}|${sets.need}">Make it ${sets.need} sets</button></div>`:""}
       <div class="fmthead">
         <b>${pr.optional?'<span class="optpill">optional</span> ':""}${esc(productName(pr,i))}</b>
         <span class="fmtans">${qs.map(x=>((pr.answers||{})[x.id])?`${esc(x.label)} ${esc(pr.answers[x.id])}`:"").filter(Boolean).join(" · ")}</span>
@@ -11800,6 +11838,8 @@ function renderFormatsView(){
       <button class="btn sm" id="fmtToggleQs">${showAllFormatQs?"Hide questions that don't apply":`Show ${hiddenQs.length} more question${hiddenQs.length===1?"":"s"}`}</button>
       ${!showAllFormatQs&&hiddenQs.length?`<span class="meta">${hiddenQs.map(q=>`${esc(q.label)} (${questionWeight(q)||"no"} part${questionWeight(q)===1?"":"s"})`).join(", ")}</span>`:""}
     </div>`:""}
+    ${short.length?`<div class="fmtsetswarn top">${short.length===1?"One product has":`${short.length} products have`} fewer sets of format parts than machines that need them: ${
+      short.map(x=>`<b>${esc(x.name)}</b> ${x.q} of ${x.need}`).join(", ")}.</div>`:""}
     ${prods.length?cards:""}
     ${genBlock}
     <div class="fmttotals">
@@ -11867,6 +11907,11 @@ function renderFormatsView(){
     }
     else if(f==="qty") inp.onchange=()=>{ pr.qty=Math.max(1,+inp.value||1); save(list); };
     else inp.onchange=()=>{ pr.optional=inp.checked; save(list); };
+  });
+  /* "Make it 2 sets": one set of format parts per machine that needs them */
+  el.querySelectorAll("[data-setsets]").forEach(b=>{
+    const [i,n]=b.dataset.setsets.split("|").map(Number);
+    b.onclick=()=>{ const pr=list[i]; if(!pr) return; pr.qty=Math.max(1,n||1); save(list); };
   });
   el.querySelectorAll("[data-pact='del']").forEach(b=>{
     const i=+b.closest("[data-pi]").dataset.pi;
