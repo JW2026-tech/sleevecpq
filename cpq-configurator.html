@@ -20023,6 +20023,11 @@ function sharePropTables(frac){
     for(const e of byMachine.values())
       for(const oid of e.optIds)
         for(const v of p.variants) if((assignEntry(p,oid)[v.id]||[]).length) live.add(v.id);
+    /* and the type each item has without anyone ticking it (the standard one): with
+       only "Central drain — optional" ticked, the table had one type left and was
+       dropped as nothing to choose between, while the customer could have it */
+    for(const e of byMachine.values())
+      for(const oid of e.optIds){ const cur=assignedVariantId(p,oid); if(cur) live.add(cur); }
     const types=p.variants.filter(v=>live.has(v.id));
     if(types.length<2) continue;                 // nothing to choose between
     const rows=[], locked=[];
