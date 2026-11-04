@@ -2918,6 +2918,12 @@
     body.print-all .docpage p:not(.freetext *){font-size:9.5pt;line-height:1.5;margin:0 0 8px;color:#222}
     /* user content inherits a sane print base but overrides win */
     body.print-all :where(.freetext){font-size:9.5pt;line-height:1.5}
+    /* the header memo: one size for all of it, lists included — the standard memo is
+       paragraphs and bullet lists, and a list fell back to the browser's larger default */
+    body.print-all .pg-memo .pgbody, body.print-all .pg-memo .pgbody p, body.print-all .pg-memo .pgbody li,
+    body.print-all .pg-memo .pgbody div{font-size:9.5pt;line-height:1.5;color:#222}
+    body.print-all .pg-memo .pgbody ul{margin:0 0 8px;padding-left:6mm}
+    body.print-all .pg-memo .pgbody li{margin:0 0 1px}
     body.print-all :where(.termstext),
     body.print-all :where(.termstext) p,
     body.print-all :where(.termstext) li,
@@ -14832,7 +14838,7 @@ function buildAllDocsHtmlCore(){
      quotation — and then the chapters, numbered by their place in the list */
   const bodies=[
     contactPageHtml(),
-    memo?`${memo}`:"",
+    memo?{cls:"pg-memo", html:memo}:"",
   ].concat(quoteChapters().map((c,i)=>({
       cls:c.cls,
       chapter:`${i+1}. ${c.title}`,
