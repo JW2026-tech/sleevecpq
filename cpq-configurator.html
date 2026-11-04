@@ -2193,6 +2193,7 @@
   .specedit td:has(.sotimes){display:flex;align-items:center}
   .fmtsetswarn{margin:0 0 8px;padding:8px 10px;border:1px solid var(--warn);background:#fff6ec;border-radius:8px;font-size:12.5px;color:#7a3d00;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
   .fmtsetswarn.top{margin:10px 0}
+  .vnone{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--txt-dim);margin-left:6px;white-space:nowrap}
   .discnote{display:inline-block;margin:2px 0 6px;padding:4px 10px;border-radius:6px;background:#e7f6ec;color:#1d7a3e;font-size:11.5px;font-weight:600}
   .optstrip{margin:0 -12px 3px;padding:5px 12px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.5px;color:var(--warn);font-weight:600}
@@ -5746,6 +5747,8 @@ function propsLabel(o){
   if(!o || !o.props) return "";
   return (CONFIG.props||[])
     .filter(p=>!propSkipped(p) && propQtyOf(o,p.id)>0)
+    /* a type that means nothing is fitted (ticked "none" in Admin) is not named */
+    .filter(p=>{ const v=(p.variants||[]).find(x=>x.id===assignedVariantId(p,o.id)); return !(v && v.none); })
     .map(p=>{ const q=propQtyOf(o,p.id); return `${q}× ${esc(propItemName(p,o,q))}`; })
     .join(", ");
 }
@@ -6545,6 +6548,32 @@ function branchProps(node, wantOptional, into){
   return acc;
 }
 const addProps=(into,from)=>{ for(const k in from) into[k]=(into[k]||0)+from[k]; return into; };
+/* What is fitted, by type: "2× Default SEW SAF conveyor motor, 1× Drip tray".
+   The label used to name the property ("2× Disconnect switch motors"), which
+   read as if the machine had disconnect switches when the type was "No
+   disconnect switch". A type ticked "none" in Admin is left out altogether. */
+function propTypeLabel(options, deep, want){
+  const acc=new Map();
+  const visit=o=>{
+    if(!o) return;
+    if(scopeKind(o)===want && o.props) for(const p of (CONFIG.props||[])){
+      if(propSkipped(p)) continue;
+      const q=propQtyOf(o, p.id); if(!q) continue;
+      const vid=assignedVariantId(p, o.id);
+      const v=(p.variants||[]).find(x=>x.id===vid);
+      if(v && v.none) continue;
+      const key=v?p.id+"|"+v.id:p.id;
+      const e=acc.get(key)||{name: v ? (v.name||propName(p,q)) : propName(p,q), q:0};
+      e.q+=q; acc.set(key,e);
+    }
+    if(deep) for(const m of (o.children||[])){
+      const sel=[].concat(state[m.id]===undefined?[]:state[m.id]);
+      for(const c of (m.options||[])) if(sel.includes(c.id)) visit(c);
+    }
+  };
+  for(const o of options) visit(o);
+  return [...acc.values()].map(e=>`${e.q}× ${esc(e.name)}`).join(", ");
+}
 /* "2× Adjustments, 4× Feet" from a {propId:qty} map */
 function propsMapLabel(map){
   if(!map) return "";
@@ -7439,7 +7468,9 @@ function priceRowHtml(r, actPrefix){
       <div class="ptitle">${arrow}${tick}<span class="bullet"></span>${(o.qty||optQty(o)>1)?`<span class="qty">${o.qty||optQty(o)}&times;</span> `:""}${esc(o.name)}${
         r.taken?' <span class="takenpill">in the quotation</span>':""}${(o.unitPrice && o.qty>1)?` <span class="snote">(${fmt(o.unitPrice)} each)</span>`
         :((!o.isPropLine && optQty(o)>1 && +o.price) ? ` <span class="snote">(${fmt(+o.price)} each)</span>`:"")}${o.fmtFor?` <span class="snote">— ${esc(o.fmtFor)}</span>`:""}${
-        shareMode?"":takeBtn}${(!propListHtml && !o.isPropLine && propsMapLabel(r.propsAgg))?` <span class="proplbl">${propsMapLabel(r.propsAgg)}</span>`:""}${(r.rolled||r.inclSub)?'<span class="tag rollup">incl. sub-items</span>':""}${r.gone?'<span class="gonenote">not in the breakdown</span>':""}${allBtn}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
+        shareMode?"":takeBtn}${(()=>{ if(propListHtml || o.isPropLine || !propsMapLabel(r.propsAgg)) return "";
+          const lbl=propTypeLabel([o], !!(r.rolled||r.inclSub), scopeKind(o));
+          return lbl?` <span class="proplbl">${lbl}</span>`:""; })()}${(r.rolled||r.inclSub)?'<span class="tag rollup">incl. sub-items</span>':""}${r.gone?'<span class="gonenote">not in the breakdown</span>':""}${allBtn}${o.qnote?`<div class="qnote">${esc(o.qnote)}</div>`:""}</div>
       ${movePriceDown?"":pvalBlock}
     </div>
     ${movePriceDown?`<div class="takerow">${pvalBlock}${takeBtn}</div>`:""}
@@ -7468,8 +7499,9 @@ function groupHeadHtml(m, actPrefix, collapsed, price, propsAgg, opts){
   const stepBtn = lines.length ? allesKnop(lines.map(r=>r.node.o.id), nOn) : "";
   /* a collapsed group stands in for its items, so it carries their
      property counts — otherwise collapsing would quietly drop them */
-  const props = collapsed && propsMapLabel(propsAgg)
-    ? ` <span class="proplbl">${propsMapLabel(propsAgg)}</span>` : "";
+  const typeLbl = (collapsed && propsMapLabel(propsAgg))
+    ? propTypeLabel((m.options||[]).filter(o=>[].concat(state[m.id]===undefined?[]:state[m.id]).includes(o.id)), true, actPrefix==="opt"?"opt":"in") : "";
+  const props = typeLbl ? ` <span class="proplbl">${typeLbl}</span>` : "";
   /* No picture here either. A folded-up step used to carry the photograph of
      what was chosen in it, which was a help when this list was the only place
      the machines appeared. They have a card of their own at the head of the
@@ -10658,6 +10690,7 @@ function renderPropsAdmin(){
             return `<tr class="${isBase?"is-base":""}" data-vid="${esc(v.id)}">
               <td class="mtype">
                 <input class="in vname" value="${esc(v.name)}" data-vf="name" placeholder="Type name">
+                <label class="vnone" title="This type means nothing is fitted (No disconnect switch, No central drain): it is never named on a quotation line"><input type="checkbox" data-vnone="1" ${v.none?"checked":""}> none</label>
                 ${isBase?`<span class="basepill" title="Anything not set gets this one">standard</span>`:""}
                 <input class="in vnote" value="${esc(v.note||"")}" data-vf="note" placeholder="Short description, shown to the customer">
                 ${/* A small picture, the same idea as an option's: it travels
@@ -10846,6 +10879,11 @@ function renderPropsAdmin(){
      p.variants is not the row you are looking at */
   const propOfEl = el => CONFIG.props[+el.closest(".ocard").dataset.pi];
   const varOfRow = (pr, el) => (pr.variants||[]).find(v=>v.id===el.closest("tr").dataset.vid) || null;
+  ed.querySelectorAll("[data-vnone]").forEach(cb=>{
+    const p=propOfEl(cb), v=varOfRow(p, cb);
+    if(!v) return;
+    cb.onchange=()=>{ if(cb.checked) v.none=true; else delete v.none; saveSoon(); renderConfigureQuiet(); };
+  });
   ed.querySelectorAll("[data-vf]").forEach(el=>{
     const p=propOfEl(el);
     const v=varOfRow(p, el);
