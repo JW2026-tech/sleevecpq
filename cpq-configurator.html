@@ -502,6 +502,13 @@
     border:0!important;border-radius:50%!important;background:#28338A!important;opacity:1!important;
     align-self:flex-start;margin-top:.45em!important}
   #allDocsBody .scopeline.is-optional .bullet, body.share-mode .scopeline.is-optional .bullet{background:#EF7B0B!important}
+  /* Optional and alternative lines all start at the same place: the depth of the
+     item in its step set a padding per level, so the dots jumped about and some
+     sat on the orange band. The dot is centred on the first line of text. */
+  body.share-mode .scopeline.is-optional, body.share-mode .scopeline.is-alt,
+  #allDocsBody .scopeline.is-optional, #allDocsBody .scopeline.is-alt{padding-left:12px!important;margin-left:0!important;align-items:flex-start}
+  body.share-mode .scopeline .stitle, #allDocsBody .scopeline .stitle{line-height:1.45}
+  body.share-mode .scopeline .bullet, #allDocsBody .scopeline .bullet{margin-top:calc((1.45em - 6px) / 2)!important}
   #allDocsBody .scopeline .stitle b, #allDocsBody .scopeline .stitle strong{font-weight:400}
   #allDocsBody .pg-scope .grouphead{margin:.5em 0 .15em;padding-top:.35em;break-after:avoid}
   #allDocsBody .pg-scope .grouphead:first-child{margin-top:0}
