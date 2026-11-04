@@ -1,8 +1,9 @@
 # Sleeve Technology CPQ on the planning server (SLT-NE-PRODPLAN01).
 #
-# Three parts, none shared with the planning tool:
+# Three parts (the internal entrance for colleagues lives in the planning tool's Caddy):
 #   - cpq    : the app (page, Odoo lookup, PDF)
-#   - caddy  : HTTPS on the CPQ's own IP address (CPQ_BIND_IP, 10.16.12.5)
+#   - caddy  : the public entrance (customers), HTTPS on the CPQ's own IP (CPQ_BIND_IP, 10.16.12.5);
+#              colleagues use the internal entrance in the planning tool's Caddy (deploy/Caddyfile.intern)
 #   - the CPQ's own Supabase, in supabase/ (its own compose project), reached
 #     over the network cpq-net
 # Step by step: DEPLOY.md.
@@ -31,7 +32,6 @@ services:
       - cpq
     environment:
       CPQ_DOMAIN: ${CPQ_DOMAIN}
-      STAFF_IPS: ${STAFF_IPS:-private_ranges}
     ports:
       - "${CPQ_BIND_IP}:80:80"
       - "${CPQ_BIND_IP}:443:443"

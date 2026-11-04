@@ -3215,6 +3215,12 @@
       supa stays null if the CDN script failed to load, and every call site
       below checks for that before touching the network. */
 const SUPABASE_URL = "https://tyjlhxrfgvqblfjmdxeq.supabase.co";
+/* The address a customer's link is given. Empty: the address this page is open
+   on (Vercel). On the server it is filled in (server.js, PUBLIC_SHARE_URL) with
+   the public address, so a link made by a colleague on the internal entrance
+   still reaches the customer. */
+const SHARE_ORIGIN = "";
+const shareLinkFor = token => `${SHARE_ORIGIN || (location.origin + location.pathname)}?share=${token}`;
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5amxoeHJmZ3ZxYmxmam1keGVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NjkwNzQsImV4cCI6MjEwMjU0NTA3NH0.BbXmzlubhx7Ws9OBHNTURN5wGHKygw0h6eyQbI0F4HY";
 const supa = (window.supabase && window.supabase.createClient)
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {auth:{persistSession:true, detectSessionInUrl:true}})
@@ -16831,7 +16837,7 @@ function wireQuoteBar(){
   on("qbOffline", ()=>setShareOffline(!quoteShare.revoked_at));
   on("qbShare", ()=>{ setMode("docs"); const b=document.getElementById("btnShareLink"); if(b) b.click(); });
   on("qbCopyLink", ()=>{
-    const url=`${location.origin}${location.pathname}?share=${quoteShare.token}`;
+    const url=shareLinkFor(quoteShare.token);
     navigator.clipboard.writeText(url)
       .then(()=>toast("Link copied — paste it in your mail"))
       .catch(()=>toast("Could not copy the link — select it and copy by hand","warn"));
@@ -19194,7 +19200,7 @@ function paintQuoteCards(quotes, shares){
   });
   wrap.querySelectorAll("[data-copyshare]").forEach(b=>{
     b.onclick=()=>{
-      const url=`${location.origin}${location.pathname}?share=${b.dataset.copyshare}`;
+      const url=shareLinkFor(b.dataset.copyshare);
       navigator.clipboard.writeText(url)
         .then(()=>toast("Link copied — paste it in your mail"))
         .catch(()=>toast("Could not copy the link — select it and copy by hand","warn"));
@@ -21256,7 +21262,7 @@ document.getElementById("btnShareLink").onclick=async ()=>{
     if(error || !data) throw error||new Error("no data");
     await giveShareItsOwnCatalogue(data.id);
     loadQuoteMeta().then(()=>renderQuoteBar());
-    const url=`${location.origin}${location.pathname}?share=${data.token}`;
+    const url=shareLinkFor(data.token);
     const panel=document.getElementById("sharePanel");
     panel.classList.remove("hidden");
     panel.innerHTML=`<div class="discbar">

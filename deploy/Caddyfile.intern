@@ -1,0 +1,24 @@
+# The INTERNAL entrance, for colleagues — add this block to the Caddyfile of the
+# planning tool's Caddy (planningstool-caddy). It is reached on the planning tool's
+# public IP, which is only open from Sleeve; through it the CPQ and its whole
+# database are available. See DEPLOY.md, step 2.
+#
+# planningstool-caddy must also be on the network cpq-net:
+#   - in the planning tool's compose, under that Caddy:   networks: [default, cpq-net]
+#   - and at the bottom:                                   networks: { cpq-net: { external: true } }
+#
+# The certificate is fetched the way the planning tool's own certificate is.
+
+cpq-intern.sleevetechnology.com {
+	encode gzip
+	handle_path /sb/* {
+		reverse_proxy cpq-supabase-kong:8000
+	}
+	handle {
+		reverse_proxy sleeve-cpq:3000 {
+			transport http {
+				read_timeout 120s
+			}
+		}
+	}
+}

@@ -7,6 +7,10 @@
 // PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY, when set, replace the
 // database address and public key written in the page: on the VM the page
 // talks to the CPQ's own Supabase, on Vercel to the cloud one, from one file.
+// A PUBLIC_SUPABASE_URL starting with "/" (e.g. /sb) is taken on whatever
+// address the page was opened on, so the public and the internal entrance each
+// reach the database through themselves. PUBLIC_SHARE_URL is the address
+// customer links get, whichever entrance they were made on.
 
 const http = require('http');
 const fs = require('fs');
@@ -19,14 +23,16 @@ const PAGE = path.join(ROOT, 'cpq-configurator.html');
 // the page, read once, with this server's database filled in
 function pageHtml() {
   let html = fs.readFileSync(PAGE, 'utf8');
-  const put = (name, value) => {
+  const put = (name, value, asCode) => {
     if (!value) return;
     const re = new RegExp('const ' + name + ' = "[^"]*";');
     if (!re.test(html)) throw new Error(name + ' not found in the page');
-    html = html.replace(re, 'const ' + name + ' = ' + JSON.stringify(value) + ';');
+    html = html.replace(re, () => 'const ' + name + ' = ' + (asCode || JSON.stringify(value)) + ';');
   };
-  put('SUPABASE_URL', process.env.PUBLIC_SUPABASE_URL);
+  const sb = process.env.PUBLIC_SUPABASE_URL || '';
+  put('SUPABASE_URL', sb, sb.startsWith('/') ? 'location.origin + ' + JSON.stringify(sb) : null);
   put('SUPABASE_ANON_KEY', process.env.PUBLIC_SUPABASE_ANON_KEY);
+  put('SHARE_ORIGIN', (process.env.PUBLIC_SHARE_URL || '').replace(/\/+$/, '') + (process.env.PUBLIC_SHARE_URL ? '/' : ''));
   return html;
 }
 const PAGE_HTML = pageHtml();
