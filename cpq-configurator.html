@@ -507,7 +507,9 @@
   #allDocsBody .pg-scope .scopeline.is-optional{padding-left:2mm!important;margin-left:-2mm;
     border-left-width:1.5px}
   /* the descriptions run the whole width, under the two columns */
-  #allDocsBody .pg-scope .descsection-title{font-size:1em;margin:1.2em 0 .3em;padding-top:.5em}
+  #allDocsBody .pg-scope .descsection-title{font-size:1em;margin:1.2em 0 .3em;padding-top:.5em;break-after:avoid;break-inside:avoid}
+  #allDocsBody .descsection-title, #allDocsBody .descitem .ditle, #allDocsBody .descrow .ditle,
+  #allDocsBody h2, #allDocsBody h3, #allDocsBody h4{break-after:avoid}
   #allDocsBody .pg-scope .descitem, #allDocsBody .pg-scope .descrow{margin:0 0 .5em;break-inside:avoid}
   #allDocsBody .pg-scope .descitem .ditle, #allDocsBody .pg-scope .descrow .ditle{font-size:1em}
   #allDocsBody .pg-scope .descitem .dtrail, #allDocsBody .pg-scope .descrow .dtrail{font-size:.84em}
@@ -2873,6 +2875,10 @@
     }
     body.print-all .pgfoot .site{margin:0 auto;color:#28338A;font-weight:600}
     body.print-all .pgfoot .pgno{color:#777}
+    /* in the server's PDF the footer is drawn at the foot of every sheet by the
+       renderer; the one in the page sat wherever a chapter happened to end */
+    body.render-pdf.print-all .pgfoot{display:none}
+    body.render-pdf.print-all .docpage{padding-bottom:0;min-height:0}
 
     /* cover */
     body.print-all .docpage.cover{justify-content:flex-start}
@@ -14782,9 +14788,15 @@ function memoText(){
   if(docLanguage()==="es" && String(d["memo~es"]||"").replace(/<[^>]*>/g,"").trim()) return String(d["memo~es"]).trim();
   return String(d.memo||"").trim();
 }
+/* No em dash in what the customer reads (the PDF and his link): a dash between
+   words becomes a plain hyphen, one standing alone for "nothing" too. The
+   screens we work in keep theirs. */
+function noEmDash(html){
+  return String(html==null?"":html).replace(/[ \t]*(?:\u2014|&mdash;|&#8212;|&#x2014;)[ \t]*/gi, " - ");
+}
 function buildAllDocsHtml(){
   allDocsBuilding=true;                  // the printed documents: what the customer gets
-  try{ return docLanguage()==="es" ? inDocLanguage(()=>translateHtml(buildAllDocsHtmlCore())) : buildAllDocsHtmlCore(); }
+  try{ return noEmDash(docLanguage()==="es" ? inDocLanguage(()=>translateHtml(buildAllDocsHtmlCore())) : buildAllDocsHtmlCore()); }
   finally{ allDocsBuilding=false; }
 }
 function buildAllDocsHtmlCore(){
@@ -20818,7 +20830,10 @@ function shareLetterheadHtml(inner, pageTitle){
    the rest reads the same as the PDF.
    Order follows the printed quotation: what you get, what it was based on,
    what the machine does, what it costs, how it is delivered, the terms. */
-function shareDocSections(){ return docLanguage()==="es" ? inDocLanguage(()=>shareDocSectionsCore().map(x=>Object.assign({}, x, {html:translateHtml(x.html), nav:trEs(x.nav)}))) : shareDocSectionsCore(); }
+function shareDocSections(){
+  const list = docLanguage()==="es" ? inDocLanguage(()=>shareDocSectionsCore().map(x=>Object.assign({}, x, {html:translateHtml(x.html), nav:trEs(x.nav)}))) : shareDocSectionsCore();
+  return list.map(x=>Object.assign({}, x, {html:noEmDash(x.html), nav:noEmDash(x.nav)}));
+}
 function shareDocSectionsCore(){
   ensureLanguages(); ensureSpecs();
   const memo=memoText();
@@ -21461,6 +21476,7 @@ async function boot(){
      quote+catalogue to draw, then flags itself ready for page.pdf() */
   if(params.get("render")==="1"){
     renderModeOn=true;
+    document.body.classList.add("render-pdf");   // the renderer draws the footer itself (api/render-pdf.js)
     window.__cpqRenderReady=false;
     window.__cpqRenderQuote=async function(payload){
       quoteDocOverride=payload.versionAt||null;

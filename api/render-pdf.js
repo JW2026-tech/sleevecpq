@@ -239,16 +239,23 @@ module.exports = async (req, res) => {
     // The page numbers. Nothing inside the document can count sheets — a
     // chapter of machine cards runs over two or three — so they are printed
     // here, where the paging actually happens.
+    // The house footer, at the foot of every sheet: orange line, the website in the
+    // middle, the page number on the right. It used to sit in the page itself and
+    // landed wherever a chapter ended, halfway down a sheet.
     const footer =
-      '<div style="width:100%;font-size:8pt;color:#777;font-family:Segoe UI,Arial,sans-serif;' +
-      'padding:0 15mm;text-align:right;">' +
-      '<span class="pageNumber"></span> / <span class="totalPages"></span></div>';
+      '<div style="width:100%;padding:0 15mm;font-family:Segoe UI,Arial,sans-serif;font-size:8pt;' +
+      '-webkit-print-color-adjust:exact;print-color-adjust:exact;">' +
+      '<div style="border-top:2px solid #EF7B0B;padding-top:1.5mm;display:flex;justify-content:space-between;align-items:baseline;">' +
+      '<span style="width:25mm;"></span>' +
+      '<span style="color:#28338A;font-weight:600;">www.sleevetechnology.com</span>' +
+      '<span style="width:25mm;text-align:right;color:#777;"><span class="pageNumber"></span> / <span class="totalPages"></span></span>' +
+      '</div></div>';
     const pdf = await page.pdf({
       format: 'A4', printBackground: true,
       displayHeaderFooter: true,
       headerTemplate: '<span></span>',
       footerTemplate: footer,
-      margin: { top: '0mm', bottom: '12mm', left: '0mm', right: '0mm' },
+      margin: { top: '0mm', bottom: '16mm', left: '0mm', right: '0mm' },
     });
     res.status(200).json({
       ok: true,
