@@ -5777,12 +5777,13 @@ function propSummaryRows(kind){
         if(scopeKind(c.o)!=="in") continue;
         const v=(p.variants&&p.variants.length)?assignedVariant(p,c.o.id):null;
         if(!v && (p.variants||[]).length) continue;          // nothing chosen yet
+        if(v && v.none) continue;                             // "No disconnect switch": nothing fitted, nothing to list
         const each=v?variantPriceFor(v, c.o.id):0;
         add(v?v.id:"__plain", v?v.name:propName(p,c.qty), c.qty, each, c.qty*each, v&&v.note, v&&v.image);
       }
     } else {
       for(const r of propScopeLines(kind)){
-        if(r.p!==p) continue;
+        if(r.p!==p || (r.v && r.v.none)) continue;
         /* a grouped offer covers items in different classes, so there is no
            single "each" to quote unless they all came to the same */
         add(r.v.id, r.v.name, r.qty, (r.sameEach?(+r.each||0):0), r.price, r.v.note, r.v.image);
