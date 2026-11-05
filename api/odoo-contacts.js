@@ -94,6 +94,10 @@ module.exports = async (req, res) => {
   try {
     const admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
     const { data, error } = await admin.auth.getUser(bearer);
+    // a refused token is "sign in"; an unreachable sign-in service is not the user's doing
+    if (error && !(error.status >= 400 && error.status < 500)) {
+      return res.status(503).json({ error: 'Could not check the sign-in just now' });
+    }
     if (error || !data || !data.user) return res.status(401).json({ error: 'Please sign in first' });
   } catch (err) {
     return res.status(503).json({ error: 'Could not check the sign-in just now' });
