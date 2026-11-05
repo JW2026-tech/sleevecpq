@@ -15,14 +15,17 @@ DB=${DB_CONTAINER:-cpq-supabase-db}
 DUMP=cpq-cloud-$(date +%Y%m%d-%H%M%S).sql
 
 echo "1/4  Reading the cloud database (public schema) ..."
-# pg_dump from inside the database container, so its version matches; owners are
-# left out (they differ here), rights to anon/authenticated/service_role are kept
-sudo docker exec -e PGCONNECT_TIMEOUT=15 "$DB" \
+# pg_dump 17 (a throwaway container): the cloud may run a newer Postgres than this
+# server, and an older pg_dump refuses to read it. Owners are left out (they differ
+# here), rights to anon/authenticated/service_role are kept. The one setting
+# Postgres 17 writes that an older server does not know is taken out again.
+docker run --rm -e PGCONNECT_TIMEOUT=15 postgres:17-alpine \
   pg_dump "$CLOUD_DB_URL" --schema=public --no-owner --quote-all-identifiers > "$DUMP"
+sed -i '/^SET transaction_timeout/d' "$DUMP"
 echo "     saved as $DUMP ($(du -h "$DUMP" | cut -f1))"
 
 echo "2/4  The public schema here must still be empty ..."
-COUNT=$(sudo docker exec "$DB" psql -U postgres -d postgres -tAc \
+COUNT=$(docker exec "$DB" psql -U postgres -d postgres -tAc \
   "select count(*) from information_schema.tables where table_schema='public'")
 if [ "$COUNT" != "0" ]; then
   echo "     The public schema here already has $COUNT tables — stopping, nothing changed."
@@ -30,15 +33,15 @@ if [ "$COUNT" != "0" ]; then
 fi
 
 echo "3/4  Writing it into $DB ..."
-sudo docker exec -i "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q < "$DUMP"
+docker exec -i "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q < "$DUMP"
 
 echo "4/4  Live updates for the shared catalogue, and the counts to compare ..."
-sudo docker exec "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -c \
+docker exec "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -c \
   "do \$\$ begin
      if not exists (select 1 from pg_publication_tables where pubname='supabase_realtime' and tablename='catalogue_draft')
      then alter publication supabase_realtime add table public.catalogue_draft; end if;
    end \$\$;"
-sudo docker exec "$DB" psql -U postgres -d postgres -c \
+docker exec "$DB" psql -U postgres -d postgres -c \
   "select 'quotes' as table, count(*) from public.quotes
    union all select 'quote_versions', count(*) from public.quote_versions
    union all select 'quote_shares', count(*) from public.quote_shares
