@@ -55,6 +55,9 @@ sudo chown <agent-gebruiker>: /opt/sleeve-cpq/caddy
 2. **Netwerk**: bij die Caddy `networks: [default, cpq-net]`, en onderaan
    `networks: { cpq-net: { external: true } }` (bestaat er al een `networks:`-lijst, voeg `cpq-net` toe).
 3. De inhoud van `deploy/Caddyfile.intern` in de Caddyfile van de planningstool zetten.
+   **Let op:** verwijst die Caddyfile naar de eigen Supabase met de korte naam `kong:8000`, maak
+   daar `supabase-kong:8000` (de containernaam) van. Op `cpq-net` heet de Kong van de CPQ ook `kong`,
+   en dan komt het inloggen van de planningstool bij de CPQ terecht.
 4. `docker compose up -d <caddy-service>` (nieuwe poorten en netwerk; de planningstool is dan
    een paar seconden weg) en controleren met `docker ps` dat er `10.16.12.4:80->80` staat.
 

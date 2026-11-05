@@ -6,6 +6,12 @@
 #   - and at the bottom:                                   networks: { cpq-net: { external: true } }
 # Then: docker exec planningstool-caddy caddy reload --config /etc/caddy/Caddyfile
 #
+# CAREFUL: on cpq-net the CPQ's Kong also answers to the short name "kong" (every
+# compose service is known by its service name on each network it joins). This
+# Caddy must therefore reach the planning tool's own Supabase by its container
+# name (supabase-kong:8000), never by "kong:8000", or planning-api traffic lands
+# on the CPQ's sign-in (happened on 5 Nov 2026).
+#
 # alleen_sleeve repeats the NSG in Caddy: should the NSG ever open up, the whole
 # CPQ and its database still stay Sleeve only. Keep the addresses in step with
 # NSG rules 121-123.
