@@ -151,18 +151,13 @@ module.exports = async (req, res) => {
     catalogueData = shared.catalogue;
     versionAt = shared.version_at || shared.sent_at || null;
   } else {
-    // TEMPORARY TEST MODE: a missing/invalid bearer is allowed through so PDF
-    // rendering can be tried before Microsoft/Azure sign-in is set up (see the
-    // matching comment in cpq-configurator.html's btnEmailPdf handler and
-    // supabase-schema-testmode.sql). Restore the hard 401s below — remove the
-    // `if (bearer)` guard so a missing/invalid token always rejects — once
-    // real sign-in is back.
-    if (bearer) {
-      const { data: userRes, error: authErr } = await admin.auth.getUser(bearer);
-      if (authErr || !userRes || !userRes.user) {
-        res.status(401).json({ error: 'Not signed in' });
-        return;
-      }
+    // A quote by its id: a signed-in colleague only (the customer comes in
+    // with the token above instead).
+    const { data: userRes, error: authErr } = bearer
+      ? await admin.auth.getUser(bearer) : { data: null, error: true };
+    if (authErr || !userRes || !userRes.user) {
+      res.status(401).json({ error: 'Not signed in' });
+      return;
     }
 
     const { data: quoteRow, error: quoteErr } = await admin

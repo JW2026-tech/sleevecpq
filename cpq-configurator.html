@@ -3165,20 +3165,16 @@
 <div class="noticebar hidden" id="notices"></div>
 
 <!-- ===== sign in =====
-     Email+password for now — zero extra setup beyond the Supabase project
-     itself, so this can be tested before the Microsoft/Azure app
-     registration exists. Swap back to signInWithOAuth({provider:"azure"})
-     once that's set up; the rest of the app (afterSignIn, provider_token
-     for Mail.Send) doesn't care which method produced the session. -->
+     With the Sleeve Microsoft account, nothing else: the Azure app
+     registration is single-tenant, so only colleagues get in, and the
+     session's provider_token is what "Send PDF by email" sends with.
+     Customers never see this: a share link boots before it. -->
 <div class="loginwrap hidden" id="viewLogin">
   <div class="loginbox">
     <span id="loginLogo" class="hdrlogo"></span>
     <h2>Machine Configurator</h2>
-    <p class="desc">Sign in to continue.</p>
-    <input class="in" id="loginEmail" type="email" placeholder="Email" autocomplete="username">
-    <input class="in" id="loginPassword" type="password" placeholder="Password" autocomplete="current-password">
-    <button class="btn primary wide" id="btnSignIn">Sign in</button>
-    <button class="btn wide" id="btnSignUp">Create account</button>
+    <p class="desc">Sign in with your Sleeve Technology account.</p>
+    <button class="btn primary wide" id="btnSignIn">Sign in with Microsoft</button>
     <p class="desc" id="loginError"></p>
   </div>
 </div>
@@ -12752,7 +12748,9 @@ function primaryContact(){
 const odooPeopleCache={};       // company id -> its contact persons, for the pull-down
 async function odooGet(params){
   if(!/^https?:$/.test(location.protocol)) throw new Error("The Odoo lookup works from the web version of the app.");
-  const r=await fetch("/api/odoo-contacts?"+new URLSearchParams(params));
+  const {data:{session}}=supa ? await supa.auth.getSession() : {data:{}};
+  const r=await fetch("/api/odoo-contacts?"+new URLSearchParams(params),
+    {headers:{Authorization:"Bearer "+((session&&session.access_token)||"")}});
   const j=await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(j.error||("The Odoo lookup failed ("+r.status+")"));
   return j;
@@ -21493,26 +21491,18 @@ function showLogin(){
   const h=document.getElementById("loginLogo"); if(h) h.innerHTML=logoSvg();
   document.getElementById("viewLogin").classList.remove("hidden");
 }
-async function afterSignIn(session){
-  document.getElementById("viewLogin").classList.add("hidden");
-  document.getElementById("whoAmI").textContent=session.user.email||"";
-  document.getElementById("btnSignOut").classList.remove("hidden");
-  bootLocalOnly();
-  try{ await cloudLoadLatestCatalogue(); }catch(err){}
+/* the scopes asked of Microsoft: who you are, and sending mail as you (the
+   PDF by email). offline_access keeps the sign-in alive between visits. */
+const MS_SCOPES="openid profile email offline_access Mail.Send";
+function signInWithMicrosoft(){
+  /* back to this same page afterwards, without a leftover error in the address */
+  return supa.auth.signInWithOAuth({provider:"azure",
+    options:{scopes:MS_SCOPES, redirectTo:location.origin+location.pathname}});
 }
 document.getElementById("btnSignIn").onclick=async ()=>{
   const errEl=document.getElementById("loginError"); errEl.textContent="";
-  const email=document.getElementById("loginEmail").value.trim();
-  const password=document.getElementById("loginPassword").value;
-  const {error}=await supa.auth.signInWithPassword({email, password});
+  const {error}=await signInWithMicrosoft();
   if(error) errEl.textContent=error.message;
-};
-document.getElementById("btnSignUp").onclick=async ()=>{
-  const errEl=document.getElementById("loginError"); errEl.textContent="";
-  const email=document.getElementById("loginEmail").value.trim();
-  const password=document.getElementById("loginPassword").value;
-  const {error}=await supa.auth.signUp({email, password});
-  errEl.textContent=error ? error.message : "Account created — check your inbox to confirm, then sign in.";
 };
 document.getElementById("btnSignOut").onclick=()=>{ if(supa) supa.auth.signOut(); };
 
@@ -21594,11 +21584,8 @@ async function shareDownloadPdf(btn){
 }
 document.getElementById("btnEmailPdf").onclick=async ()=>{
   if(!supa) return alert("Cloud sign-in is required to render a PDF.");
-  /* TEMPORARY TEST MODE: no session is fine — see boot()'s comment and
-     api/render-pdf.js, which currently accepts a request with no bearer
-     token too. Put `if(!session) return alert("Please sign in first.");`
-     back here once real sign-in is restored. */
   const {data:{session}}=await supa.auth.getSession();
+  if(!session) return alert("Please sign in first.");
   flagSaved("Rendering PDF…", true);
   try{
     await ensureCloudQuote();
@@ -21637,7 +21624,7 @@ document.getElementById("btnEmailPdf").onclick=async ()=>{
          re-running the OAuth sign-in refreshes it, usually near-instant via
          the existing Microsoft SSO cookie rather than a real login prompt */
       flagSaved("Refreshing Microsoft sign-in…", true);
-      await supa.auth.signInWithOAuth({provider:"azure", options:{scopes:"openid profile email offline_access Mail.Send"}});
+      await signInWithMicrosoft();
       return;
     }
     if(g.status!==202) throw new Error("Microsoft Graph responded "+g.status);
@@ -21685,23 +21672,32 @@ async function boot(){
 
   if(!supa){ bootLocalOnly(); bootDone=true; return; }   // supabase-js CDN failed to load
 
-  /* ---- TEMPORARY TEST MODE ----
-     Sign-in is disabled for now (see supabase-schema-testmode.sql, which
-     also has to be applied in Supabase or the cloud calls below will be
-     rejected) so "Share with customer" and "Send PDF by email" can be
-     tried without setting up Microsoft/Azure sign-in first. The app never
-     shows #viewLogin and never blocks on having a session — cloudSaveQuote()
-     and the share/PDF buttons all work with no session too.
-     To restore real sign-in: bring back `if(!session){ showLogin(); return; }
-     await afterSignIn(session);` here in place of the block below, and run
-     the REVERT statements at the bottom of supabase-schema-testmode.sql. */
+  /* Colleagues only: without a Microsoft sign-in the app shows nothing but
+     the sign-in screen. Coming back from Microsoft, supabase-js has already
+     read the session out of the address by the time getSession answers. */
+  const qs=new URLSearchParams(location.search), hs=new URLSearchParams(location.hash.slice(1));
+  const signInError=qs.get("error_description")||hs.get("error_description");
+  const {data:{session}}=await supa.auth.getSession();
+  supa.auth.onAuthStateChange((event, s)=>{
+    /* SIGNED_IN also fires when a tab comes back into focus: only a tab
+       still on the sign-in screen has anything to do */
+    if(event==="SIGNED_IN" && s && !bootDone) location.reload();
+    else if(event==="SIGNED_OUT") location.reload();
+  });
+  if(!session){
+    showLogin();
+    if(signInError) document.getElementById("loginError").textContent=signInError;
+    if(signInError) history.replaceState(null, "", location.pathname);
+    return;
+  }
+  document.getElementById("whoAmI").textContent=session.user.email||"";
+  document.getElementById("btnSignOut").classList.remove("hidden");
   bootLocalOnly();
   /* Nothing to pick back up: no quotation is open, so the screens that need
      one stay shut and the app starts where one is chosen. Configure used to
      open on the built-in example catalogue, which looked like a quotation. */
   if(!restoredQuoteId){ quotePutAway={id:null, number:"", none:true}; setMode("quotes"); }
-  /* Catalogue comes from the cloud regardless of sign-in state (see
-     supabase-schema-testmode.sql) — the old S-drive auto-load is gone.
+  /* Catalogue comes from the cloud — the old S-drive auto-load is gone.
      But NOT over the top of unpublished Admin edits: this used to run
      unconditionally, so every refresh silently destroyed catalogue work that
      had never been published. If the restored session has changes the team
@@ -21751,15 +21747,6 @@ async function boot(){
   }
   syncQuoteTabs(); renderNotices();
   bootDone=true;
-  const {data:{session}}=await supa.auth.getSession();
-  if(session){
-    document.getElementById("whoAmI").textContent=session.user.email||"";
-    document.getElementById("btnSignOut").classList.remove("hidden");
-  }
-  supa.auth.onAuthStateChange((event, session)=>{
-    if(event==="SIGNED_IN" && session) afterSignIn(session);
-    else if(event==="SIGNED_OUT") location.reload();
-  });
 }
 /* The actions that go to the database and back. Wrapped here, once, so every
    route to them — the bar, the list, a notice — says it is working. */

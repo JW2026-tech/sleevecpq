@@ -17,6 +17,8 @@
 //   GET /api/odoo-contacts?company=<id>    the contact persons of one company
 //   GET /api/odoo-contacts?id=<id>         one customer or person
 
+const { createClient } = require('@supabase/supabase-js');
+
 const ODOO_URL = (process.env.ODOO_URL || 'https://american-sleeve-technology.odoo.com').replace(/\/+$/, '');
 const ODOO_DB = process.env.ODOO_DB || 'american-sleeve-technology';
 
@@ -82,6 +84,20 @@ module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
   if (!allowedOrigin(req)) return res.status(403).json({ error: 'Not allowed from here' });
+  // Customer names, addresses and contact persons: for a signed-in colleague
+  // only. The page reaches this function from outside too (quote.…), so the
+  // check above is not enough on its own.
+  const bearer = (req.headers.authorization || '').replace(/^Bearers+/i, '');
+  if (!bearer || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return res.status(401).json({ error: 'Please sign in first' });
+  }
+  try {
+    const admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const { data, error } = await admin.auth.getUser(bearer);
+    if (error || !data || !data.user) return res.status(401).json({ error: 'Please sign in first' });
+  } catch (err) {
+    return res.status(503).json({ error: 'Could not check the sign-in just now' });
+  }
   if (!process.env.ODOO_API_KEY) {
     return res.status(503).json({ error: 'ODOO_API_KEY is not set in the Vercel project' });
   }
