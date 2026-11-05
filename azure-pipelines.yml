@@ -63,6 +63,12 @@ stages:
                     setkey AZURE_TENANT_ID "$AZURE_TENANT_ID"
                     setkey AZURE_CLIENT_ID "$AZURE_CLIENT_ID"
                     setkey AZURE_SECRET "$AZURE_SECRET"
+                    # the CPQ's own addresses: this .env began as a copy of the planning
+                    # tool's, and Microsoft must send colleagues back here, not there
+                    setkey SITE_URL https://cpq.sleevetechnology.com
+                    setkey API_EXTERNAL_URL https://cpq.sleevetechnology.com/sb
+                    setkey SUPABASE_PUBLIC_URL https://cpq.sleevetechnology.com/sb
+                    setkey ADDITIONAL_REDIRECT_URLS https://quote.sleevetechnology.com
                     setkey DISABLE_SIGNUP false
                     setkey ENABLE_EMAIL_SIGNUP false
                     setkey ENABLE_ANONYMOUS_USERS false
