@@ -1,6 +1,6 @@
 # Sleeve Technology CPQ — the page, the Odoo lookup and the PDF renderer in one container.
 # See DEPLOY.md for how it sits behind the Caddy that is already on the server.
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
 # Chromium prints the PDFs; the fonts are what it prints them in
 RUN apt-get update \
