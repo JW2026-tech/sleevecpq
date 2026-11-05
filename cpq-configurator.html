@@ -813,7 +813,7 @@
     color:var(--txt);font-size:10.5px;cursor:pointer}
   .partstable .reqpill b{color:var(--txt-faint);font-weight:400}
   .partstable .reqpill:hover{border-color:var(--warn)}
-  .partstable .reqadd{font-size:11px;padding:2px 4px}
+  .partstable .reqadd{font-size:11px;padding:2px 6px;width:100%;box-sizing:border-box}
   .blocknote{font-size:11px;color:var(--txt-faint);border:1px dashed var(--line-strong);
     border-radius:8px;padding:7px 9px;margin:2px 0 8px}
   .blocknote .bp{display:block;margin-top:3px;color:var(--txt-dim)}
@@ -10407,6 +10407,14 @@ function renderPartsAdmin(){
   const ed=document.getElementById("editor");
   const qs=CONFIG.formatQs||[];
   const optCat=optionCatalogue();
+  /* the "Needs option" search: one list shared by every row. Labels must be
+     unique for the browser's suggestions, so a repeated one gets its id. */
+  const reqLabel=new Map(), seenLbl=new Set();
+  for(const o of optCat){
+    let l=(o.step?o.step+" › ":"")+(o.name||o.id);
+    if(seenLbl.has(l)) l+=" ("+o.id+")";
+    seenLbl.add(l); reqLabel.set(l,o.id);
+  }
   const rows=CONFIG.parts.map((x,i)=>`
     <tr data-pi="${i}">
       <td class="dragcell" draggable="true" title="Drag this handle to reorder">&#8942;&#8942;</td>
@@ -10422,10 +10430,9 @@ function renderPartsAdmin(){
       }).join("")}</td>`).join("")}
       <td class="reqcell">
         ${((x.requires)||[]).map(id=>`<span class="reqpill" data-unreq="${esc(id)}" title="Click to remove this requirement">${esc(optionLabel(id))}<b>&times;</b></span>`).join("")}
-        <select class="in reqadd" data-reqadd="1" title="Only offer this part when one of these options is configured">
-          <option value="">${((x.requires)||[]).length?"+ another…":"always available"}</option>
-          ${optCat.map(o=>`<option value="${esc(o.id)}" ${((x.requires)||[]).includes(o.id)?"disabled":""}>${esc(o.step)} › ${esc(o.name)}</option>`).join("")}
-        </select>
+        <input class="in reqadd" data-reqadd="1" list="reqoptlist" autocomplete="off"
+               placeholder="${((x.requires)||[]).length?"+ another… (type to search)":"always available — type to search"}"
+               title="Only offer this part when one of these options is configured. Type part of the option or step name and pick it from the list.">
       </td>
       <td><input class="in num" type="number" step="10" value="${+x.cost||0}" data-xf="cost"></td>
       <td><input class="in num" type="number" step="10" value="${+x.price||0}" data-xf="price"></td>
@@ -10437,6 +10444,7 @@ function renderPartsAdmin(){
     </tr>`).join("");
   ed.innerHTML=`
     <div class="ed-head"><h2 style="margin:0;font-size:21px;font-weight:600">Format parts catalogue</h2></div>
+    <datalist id="reqoptlist">${[...reqLabel.keys()].map(l=>`<option value="${esc(l)}"></option>`).join("")}</datalist>
     <div class="sublbl" style="margin:2px 0 14px">The mandrels, transfer parts, feedscrews and tooling a format is built from. A quote then defines its formats and picks one part per category for each — so quoting six formats is six short rows rather than forty line items. Cost is kept for margin and never reaches a customer document.</div>
     <section class="blk">
       <h4>Format questions</h4>
@@ -10520,13 +10528,18 @@ function renderPartsAdmin(){
       renderConfigureQuiet(); renderAdmin();
     };
   });
-  ed.querySelectorAll("[data-reqadd]").forEach(sel=>{
-    const x=CONFIG.parts[+sel.closest("tr").dataset.pi];
-    sel.onchange=()=>{
-      if(!sel.value) return;
-      x.requires=(x.requires||[]).concat([sel.value]);
+  ed.querySelectorAll("[data-reqadd]").forEach(inp=>{
+    const x=CONFIG.parts[+inp.closest("tr").dataset.pi];
+    /* only a label picked from the list counts; half-typed text is left alone */
+    const pick=()=>{
+      const id=reqLabel.get(inp.value.trim());
+      if(!id) return;
+      if(!(x.requires||[]).includes(id)) x.requires=(x.requires||[]).concat([id]);
       renderConfigureQuiet(); renderAdmin();
     };
+    inp.oninput=pick;
+    inp.onchange=pick;
+    inp.onkeydown=e=>{ if(e.key==="Escape"){ inp.value=""; inp.blur(); } };
   });
   ed.querySelectorAll("[data-unreq]").forEach(pill=>{
     const x=CONFIG.parts[+pill.closest("tr").dataset.pi];
