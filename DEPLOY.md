@@ -1,54 +1,66 @@
 # CPQ op de planningsserver — Docker, eigen Supabase, Azure DevOps
 
-De CPQ draait op **SLT-NE-PRODPLAN01** naast de planningstool, met een eigen container en een
-eigen Supabase. HTTPS doet de **Caddy die er al staat** (`planningstool-caddy`). Code staat in
-**Azure DevOps**; elke push naar `main` bouwt de CPQ-container opnieuw op de server.
+De CPQ draait op **SLT-NE-PRODPLAN01** naast de planningstool, met eigen containers en een
+eigen Supabase. Code staat in **Azure DevOps**; elke push naar `main` bouwt de CPQ-container
+opnieuw op de server en herlaadt de Caddy van de CPQ.
 
-## Twee ingangen, één Caddy
+## Twee ingangen, twee Caddy's
 
-| Ingang | Voor | Publiek IP → intern | Wat er bereikbaar is |
-|---|---|---|---|
-| `cpq.sleevetechnology.com` | klanten (klantlinks) | tweede IP → 10.16.12.5, open voor iedereen | de app, en van de database alleen de 4 klantlink-functies |
-| `cpq-intern.sleevetechnology.com` | collega's | IP van de planningstool → 10.16.12.4 | de app en de hele database — alleen Sleeve |
+| Ingang | Voor | Publiek IP → intern | Caddy | Wat er bereikbaar is |
+|---|---|---|---|---|
+| `cpq.sleevetechnology.com` | klanten (klantlinks) | tweede IP → **10.16.12.5**, open voor iedereen | `cpq-caddy` (nieuw, van de CPQ) | de app, en van de database alleen de 4 klantlink-functies |
+| `cpq-intern.sleevetechnology.com` | collega's | IP van de planningstool → **10.16.12.4**, alleen Sleeve | `planningstool-caddy` (bestaat al) | de app en de hele database |
 
 ```
-klant   ─▶ cpq.…        ─┐                         ┌─ /      ─▶ sleeve-cpq
-                         ├─▶ planningstool-caddy ─┤
-collega ─▶ cpq-intern.… ─┘   (beide adressen)      └─ /sb/…  ─▶ cpq-supabase-kong
-                                                    planning… ─▶ planningstool-app (ongewijzigd)
+klant   ─▶ cpq.…        ─▶ 10.16.12.5 ─▶ cpq-caddy           ─┬─ /      ─▶ sleeve-cpq
+                                                            └─ /sb/… ─▶ cpq-supabase-kong (4 functies)
+collega ─▶ cpq-intern.… ─▶ 10.16.12.4 ─▶ planningstool-caddy ─┬─ /      ─▶ sleeve-cpq
+                                                            ├─ /sb/… ─▶ cpq-supabase-kong
+                                                            └─ planning… ─▶ planningstool-app (ongewijzigd)
 ```
 
-**Belangrijk.** Eén Caddy beantwoordt elke naam op elk adres. Zodra 10.16.12.5 voor iedereen open
-staat, kan iemand via dat adres ook om de planningstool of om `cpq-intern` vragen; de NSG houdt dat
-dan niet meer tegen. Daarom zitten de drie Sleeve-adressen (NSG-regels 121–123) óók in Caddy:
-het fragment `alleen_sleeve` in `deploy/Caddyfile.cpq`, op `cpq-intern` én op de planningstool.
+**Belangrijk.** Elke Caddy luistert alleen op zijn eigen adres. Op 10.16.12.5 (open voor iedereen)
+staat alleen `cpq-caddy`, en die kent alleen `cpq.sleevetechnology.com`: de planningstool en
+`cpq-intern` zijn daar niet op te vragen. Daarvoor moet de Caddy van de planningstool van
+`0.0.0.0:80/443` naar **`10.16.12.4:80/443`** (stap 2); anders bezet hij ook de poorten van
+10.16.12.5 en start `cpq-caddy` niet.
 
 | Bestand | Wat |
 |---|---|
-| `docker-compose.yml` | de CPQ-container (`sleeve-cpq`), op het netwerk `cpq-net` |
-| `deploy/Caddyfile.cpq` | de blokken voor de bestaande Caddy (beide ingangen + het Sleeve-slot) |
+| `docker-compose.yml` | de CPQ (`sleeve-cpq`) en zijn Caddy (`cpq-caddy`, 10.16.12.5:80/443), op het netwerk `cpq-net` |
+| `deploy/Caddyfile.cpq` | de Caddyfile van `cpq-caddy`: de klantingang |
+| `deploy/Caddyfile.intern` | het blok voor de Caddy van de planningstool: de interne ingang + het Sleeve-slot |
 | `supabase/` | de eigen Supabase: override, migratiescript en **STAPPENPLAN.md** |
-| `azure-pipelines.yml` | bij een push naar `main`: de CPQ-container opnieuw bouwen |
+| `azure-pipelines.yml` | bij een push naar `main`: de CPQ opnieuw bouwen, Caddyfile kopiëren en Caddy herladen |
 | `.env.example` | instellingen van de CPQ; de echte `.env` staat alleen op de server |
 
 ---
 
-## 1. Netwerk
+## 1. Netwerk en mappen
 ```bash
-docker network create cpq-net        # eenmalig
+docker network create cpq-net                     # eenmalig
+sudo mkdir -p /opt/sleeve-cpq/caddy               # de Caddyfile van cpq-caddy (de pipeline zet hem erin)
+sudo chown <agent-gebruiker>: /opt/sleeve-cpq/caddy
 ```
-De Caddy van de planningstool blijft op `0.0.0.0:80/443` luisteren (beide adressen) — niets aan
-de poorten veranderen.
 
-## 2. De bestaande Caddy
-1. In de compose van de planningstool, bij de Caddy: `networks: [default, cpq-net]`, en onderaan
+## 2. De bestaande Caddy (planningstool)
+1. **Poorten**: in de compose van de planningstool, bij de Caddy,
+   `"80:80"` / `"443:443"` (of `0.0.0.0:…`) vervangen door
+   ```yaml
+   ports:
+     - "10.16.12.4:80:80"
+     - "10.16.12.4:443:443"
+   ```
+   (staat er ook `443:443/udp`, die ook op `10.16.12.4` zetten).
+2. **Netwerk**: bij die Caddy `networks: [default, cpq-net]`, en onderaan
    `networks: { cpq-net: { external: true } }` (bestaat er al een `networks:`-lijst, voeg `cpq-net` toe).
-2. De inhoud van `deploy/Caddyfile.cpq` in de Caddyfile van de planningstool zetten.
-3. In het blok van de **planningstool** zelf als eerste regel: `import alleen_sleeve`.
-4. `docker compose up -d <caddy-service>` (voor het netwerk) en daarna
-   `docker exec planningstool-caddy caddy reload --config /etc/caddy/Caddyfile`.
+3. De inhoud van `deploy/Caddyfile.intern` in de Caddyfile van de planningstool zetten.
+4. `docker compose up -d <caddy-service>` (nieuwe poorten en netwerk; de planningstool is dan
+   een paar seconden weg) en controleren met `docker ps` dat er `10.16.12.4:80->80` staat.
 
-Certificaten: Caddy haalt ze zelf via poort 80 (NSG-regel 130 staat open voor iedereen).
+Certificaten: beide Caddy's halen ze zelf via poort 80 (NSG-regel 130 staat open voor iedereen;
+die moet ook voor **10.16.12.5** gelden). De certificaten van `cpq-caddy` staan in het volume
+`sleeve-cpq_caddy_data`: niet weggooien.
 
 ## 3. DNS en NSG
 - **DNS**: `cpq.sleevetechnology.com` → tweede publiek IP (→ 10.16.12.5);
@@ -60,7 +72,7 @@ Certificaten: Caddy haalt ze zelf via poort 80 (NSG-regel 130 staat open voor ie
   | 125 | Allow-HTTPS-Any-CPQ | 443 | TCP | Any | **10.16.12.5** | Allow |
 
   Bestemming **10.16.12.5**, niet *Any*.
-- **Let op**: komt er in de NSG een adres bij voor Sleeve (121–123), zet het ook in `alleen_sleeve`.
+- **Let op**: komt er in de NSG een adres bij voor Sleeve (121–123), zet het ook in `alleen_sleeve` (`deploy/Caddyfile.intern`).
 - **Uitgaand**: 443 naar `*.odoo.com` (en tijdens de overstap `*.supabase.co`).
 
 ## 4. De eigen Supabase
@@ -82,10 +94,12 @@ sudo chown <agent-gebruiker>: .env && sudo chmod 600 .env   # de pipeline draait
    De agent draait onder een eigen gebruiker in de groep `docker`; de pipeline gebruikt geen `sudo`.
    Die gebruiker moet `/opt/sleeve-cpq/.env` kunnen lezen (stap 5).
 3. **Pipeline**: *Pipelines → New pipeline → Azure Repos Git → CPQ → Existing YAML* →
-   `azure-pipelines.yml`. De eerste run bouwt en start `sleeve-cpq`.
+   `azure-pipelines.yml`. De eerste run bouwt en start `sleeve-cpq` en `cpq-caddy`
+   (stap 1 en 2 eerst, anders zijn de poorten van 10.16.12.5 nog bezet).
 
-Elke push naar `main` bouwt daarna alleen `sleeve-cpq` opnieuw. Wijzigt `deploy/Caddyfile.cpq`,
-dan dat blok met de hand in de Caddyfile van de planningstool bijwerken en Caddy herladen.
+Elke push naar `main` bouwt daarna `sleeve-cpq` opnieuw en herlaadt `cpq-caddy` met
+`deploy/Caddyfile.cpq`. Wijzigt `deploy/Caddyfile.intern`, dan dat blok met de hand in de Caddyfile
+van de planningstool bijwerken en die Caddy herladen.
 Oude images ruimt de pipeline niet op: af en toe `docker image prune`.
 
 ## 7. Controleren
@@ -96,7 +110,7 @@ curl -s "http://127.0.0.1:3100/api/render-pdf?check=1"                   # datab
 #   https://cpq.sleevetechnology.com                 → de app
 #   https://cpq.sleevetechnology.com/sb/rest/v1/     → 403
 #   https://cpq-intern.sleevetechnology.com          → 403
-#   de planningstool via zijn naam                   → 403 / niet bereikbaar
+#   de planningstool via zijn naam                   → niet bereikbaar (zoals nu)
 ```
 Daarna: een collega opent `https://cpq-intern.sleevetechnology.com`, maakt een klantlink; die
 begint met `https://cpq.sleevetechnology.com/?share=…` en werkt van buiten.
@@ -109,4 +123,4 @@ begint met `https://cpq.sleevetechnology.com/?share=…` en werkt van buiten.
 - **Inloggen (Azure)**: komt hierna, in de auth van de eigen Supabase (redirect-URL
   `https://cpq-intern.sleevetechnology.com/sb/auth/v1/callback`). Daarna gaan de tabellen ook in de
   database zelf dicht voor de anon-sleutel.
-- **Logboek**: `docker logs -f sleeve-cpq`, `docker logs -f planningstool-caddy`.
+- **Logboek**: `docker logs -f sleeve-cpq`, `docker logs -f cpq-caddy`, `docker logs -f planningstool-caddy`.

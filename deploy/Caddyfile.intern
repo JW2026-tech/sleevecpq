@@ -1,0 +1,32 @@
+# The CPQ's internal entrance, for colleagues. Add these blocks to the Caddyfile of
+# the planning tool's Caddy (planningstool-caddy), which listens on 10.16.12.4 only
+# (the planning tool's public IP, Sleeve only in the NSG, rules 121-123).
+# That Caddy must be on the network cpq-net:
+#   - in the planning tool's compose, under that Caddy:   networks: [default, cpq-net]
+#   - and at the bottom:                                   networks: { cpq-net: { external: true } }
+# Then: docker exec planningstool-caddy caddy reload --config /etc/caddy/Caddyfile
+#
+# alleen_sleeve repeats the NSG in Caddy: should the NSG ever open up, the whole
+# CPQ and its database still stay Sleeve only. Keep the addresses in step with
+# NSG rules 121-123.
+
+(alleen_sleeve) {
+	@notsleeve not remote_ip 195.110.54.78/32 217.123.164.85/32 92.64.84.98/32
+	respond @notsleeve 403
+}
+
+# --- internal entrance, for colleagues: the whole CPQ and its database ------------
+cpq-intern.sleevetechnology.com {
+	import alleen_sleeve
+	encode gzip
+	handle_path /sb/* {
+		reverse_proxy cpq-supabase-kong:8000
+	}
+	handle {
+		reverse_proxy sleeve-cpq:3000 {
+			transport http {
+				read_timeout 120s
+			}
+		}
+	}
+}

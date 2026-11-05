@@ -6,8 +6,9 @@
 # the server). The settings (.env, with the keys) stay on the server in
 # /opt/sleeve-cpq and never go through the pipeline.
 #
-# Only the CPQ container (sleeve-cpq) is rebuilt; Caddy, the CPQ's
-# Supabase and the planning tool are left alone.
+# The CPQ container (sleeve-cpq) is rebuilt; its Caddy (cpq-caddy) gets the
+# Caddyfile from deploy/Caddyfile.cpq and is reloaded, not restarted. The CPQ's
+# Supabase, the planning tool and its Caddy are left alone.
 
 trigger:
   branches:
@@ -35,6 +36,16 @@ stages:
                     test -f /opt/sleeve-cpq/.env || { echo "Missing /opt/sleeve-cpq/.env — see DEPLOY.md"; exit 1; }
                     cp /opt/sleeve-cpq/.env .env
                     docker compose -p sleeve-cpq up -d --build cpq
+                    # Caddy: the config into its folder (copied over the old file, so the
+                    # running container sees it), checked, then started or reloaded
+                    test -d /opt/sleeve-cpq/caddy || { echo "Missing /opt/sleeve-cpq/caddy — see DEPLOY.md"; exit 1; }
+                    cp deploy/Caddyfile.cpq /opt/sleeve-cpq/caddy/Caddyfile
+                    docker run --rm -v /opt/sleeve-cpq/caddy:/etc/caddy:ro caddy:2 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+                    if [ -n "$(docker ps -q -f name=^cpq-caddy$)" ]; then
+                      docker exec cpq-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+                    else
+                      docker compose -p sleeve-cpq up -d cpq-caddy
+                    fi
                   displayName: docker compose up
                   workingDirectory: $(Build.SourcesDirectory)
                 - script: |
