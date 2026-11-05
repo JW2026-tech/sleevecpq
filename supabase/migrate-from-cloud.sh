@@ -22,6 +22,9 @@ echo "1/4  Reading the cloud database (public schema) ..."
 docker run --rm -e PGCONNECT_TIMEOUT=15 postgres:17-alpine \
   pg_dump "$CLOUD_DB_URL" --schema=public --no-owner --quote-all-identifiers > "$DUMP"
 sed -i '/^SET transaction_timeout/d' "$DUMP"
+# The schema public already exists here (every Supabase has it): creating it
+# again would stop the restore at its first line.
+sed -i -E '/^CREATE SCHEMA "?public"?;/d; /^COMMENT ON SCHEMA "?public"? IS/d' "$DUMP"
 echo "     saved as $DUMP ($(du -h "$DUMP" | cut -f1))"
 
 echo "2/4  The public schema here must still be empty ..."
