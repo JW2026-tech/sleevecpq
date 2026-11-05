@@ -85,8 +85,10 @@ module.exports = async (req, res) => {
     }
     if (app) {
       try {
-        const r = await fetch(`${app}/?render=1`, { method: 'GET' });
-        out.render_page = { ok: r.ok, status: r.status };
+        // the address the renderer really prints from: inside the container
+        // that is RENDER_URL (127.0.0.1), not the public name
+        const r = await fetch(renderUrl(), { method: 'GET' });
+        out.render_page = { ok: r.ok, status: r.status, url: renderUrl().replace(/\/\?render=1$/, '') };
       } catch (err) { out.render_page = { ok: false, error: String(err && err.message || err) }; }
     }
     // The other half of the machine: a browser that has to start inside a
