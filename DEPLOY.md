@@ -124,3 +124,21 @@ begint met `https://quote.sleevetechnology.com/?share=…` en werkt van buiten.
   `https://cpq.sleevetechnology.com/sb/auth/v1/callback`). Daarna gaan de tabellen ook in de
   database zelf dicht voor de anon-sleutel.
 - **Logboek**: `docker logs -f sleeve-cpq`, `docker logs -f cpq-caddy`, `docker logs -f planningstool-caddy`.
+
+## Inloggen met Microsoft — de drie pipeline-variabelen
+
+De app-registratie in Azure staat beschreven in `supabase/STAPPENPLAN.md` (Inloggen met Microsoft, stap a).
+De drie waarden daaruit gaan **niet** in de repo, maar als geheime variabelen in de pipeline:
+Azure DevOps → *Pipelines* → de CPQ-pipeline → *Edit* → *Variables* → *New variable*, elk met
+**Keep this value secret** aangevinkt:
+
+| Naam | Waarde |
+|---|---|
+| `AZURE_TENANT_ID` | Directory (tenant) ID |
+| `AZURE_CLIENT_ID` | Application (client) ID |
+| `AZURE_SECRET` | de *Value* van het client secret |
+
+Bij elke run zet de pipeline ze in `/opt/sleeve-cpq/supabase/.env`, kopieert de override en start
+alleen de inlogdienst opnieuw als er iets veranderde. Ontbreekt een van de drie, dan stopt de
+pipeline vóór de app wordt bijgewerkt. Een nieuw secret (elke 24 maanden): de variabele aanpassen
+en de pipeline opnieuw draaien.

@@ -8,7 +8,8 @@
 #
 # The CPQ container (sleeve-cpq) is rebuilt; its Caddy (cpq-caddy) gets the
 # Caddyfile from deploy/Caddyfile.cpq and is reloaded, not restarted. The CPQ's
-# Supabase, the planning tool and its Caddy are left alone.
+# The planning tool and its Caddy are left alone; of the CPQ's Supabase only the
+# sign-in service is touched (Microsoft sign-in, see the first step).
 
 trigger:
   branches:
@@ -31,6 +32,53 @@ stages:
               steps:
                 - checkout: self
                   clean: true
+                # Sign in with Microsoft: the CPQ's own Supabase gets the Azure app
+                # registration. The three values are secret pipeline variables
+                # (DevOps → Pipelines → this pipeline → Edit → Variables), never in
+                # the repo; this writes them into /opt/sleeve-cpq/supabase/.env and
+                # restarts only the sign-in service, and only when something changed.
+                # Runs before the app, so the app never asks for a sign-in the
+                # server cannot give yet.
+                - script: |
+                    set -euo pipefail
+                    SB=/opt/sleeve-cpq/supabase
+                    for v in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_SECRET; do
+                      val="${!v:-}"
+                      if [ -z "$val" ] || [ "${val#\$(}" != "$val" ]; then
+                        echo "Pipeline variable $v is not set (Edit → Variables, see DEPLOY.md) — stopping before the app asks colleagues to sign in."; exit 1
+                      fi
+                    done
+                    test -f $SB/.env || { echo "Missing $SB/.env — see supabase/STAPPENPLAN.md"; exit 1; }
+                    before=$(md5sum $SB/.env $SB/docker-compose.override.yml 2>/dev/null | md5sum)
+                    cp supabase/docker-compose.override.yml $SB/docker-compose.override.yml
+                    # set KEY=value in .env: replaced where it is, added at the end otherwise.
+                    # The value comes in through the environment, so no character in a
+                    # secret can break the command.
+                    setkey() {
+                      K="$1" V="$2" awk 'BEGIN{k=ENVIRON["K"]; v=ENVIRON["V"]}
+                        index($0, k"=")==1 {print k"="v; f=1; next} {print}
+                        END{if(!f) print k"="v}' $SB/.env > $SB/.env.new
+                      cat $SB/.env.new > $SB/.env && rm -f $SB/.env.new
+                    }
+                    setkey AZURE_TENANT_ID "$AZURE_TENANT_ID"
+                    setkey AZURE_CLIENT_ID "$AZURE_CLIENT_ID"
+                    setkey AZURE_SECRET "$AZURE_SECRET"
+                    setkey DISABLE_SIGNUP false
+                    setkey ENABLE_EMAIL_SIGNUP false
+                    setkey ENABLE_ANONYMOUS_USERS false
+                    after=$(md5sum $SB/.env $SB/docker-compose.override.yml | md5sum)
+                    if [ "$before" != "$after" ] || [ -z "$(docker ps -q -f name=^cpq-supabase-auth$)" ]; then
+                      (cd $SB && docker compose -p cpq-supabase up -d auth)
+                      sleep 5
+                    fi
+                    # the profiles, the links for the whole team, the admin: safe to run every time
+                    docker exec -i cpq-supabase-db psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -q < sql/inloggen-microsoft.sql
+                  displayName: Microsoft sign-in (Supabase)
+                  workingDirectory: $(Build.SourcesDirectory)
+                  env:
+                    AZURE_TENANT_ID: $(AZURE_TENANT_ID)
+                    AZURE_CLIENT_ID: $(AZURE_CLIENT_ID)
+                    AZURE_SECRET: $(AZURE_SECRET)
                 - script: |
                     set -euo pipefail
                     test -f /opt/sleeve-cpq/.env || { echo "Missing /opt/sleeve-cpq/.env — see DEPLOY.md"; exit 1; }
