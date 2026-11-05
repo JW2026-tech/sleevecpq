@@ -79,6 +79,8 @@ stages:
                     fi
                     # the profiles, the links for the whole team, the admin: safe to run every time
                     docker exec -i cpq-supabase-db psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -q < sql/inloggen-microsoft.sql
+                    # test mode off: without a sign-in, only the customer's link works
+                    docker exec -i cpq-supabase-db psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -q < sql/testmodus-uit.sql
                   displayName: Microsoft sign-in (Supabase)
                   workingDirectory: $(Build.SourcesDirectory)
                   env:
