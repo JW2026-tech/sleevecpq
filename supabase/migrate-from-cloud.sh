@@ -36,7 +36,12 @@ if [ "$COUNT" != "0" ]; then
 fi
 
 echo "3/4  Writing it into $DB ..."
+# Default rights for tables supabase_admin creates later: only supabase_admin may
+# set those, so they go in separately, as that user.
+grep -E '^ALTER DEFAULT PRIVILEGES FOR ROLE "?supabase_admin"?' "$DUMP" > "$DUMP.admin" || true
+sed -i -E '/^ALTER DEFAULT PRIVILEGES FOR ROLE "?supabase_admin"?/d' "$DUMP"
 docker exec -i "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q < "$DUMP"
+docker exec -i "$DB" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -q < "$DUMP.admin"
 
 echo "4/4  Live updates for the shared catalogue, and the counts to compare ..."
 docker exec "$DB" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -c \
