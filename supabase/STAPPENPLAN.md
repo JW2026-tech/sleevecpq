@@ -56,7 +56,9 @@ SITE_URL=https://cpq.sleevetechnology.com
 API_EXTERNAL_URL=https://cpq.sleevetechnology.com/sb
 SUPABASE_PUBLIC_URL=https://cpq.sleevetechnology.com/sb
 ADDITIONAL_REDIRECT_URLS=https://quote.sleevetechnology.com
-DISABLE_SIGNUP=true
+DISABLE_SIGNUP=false          # Microsoft: a colleague gets an account on first sign-in
+ENABLE_EMAIL_SIGNUP=false     # but nobody can make one with email + password
+ENABLE_ANONYMOUS_USERS=false
 ```
 Bewaar de nieuwe waarden in jullie wachtwoordkluis; `chmod 600 .env`.
 
@@ -115,3 +117,39 @@ docker exec cpq-supabase-db pg_dump -U postgres -d postgres --schema=public | gz
 **Terug als er iets misgaat**: `docker compose -p cpq-supabase down` in
 `/opt/sleeve-cpq/supabase` stopt alleen deze stack; de CPQ kan dan met de cloud-instellingen in
 `.env` verder op de cloud-Supabase (die blijft tot de overstap gewoon draaien).
+
+## Inloggen met Microsoft
+
+Alleen collega's met een Sleeve-account (de eigen Microsoft-tenant) komen erin.
+Klanten loggen nooit in: hun link op quote.sleevetechnology.com blijft werken zoals hij werkt.
+
+### a. App-registratie in Azure (portal.azure.com, iemand met beheerrechten)
+1. *Microsoft Entra ID → App registrations → New registration*
+   - Name: `Sleeve CPQ`
+   - Supported account types: **Accounts in this organizational directory only (single tenant)**
+   - Redirect URI: platform **Web**, `https://cpq.sleevetechnology.com/sb/auth/v1/callback`
+2. Op de overzichtspagina: noteer **Application (client) ID** en **Directory (tenant) ID**.
+3. *Certificates & secrets → New client secret* (24 maanden). Kopieer meteen de **Value**
+   (niet de Secret ID) naar de wachtwoordkluis; hij is daarna niet meer te zien.
+   Zet in de agenda wanneer hij verloopt: daarna kan niemand meer inloggen.
+4. *API permissions → Add a permission → Microsoft Graph → Delegated permissions*:
+   `openid`, `profile`, `email`, `offline_access`, `User.Read`, `Mail.Send`.
+   Daarna **Grant admin consent for Sleeve Technology**.
+
+### b. Op de server, onderaan in `/opt/sleeve-cpq/supabase/.env`
+```
+AZURE_TENANT_ID=<Directory (tenant) ID>
+AZURE_CLIENT_ID=<Application (client) ID>
+AZURE_SECRET=<Value van het client secret>
+```
+en controleer de regels `DISABLE_SIGNUP=false`, `ENABLE_EMAIL_SIGNUP=false` en
+`ENABLE_ANONYMOUS_USERS=false` (zie stap 5).
+
+### c. De auth-container opnieuw starten
+```bash
+cd /opt/sleeve-cpq/supabase && docker compose -p cpq-supabase up -d auth
+```
+Controle (moet `"azure":true` bevatten):
+```bash
+docker exec sleeve-cpq node -e "fetch('http://cpq-supabase-kong:8000/auth/v1/settings',{headers:{apikey:process.env.PUBLIC_SUPABASE_ANON_KEY}}).then(r=>r.text()).then(console.log)"
+```
