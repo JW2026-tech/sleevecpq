@@ -111,3 +111,19 @@ stages:
                     done
                     echo "The CPQ did not become healthy"; docker logs --tail 50 sleeve-cpq; exit 1
                   displayName: Health check
+                # Nightly database copy (deploy/backup-db.sh) at 02:15 from cpqagent's
+                # cron, kept 30 days in /opt/sleeve-cpq/backups. Installed (again) on
+                # every run, and one copy is made right away so the log shows it works.
+                - script: |
+                    set -euo pipefail
+                    cp deploy/backup-db.sh /opt/sleeve-cpq/backup-db.sh
+                    chmod 755 /opt/sleeve-cpq/backup-db.sh
+                    mkdir -p /opt/sleeve-cpq/backups
+                    { crontab -l 2>/dev/null | grep -v 'backup-db.sh' || true
+                      echo "15 2 * * * /opt/sleeve-cpq/backup-db.sh >> /opt/sleeve-cpq/backups/backup.log 2>&1"
+                    } | crontab -
+                    crontab -l | grep backup-db.sh
+                    /opt/sleeve-cpq/backup-db.sh
+                    ls -lh /opt/sleeve-cpq/backups | tail -5
+                  displayName: Database backup
+                  workingDirectory: $(Build.SourcesDirectory)
