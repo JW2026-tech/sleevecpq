@@ -3,8 +3,8 @@
 # Two containers:
 #   - cpq        the app (server.js, PDF renderer)
 #   - cpq-caddy  its own Caddy, HTTPS on 10.16.12.5 only: the public entrance for
-#                customers (cpq.sleevetechnology.com). Config: deploy/Caddyfile.cpq.
-# The internal entrance for colleagues (cpq-intern.…) stays on the planning tool's
+#                customers (quote.sleevetechnology.com). Config: deploy/Caddyfile.cpq.
+# The internal entrance for colleagues (cpq.…) stays on the planning tool's
 # Caddy on 10.16.12.4 (deploy/Caddyfile.intern). That Caddy must therefore listen
 # on 10.16.12.4 only, not on 0.0.0.0, or the two fight over ports 80/443.
 # Both reach the app, and the CPQ's own Supabase (supabase/), over cpq-net.

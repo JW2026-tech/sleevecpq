@@ -52,10 +52,10 @@ worden: zie de Supabase-docs *Self-Hosting with Docker → Securing your service
 
 Verder in dezelfde `.env`:
 ```
-SITE_URL=https://cpq-intern.sleevetechnology.com
-API_EXTERNAL_URL=https://cpq-intern.sleevetechnology.com/sb
-SUPABASE_PUBLIC_URL=https://cpq-intern.sleevetechnology.com/sb
-ADDITIONAL_REDIRECT_URLS=https://cpq.sleevetechnology.com
+SITE_URL=https://cpq.sleevetechnology.com
+API_EXTERNAL_URL=https://cpq.sleevetechnology.com/sb
+SUPABASE_PUBLIC_URL=https://cpq.sleevetechnology.com/sb
+ADDITIONAL_REDIRECT_URLS=https://quote.sleevetechnology.com
 DISABLE_SIGNUP=true
 ```
 Bewaar de nieuwe waarden in jullie wachtwoordkluis; `chmod 600 .env`.

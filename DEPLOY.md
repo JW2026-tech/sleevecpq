@@ -8,20 +8,20 @@ opnieuw op de server en herlaadt de Caddy van de CPQ.
 
 | Ingang | Voor | Publiek IP → intern | Caddy | Wat er bereikbaar is |
 |---|---|---|---|---|
-| `cpq.sleevetechnology.com` | klanten (klantlinks) | tweede IP → **10.16.12.5**, open voor iedereen | `cpq-caddy` (nieuw, van de CPQ) | de app, en van de database alleen de 4 klantlink-functies |
-| `cpq-intern.sleevetechnology.com` | collega's | IP van de planningstool → **10.16.12.4**, alleen Sleeve | `planningstool-caddy` (bestaat al) | de app en de hele database |
+| `quote.sleevetechnology.com` | klanten (klantlinks) | tweede IP → **10.16.12.5**, open voor iedereen | `cpq-caddy` (nieuw, van de CPQ) | de app, en van de database alleen de 4 klantlink-functies |
+| `cpq.sleevetechnology.com` | collega's | IP van de planningstool → **10.16.12.4**, alleen Sleeve | `planningstool-caddy` (bestaat al) | de app en de hele database |
 
 ```
-klant   ─▶ cpq.…        ─▶ 10.16.12.5 ─▶ cpq-caddy           ─┬─ /      ─▶ sleeve-cpq
+klant   ─▶ quote.…      ─▶ 10.16.12.5 ─▶ cpq-caddy           ─┬─ /      ─▶ sleeve-cpq
                                                             └─ /sb/… ─▶ cpq-supabase-kong (4 functies)
-collega ─▶ cpq-intern.… ─▶ 10.16.12.4 ─▶ planningstool-caddy ─┬─ /      ─▶ sleeve-cpq
+collega ─▶ cpq.…        ─▶ 10.16.12.4 ─▶ planningstool-caddy ─┬─ /      ─▶ sleeve-cpq
                                                             ├─ /sb/… ─▶ cpq-supabase-kong
                                                             └─ planning… ─▶ planningstool-app (ongewijzigd)
 ```
 
 **Belangrijk.** Elke Caddy luistert alleen op zijn eigen adres. Op 10.16.12.5 (open voor iedereen)
-staat alleen `cpq-caddy`, en die kent alleen `cpq.sleevetechnology.com`: de planningstool en
-`cpq-intern` zijn daar niet op te vragen. Daarvoor moet de Caddy van de planningstool van
+staat alleen `cpq-caddy`, en die kent alleen `quote.sleevetechnology.com`: de planningstool en
+`cpq.sleevetechnology.com` zijn daar niet op te vragen. Daarvoor moet de Caddy van de planningstool van
 `0.0.0.0:80/443` naar **`10.16.12.4:80/443`** (stap 2); anders bezet hij ook de poorten van
 10.16.12.5 en start `cpq-caddy` niet.
 
@@ -63,8 +63,8 @@ die moet ook voor **10.16.12.5** gelden). De certificaten van `cpq-caddy` staan 
 `sleeve-cpq_caddy_data`: niet weggooien.
 
 ## 3. DNS en NSG
-- **DNS**: `cpq.sleevetechnology.com` → tweede publiek IP (→ 10.16.12.5);
-  `cpq-intern.sleevetechnology.com` → publiek IP van de planningstool (→ 10.16.12.4).
+- **DNS**: `quote.sleevetechnology.com` → tweede publiek IP (→ 10.16.12.5);
+  `cpq.sleevetechnology.com` → publiek IP van de planningstool (→ 10.16.12.4).
 - **NSG — één nieuwe inbound-regel**:
 
   | Prioriteit | Naam | Poort | Protocol | Bron | Bestemming | Actie |
@@ -107,20 +107,20 @@ Oude images ruimt de pipeline niet op: af en toe `docker image prune`.
 curl -s http://127.0.0.1:3100/healthz                                    # {"ok":true}
 curl -s "http://127.0.0.1:3100/api/render-pdf?check=1"                   # database + render-pagina
 # van buiten Sleeve (bv. telefoon zonder wifi):
-#   https://cpq.sleevetechnology.com                 → de app
-#   https://cpq.sleevetechnology.com/sb/rest/v1/     → 403
-#   https://cpq-intern.sleevetechnology.com          → 403
+#   https://quote.sleevetechnology.com                 → de app
+#   https://quote.sleevetechnology.com/sb/rest/v1/     → 403
+#   https://cpq.sleevetechnology.com          → 403
 #   de planningstool via zijn naam                   → niet bereikbaar (zoals nu)
 ```
-Daarna: een collega opent `https://cpq-intern.sleevetechnology.com`, maakt een klantlink; die
-begint met `https://cpq.sleevetechnology.com/?share=…` en werkt van buiten.
+Daarna: een collega opent `https://cpq.sleevetechnology.com`, maakt een klantlink; die
+begint met `https://quote.sleevetechnology.com/?share=…` en werkt van buiten.
 
 ## Om rekening mee te houden
 - **Back-ups**: dagelijks, zie stap 11 van het stappenplan.
 - **Oude klantlinks** (`cpq-configurator.vercel.app/?share=…`): na de overstap Vercel laten
-  doorsturen naar `https://cpq.sleevetechnology.com`.
+  doorsturen naar `https://quote.sleevetechnology.com`.
 - **Geheugen**: CPQ-app tot 1 GB (PDF), de Supabase-stack ongeveer 1–1,5 GB.
 - **Inloggen (Azure)**: komt hierna, in de auth van de eigen Supabase (redirect-URL
-  `https://cpq-intern.sleevetechnology.com/sb/auth/v1/callback`). Daarna gaan de tabellen ook in de
+  `https://cpq.sleevetechnology.com/sb/auth/v1/callback`). Daarna gaan de tabellen ook in de
   database zelf dicht voor de anon-sleutel.
 - **Logboek**: `docker logs -f sleeve-cpq`, `docker logs -f cpq-caddy`, `docker logs -f planningstool-caddy`.

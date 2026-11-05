@@ -16,7 +16,7 @@
 }
 
 # --- internal entrance, for colleagues: the whole CPQ and its database ------------
-cpq-intern.sleevetechnology.com {
+cpq.sleevetechnology.com {
 	import alleen_sleeve
 	encode gzip
 	handle_path /sb/* {

@@ -1,13 +1,13 @@
 # Caddy of the CPQ (container cpq-caddy), on 10.16.12.5:80/443 only.
 # 10.16.12.5 is open to the whole internet (NSG rule 125), so this Caddy serves the
 # customer entrance and nothing else: any other name gets no answer here.
-# The internal entrance (cpq-intern.…) is on the planning tool's Caddy, see
+# The internal entrance (cpq.…) is on the planning tool's Caddy, see
 # deploy/Caddyfile.intern.
 # The pipeline copies this file to /opt/sleeve-cpq/caddy/Caddyfile and reloads:
 #   docker exec cpq-caddy caddy reload --config /etc/caddy/Caddyfile
 
 # --- public entrance, for customers ---------------------------------------------
-cpq.sleevetechnology.com {
+quote.sleevetechnology.com {
 	encode gzip
 	# the database: only the four functions behind a shared quotation
 	handle_path /sb/* {
