@@ -3167,7 +3167,7 @@
 <!-- ===== sign in =====
      With the Sleeve Microsoft account, nothing else: the Azure app
      registration is single-tenant, so only colleagues get in, and the
-     session's provider_token is what "Send PDF by email" sends with.
+     app asks Microsoft for nothing but name and email address.
      Customers never see this: a share link boots before it. -->
 <div class="loginwrap hidden" id="viewLogin">
   <div class="loginbox">
@@ -16999,7 +16999,7 @@ function renderQuoteBar(){
           Email button renders one too (it downloads it while Microsoft
           sign-in is still unconfigured), so there is nothing this would add
           that is not already reachable. */""}
-    <button class="btn sm" id="qbEmail" title="Render the complete PDF and email it from your own mailbox">Email</button>
+    <button class="btn sm" id="qbEmail" title="Render the complete PDF and download it, to attach in Outlook">PDF</button>
     <button class="btn sm ${quoteBarPanel==="log"?"primary":""}" id="qbLog" title="What has happened to this quote">History${
       quoteEvents.length?` <b>${quoteEvents.length}</b>`:""}</button>
     <button class="btn sm ${quoteBarPanel==="versions"?"primary":""}" id="qbVers" title="Earlier versions of this quote">Versions${
@@ -21491,9 +21491,9 @@ function showLogin(){
   const h=document.getElementById("loginLogo"); if(h) h.innerHTML=logoSvg();
   document.getElementById("viewLogin").classList.remove("hidden");
 }
-/* the scopes asked of Microsoft: who you are, and sending mail as you (the
-   PDF by email). offline_access keeps the sign-in alive between visits. */
-const MS_SCOPES="openid profile email offline_access Mail.Send";
+/* the scopes asked of Microsoft: who you are, nothing more — so a colleague
+   can sign in without the IT administrator having to approve anything */
+const MS_SCOPES="openid profile email";
 function signInWithMicrosoft(){
   /* back to this same page afterwards, without a leftover error in the address */
   return supa.auth.signInWithOAuth({provider:"azure",
@@ -21545,8 +21545,7 @@ document.getElementById("btnShareLink").onclick=async ()=>{
 };
 
 /* turns the base64 the render function returns into a normal download —
-   used when there's no Microsoft sign-in yet, so the render pipeline can
-   still be checked end to end without the Mail.Send side being ready */
+   the PDF button's way of handing over the complete quotation */
 function downloadBase64Pdf(base64, filename){
   const bytes=atob(base64);
   const arr=new Uint8Array(bytes.length);
@@ -21596,43 +21595,14 @@ document.getElementById("btnEmailPdf").onclick=async ()=>{
     });
     const out=await r.json();
     if(!r.ok || !out.pdfBase64) throw new Error(out.error||"Rendering failed");
-    if(!session||!session.provider_token){
-      /* no Microsoft sign-in yet — download instead of emailing, so the
-         render step itself is still testable before Azure is set up */
-      downloadBase64Pdf(out.pdfBase64, out.filename);
-      flagSaved("PDF downloaded (sign in with Microsoft to email it)");
-      logQuoteEvent("pdf_created",{via:"server render", filename:out.filename});
-      loadQuoteMeta().then(()=>renderQuoteBar());
-      return;
-    }
-    const contacts=((CONFIG.customerInfo&&CONFIG.customerInfo.contacts)||[]).filter(c=>c.email);
-    if(!contacts.length) return alert("Add a customer contact with an email address first (Customer tab).");
-    const to=contacts.map(c=>({emailAddress:{address:c.email, name:c.name||""}}));
-    const send=(token)=>fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
-      method:"POST",
-      headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
-      body: JSON.stringify({saveToSentItems:true, message:{
-        subject:`Quotation ${CONFIG.quoteNumber||""}${(CONFIG.customer||"").trim()?" - "+CONFIG.customer.trim():""}`,
-        body:{contentType:"Text", content:"Please find the quotation attached."},
-        toRecipients: to,
-        attachments:[{"@odata.type":"#microsoft.graph.fileAttachment", name: out.filename, contentBytes: out.pdfBase64}]
-      }})
-    });
-    const g=await send(session.provider_token);
-    if(g.status===401){
-      /* the Microsoft Graph token (not the Supabase session) has expired —
-         re-running the OAuth sign-in refreshes it, usually near-instant via
-         the existing Microsoft SSO cookie rather than a real login prompt */
-      flagSaved("Refreshing Microsoft sign-in…", true);
-      await signInWithMicrosoft();
-      return;
-    }
-    if(g.status!==202) throw new Error("Microsoft Graph responded "+g.status);
-    flagSaved("Emailed");
-    /* who it went to, so the log answers "did we send this, and to whom" */
-    await logQuoteEvent("email_sent",{to:contacts.map(c=>c.email), filename:out.filename});
+    /* The app does not send mail itself: that needed Mail.Send, which only
+       the IT administrator may approve for the whole company. The complete
+       PDF is downloaded and the salesperson attaches it in Outlook. */
+    downloadBase64Pdf(out.pdfBase64, out.filename);
+    flagSaved("PDF downloaded");
+    logQuoteEvent("pdf_created",{via:"server render", filename:out.filename});
     loadQuoteMeta().then(()=>renderQuoteBar());
-  }catch(err){ alert("Could not send: "+(err&&err.message||err)); flagSaved("Not sent", true); }
+  }catch(err){ alert("Could not prepare the PDF: "+(err&&err.message||err)); flagSaved("PDF not made", true); }
 };
 
 /* ---- boot ---- */

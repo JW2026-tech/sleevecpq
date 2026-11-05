@@ -133,7 +133,7 @@ Klanten loggen nooit in: hun link op quote.sleevetechnology.com blijft werken zo
    (niet de Secret ID) naar de wachtwoordkluis; hij is daarna niet meer te zien.
    Zet in de agenda wanneer hij verloopt: daarna kan niemand meer inloggen.
 4. *API permissions → Add a permission → Microsoft Graph → Delegated permissions*:
-   `openid`, `profile`, `email`, `offline_access`, `User.Read`, `Mail.Send`.
+   `openid`, `profile`, `email`, `User.Read` (niets anders: dan hoeft de beheerder niets goed te keuren).
    Daarna **Grant admin consent for Sleeve Technology**.
 
 ### b. Op de server, onderaan in `/opt/sleeve-cpq/supabase/.env`
