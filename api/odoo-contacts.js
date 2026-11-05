@@ -87,7 +87,7 @@ module.exports = async (req, res) => {
   // Customer names, addresses and contact persons: for a signed-in colleague
   // only. The page reaches this function from outside too (quote.…), so the
   // check above is not enough on its own.
-  const bearer = (req.headers.authorization || '').replace(/^Bearers+/i, '');
+  const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!bearer || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return res.status(401).json({ error: 'Please sign in first' });
   }
